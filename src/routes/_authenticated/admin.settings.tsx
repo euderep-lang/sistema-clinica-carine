@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Building2, Palette, DoorOpen, Stethoscope, Users, Receipt, MessageSquare, Plug, type LucideIcon } from "lucide-react";
+import { Building2, Palette, DoorOpen, Stethoscope, Users, Receipt, MessageSquare, Plug, CreditCard, FolderOpen, type LucideIcon } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { cn } from "@/lib/utils";
 import { SectionClinica } from "@/components/settings/section-clinica";
@@ -11,10 +11,12 @@ import { SectionUsuarios } from "@/components/settings/section-usuarios";
 import { SectionServicos } from "@/components/settings/section-servicos";
 import { SectionMensagens } from "@/components/settings/section-mensagens";
 import { SectionIntegracoes } from "@/components/settings/section-integracoes";
+import { SectionPagamentos } from "@/components/settings/section-pagamentos";
+import { SectionDespesas } from "@/components/settings/section-despesas";
 
 export const Route = createFileRoute("/_authenticated/admin/settings")({ component: Page });
 
-type SectionId = "clinica" | "aparencia" | "consultorios" | "especialidades" | "usuarios" | "servicos" | "mensagens" | "integracoes";
+type SectionId = "clinica" | "aparencia" | "consultorios" | "especialidades" | "usuarios" | "servicos" | "pagamentos" | "despesas" | "mensagens" | "integracoes";
 
 const SECTIONS: { id: SectionId; label: string; icon: LucideIcon }[] = [
   { id: "clinica", label: "Clínica", icon: Building2 },
@@ -23,6 +25,8 @@ const SECTIONS: { id: SectionId; label: string; icon: LucideIcon }[] = [
   { id: "especialidades", label: "Especialidades", icon: Stethoscope },
   { id: "usuarios", label: "Usuários", icon: Users },
   { id: "servicos", label: "Serviços", icon: Receipt },
+  { id: "pagamentos", label: "Pagamentos", icon: CreditCard },
+  { id: "despesas", label: "Despesas", icon: FolderOpen },
   { id: "mensagens", label: "Modelos de Mensagem", icon: MessageSquare },
   { id: "integracoes", label: "Integrações", icon: Plug },
 ];
@@ -48,6 +52,8 @@ function Page() {
           {active === "especialidades" && <SectionEspecialidades />}
           {active === "usuarios" && <SectionUsuarios />}
           {active === "servicos" && <SectionServicos />}
+          {active === "pagamentos" && <SectionPagamentos />}
+          {active === "despesas" && <SectionDespesas />}
           {active === "mensagens" && <SectionMensagens />}
           {active === "integracoes" && <SectionIntegracoes />}
         </div>

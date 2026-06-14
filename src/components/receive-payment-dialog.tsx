@@ -14,6 +14,7 @@ import { useAuth } from "@/lib/mock-auth";
 import { PAYMENT_METHODS, parseBRLInput, fmt, fmtDate } from "@/lib/currency";
 import { generateReceiptPDF } from "@/lib/financial-pdf";
 import { loadLetterheadForPdf, resolveLetterheadProfessionalId, DEFAULT_LETTERHEAD_MARGINS } from "@/lib/letterhead";
+import { receiveBillPayment } from "@/lib/sales";
 
 interface Patient { id: string; full_name: string; }
 interface Bill {
@@ -84,14 +85,8 @@ export function ReceivePaymentDialog({ open, onOpenChange, onSaved, defaultPatie
       for (const b of selectedBills) {
         const outstanding = Number(b.amount) - Number(b.paid_amount);
         const pay = partial ? Math.min(remaining, outstanding) : outstanding;
-        const newPaid = Number(b.paid_amount) + pay;
-        const newStatus = newPaid >= Number(b.amount) ? "paid" : "partial";
-        const { error } = await supabase.from("bills_receivable" as never).update({
-          paid_amount: newPaid, status: newStatus,
-          paid_date: newStatus === "paid" ? paidDate : null,
-          payment_method: method, notes: notes || null,
-        } as never).eq("id", b.id);
-        if (error) throw new Error(error.message);
+        if (pay <= 0) continue;
+        await receiveBillPayment(b.id, pay, method, paidDate, notes || undefined);
         remaining -= pay;
         if (partial && remaining <= 0) break;
       }

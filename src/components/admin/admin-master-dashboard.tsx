@@ -61,9 +61,11 @@ export function AdminMasterDashboard() {
           .eq("active", true),
         supabase
           .from("bills_receivable")
-          .select("professional_id, amount, paid_amount, status, due_date, paid_date")
+          .select(
+            "id, professional_id, amount, paid_amount, status, due_date, paid_date, competence_date, installment_number, installment_count, consultation_charge_id",
+          )
           .or(
-            `and(due_date.gte.${period.from},due_date.lte.${period.to}),and(paid_date.gte.${period.from},paid_date.lte.${period.to})`,
+            `and(competence_date.gte.${period.from},competence_date.lte.${period.to}),and(paid_date.gte.${period.from},paid_date.lte.${period.to})`,
           ),
         supabase
           .from("appointments")

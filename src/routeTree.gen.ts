@@ -41,9 +41,13 @@ import { Route as AuthenticatedAdminDashboardRouteImport } from './routes/_authe
 import { Route as AuthenticatedReceptionPacientesIndexRouteImport } from './routes/_authenticated/reception.pacientes.index'
 import { Route as AuthenticatedProfessionalPrescriptionsIndexRouteImport } from './routes/_authenticated/professional.prescriptions.index'
 import { Route as AuthenticatedProfessionalPatientsIndexRouteImport } from './routes/_authenticated/professional.patients.index'
+import { Route as AuthenticatedProfessionalFinancialIndexRouteImport } from './routes/_authenticated/professional.financial.index'
 import { Route as AuthenticatedFinancialInventoryIndexRouteImport } from './routes/_authenticated/financial.inventory.index'
 import { Route as AuthenticatedReceptionPacientesIdRouteImport } from './routes/_authenticated/reception.pacientes.$id'
 import { Route as AuthenticatedProfessionalPrescriptionsNewRouteImport } from './routes/_authenticated/professional.prescriptions.new'
+import { Route as AuthenticatedProfessionalFinancialRelatoriosRouteImport } from './routes/_authenticated/professional.financial.relatorios'
+import { Route as AuthenticatedProfessionalFinancialDespesasRouteImport } from './routes/_authenticated/professional.financial.despesas'
+import { Route as AuthenticatedProfessionalFinancialCaixaRouteImport } from './routes/_authenticated/professional.financial.caixa'
 import { Route as AuthenticatedFinancialInventoryItemsRouteImport } from './routes/_authenticated/financial.inventory.items'
 import { Route as AuthenticatedFinancialInventoryCategoriesRouteImport } from './routes/_authenticated/financial.inventory.categories'
 import { Route as AuthenticatedProfessionalPatientsIdIndexRouteImport } from './routes/_authenticated/professional.patients.$id.index'
@@ -240,6 +244,12 @@ const AuthenticatedProfessionalPatientsIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedProfessionalPatientsRoute,
   } as any)
+const AuthenticatedProfessionalFinancialIndexRoute =
+  AuthenticatedProfessionalFinancialIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedProfessionalFinancialRoute,
+  } as any)
 const AuthenticatedFinancialInventoryIndexRoute =
   AuthenticatedFinancialInventoryIndexRouteImport.update({
     id: '/',
@@ -257,6 +267,24 @@ const AuthenticatedProfessionalPrescriptionsNewRoute =
     id: '/new',
     path: '/new',
     getParentRoute: () => AuthenticatedProfessionalPrescriptionsRoute,
+  } as any)
+const AuthenticatedProfessionalFinancialRelatoriosRoute =
+  AuthenticatedProfessionalFinancialRelatoriosRouteImport.update({
+    id: '/relatorios',
+    path: '/relatorios',
+    getParentRoute: () => AuthenticatedProfessionalFinancialRoute,
+  } as any)
+const AuthenticatedProfessionalFinancialDespesasRoute =
+  AuthenticatedProfessionalFinancialDespesasRouteImport.update({
+    id: '/despesas',
+    path: '/despesas',
+    getParentRoute: () => AuthenticatedProfessionalFinancialRoute,
+  } as any)
+const AuthenticatedProfessionalFinancialCaixaRoute =
+  AuthenticatedProfessionalFinancialCaixaRouteImport.update({
+    id: '/caixa',
+    path: '/caixa',
+    getParentRoute: () => AuthenticatedProfessionalFinancialRoute,
   } as any)
 const AuthenticatedFinancialInventoryItemsRoute =
   AuthenticatedFinancialInventoryItemsRouteImport.update({
@@ -315,7 +343,7 @@ export interface FileRoutesByFullPath {
   '/professional/agenda': typeof AuthenticatedProfessionalAgendaRoute
   '/professional/budgets': typeof AuthenticatedProfessionalBudgetsRoute
   '/professional/dashboard': typeof AuthenticatedProfessionalDashboardRoute
-  '/professional/financial': typeof AuthenticatedProfessionalFinancialRoute
+  '/professional/financial': typeof AuthenticatedProfessionalFinancialRouteWithChildren
   '/professional/inventory': typeof AuthenticatedProfessionalInventoryRoute
   '/professional/patients': typeof AuthenticatedProfessionalPatientsRouteWithChildren
   '/professional/prescriptions': typeof AuthenticatedProfessionalPrescriptionsRouteWithChildren
@@ -332,9 +360,13 @@ export interface FileRoutesByFullPath {
   '/professional/safeid/callback': typeof ProfessionalSafeidCallbackRoute
   '/financial/inventory/categories': typeof AuthenticatedFinancialInventoryCategoriesRoute
   '/financial/inventory/items': typeof AuthenticatedFinancialInventoryItemsRouteWithChildren
+  '/professional/financial/caixa': typeof AuthenticatedProfessionalFinancialCaixaRoute
+  '/professional/financial/despesas': typeof AuthenticatedProfessionalFinancialDespesasRoute
+  '/professional/financial/relatorios': typeof AuthenticatedProfessionalFinancialRelatoriosRoute
   '/professional/prescriptions/new': typeof AuthenticatedProfessionalPrescriptionsNewRoute
   '/reception/pacientes/$id': typeof AuthenticatedReceptionPacientesIdRoute
   '/financial/inventory/': typeof AuthenticatedFinancialInventoryIndexRoute
+  '/professional/financial/': typeof AuthenticatedProfessionalFinancialIndexRoute
   '/professional/patients/': typeof AuthenticatedProfessionalPatientsIndexRoute
   '/professional/prescriptions/': typeof AuthenticatedProfessionalPrescriptionsIndexRoute
   '/reception/pacientes/': typeof AuthenticatedReceptionPacientesIndexRoute
@@ -357,7 +389,6 @@ export interface FileRoutesByTo {
   '/professional/agenda': typeof AuthenticatedProfessionalAgendaRoute
   '/professional/budgets': typeof AuthenticatedProfessionalBudgetsRoute
   '/professional/dashboard': typeof AuthenticatedProfessionalDashboardRoute
-  '/professional/financial': typeof AuthenticatedProfessionalFinancialRoute
   '/professional/inventory': typeof AuthenticatedProfessionalInventoryRoute
   '/professional/procedimentos': typeof AuthenticatedProfessionalProcedimentosRoute
   '/professional/prontuarios': typeof AuthenticatedProfessionalProntuariosRoute
@@ -370,9 +401,13 @@ export interface FileRoutesByTo {
   '/reception/payments': typeof AuthenticatedReceptionPaymentsRoute
   '/professional/safeid/callback': typeof ProfessionalSafeidCallbackRoute
   '/financial/inventory/categories': typeof AuthenticatedFinancialInventoryCategoriesRoute
+  '/professional/financial/caixa': typeof AuthenticatedProfessionalFinancialCaixaRoute
+  '/professional/financial/despesas': typeof AuthenticatedProfessionalFinancialDespesasRoute
+  '/professional/financial/relatorios': typeof AuthenticatedProfessionalFinancialRelatoriosRoute
   '/professional/prescriptions/new': typeof AuthenticatedProfessionalPrescriptionsNewRoute
   '/reception/pacientes/$id': typeof AuthenticatedReceptionPacientesIdRoute
   '/financial/inventory': typeof AuthenticatedFinancialInventoryIndexRoute
+  '/professional/financial': typeof AuthenticatedProfessionalFinancialIndexRoute
   '/professional/patients': typeof AuthenticatedProfessionalPatientsIndexRoute
   '/professional/prescriptions': typeof AuthenticatedProfessionalPrescriptionsIndexRoute
   '/reception/pacientes': typeof AuthenticatedReceptionPacientesIndexRoute
@@ -398,7 +433,7 @@ export interface FileRoutesById {
   '/_authenticated/professional/agenda': typeof AuthenticatedProfessionalAgendaRoute
   '/_authenticated/professional/budgets': typeof AuthenticatedProfessionalBudgetsRoute
   '/_authenticated/professional/dashboard': typeof AuthenticatedProfessionalDashboardRoute
-  '/_authenticated/professional/financial': typeof AuthenticatedProfessionalFinancialRoute
+  '/_authenticated/professional/financial': typeof AuthenticatedProfessionalFinancialRouteWithChildren
   '/_authenticated/professional/inventory': typeof AuthenticatedProfessionalInventoryRoute
   '/_authenticated/professional/patients': typeof AuthenticatedProfessionalPatientsRouteWithChildren
   '/_authenticated/professional/prescriptions': typeof AuthenticatedProfessionalPrescriptionsRouteWithChildren
@@ -415,9 +450,13 @@ export interface FileRoutesById {
   '/professional/safeid/callback': typeof ProfessionalSafeidCallbackRoute
   '/_authenticated/financial/inventory/categories': typeof AuthenticatedFinancialInventoryCategoriesRoute
   '/_authenticated/financial/inventory/items': typeof AuthenticatedFinancialInventoryItemsRouteWithChildren
+  '/_authenticated/professional/financial/caixa': typeof AuthenticatedProfessionalFinancialCaixaRoute
+  '/_authenticated/professional/financial/despesas': typeof AuthenticatedProfessionalFinancialDespesasRoute
+  '/_authenticated/professional/financial/relatorios': typeof AuthenticatedProfessionalFinancialRelatoriosRoute
   '/_authenticated/professional/prescriptions/new': typeof AuthenticatedProfessionalPrescriptionsNewRoute
   '/_authenticated/reception/pacientes/$id': typeof AuthenticatedReceptionPacientesIdRoute
   '/_authenticated/financial/inventory/': typeof AuthenticatedFinancialInventoryIndexRoute
+  '/_authenticated/professional/financial/': typeof AuthenticatedProfessionalFinancialIndexRoute
   '/_authenticated/professional/patients/': typeof AuthenticatedProfessionalPatientsIndexRoute
   '/_authenticated/professional/prescriptions/': typeof AuthenticatedProfessionalPrescriptionsIndexRoute
   '/_authenticated/reception/pacientes/': typeof AuthenticatedReceptionPacientesIndexRoute
@@ -460,9 +499,13 @@ export interface FileRouteTypes {
     | '/professional/safeid/callback'
     | '/financial/inventory/categories'
     | '/financial/inventory/items'
+    | '/professional/financial/caixa'
+    | '/professional/financial/despesas'
+    | '/professional/financial/relatorios'
     | '/professional/prescriptions/new'
     | '/reception/pacientes/$id'
     | '/financial/inventory/'
+    | '/professional/financial/'
     | '/professional/patients/'
     | '/professional/prescriptions/'
     | '/reception/pacientes/'
@@ -485,7 +528,6 @@ export interface FileRouteTypes {
     | '/professional/agenda'
     | '/professional/budgets'
     | '/professional/dashboard'
-    | '/professional/financial'
     | '/professional/inventory'
     | '/professional/procedimentos'
     | '/professional/prontuarios'
@@ -498,9 +540,13 @@ export interface FileRouteTypes {
     | '/reception/payments'
     | '/professional/safeid/callback'
     | '/financial/inventory/categories'
+    | '/professional/financial/caixa'
+    | '/professional/financial/despesas'
+    | '/professional/financial/relatorios'
     | '/professional/prescriptions/new'
     | '/reception/pacientes/$id'
     | '/financial/inventory'
+    | '/professional/financial'
     | '/professional/patients'
     | '/professional/prescriptions'
     | '/reception/pacientes'
@@ -542,9 +588,13 @@ export interface FileRouteTypes {
     | '/professional/safeid/callback'
     | '/_authenticated/financial/inventory/categories'
     | '/_authenticated/financial/inventory/items'
+    | '/_authenticated/professional/financial/caixa'
+    | '/_authenticated/professional/financial/despesas'
+    | '/_authenticated/professional/financial/relatorios'
     | '/_authenticated/professional/prescriptions/new'
     | '/_authenticated/reception/pacientes/$id'
     | '/_authenticated/financial/inventory/'
+    | '/_authenticated/professional/financial/'
     | '/_authenticated/professional/patients/'
     | '/_authenticated/professional/prescriptions/'
     | '/_authenticated/reception/pacientes/'
@@ -788,6 +838,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProfessionalPatientsIndexRouteImport
       parentRoute: typeof AuthenticatedProfessionalPatientsRoute
     }
+    '/_authenticated/professional/financial/': {
+      id: '/_authenticated/professional/financial/'
+      path: '/'
+      fullPath: '/professional/financial/'
+      preLoaderRoute: typeof AuthenticatedProfessionalFinancialIndexRouteImport
+      parentRoute: typeof AuthenticatedProfessionalFinancialRoute
+    }
     '/_authenticated/financial/inventory/': {
       id: '/_authenticated/financial/inventory/'
       path: '/'
@@ -808,6 +865,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/professional/prescriptions/new'
       preLoaderRoute: typeof AuthenticatedProfessionalPrescriptionsNewRouteImport
       parentRoute: typeof AuthenticatedProfessionalPrescriptionsRoute
+    }
+    '/_authenticated/professional/financial/relatorios': {
+      id: '/_authenticated/professional/financial/relatorios'
+      path: '/relatorios'
+      fullPath: '/professional/financial/relatorios'
+      preLoaderRoute: typeof AuthenticatedProfessionalFinancialRelatoriosRouteImport
+      parentRoute: typeof AuthenticatedProfessionalFinancialRoute
+    }
+    '/_authenticated/professional/financial/despesas': {
+      id: '/_authenticated/professional/financial/despesas'
+      path: '/despesas'
+      fullPath: '/professional/financial/despesas'
+      preLoaderRoute: typeof AuthenticatedProfessionalFinancialDespesasRouteImport
+      parentRoute: typeof AuthenticatedProfessionalFinancialRoute
+    }
+    '/_authenticated/professional/financial/caixa': {
+      id: '/_authenticated/professional/financial/caixa'
+      path: '/caixa'
+      fullPath: '/professional/financial/caixa'
+      preLoaderRoute: typeof AuthenticatedProfessionalFinancialCaixaRouteImport
+      parentRoute: typeof AuthenticatedProfessionalFinancialRoute
     }
     '/_authenticated/financial/inventory/items': {
       id: '/_authenticated/financial/inventory/items'
@@ -900,6 +978,30 @@ const AuthenticatedFinancialInventoryRouteWithChildren =
     AuthenticatedFinancialInventoryRouteChildren,
   )
 
+interface AuthenticatedProfessionalFinancialRouteChildren {
+  AuthenticatedProfessionalFinancialCaixaRoute: typeof AuthenticatedProfessionalFinancialCaixaRoute
+  AuthenticatedProfessionalFinancialDespesasRoute: typeof AuthenticatedProfessionalFinancialDespesasRoute
+  AuthenticatedProfessionalFinancialRelatoriosRoute: typeof AuthenticatedProfessionalFinancialRelatoriosRoute
+  AuthenticatedProfessionalFinancialIndexRoute: typeof AuthenticatedProfessionalFinancialIndexRoute
+}
+
+const AuthenticatedProfessionalFinancialRouteChildren: AuthenticatedProfessionalFinancialRouteChildren =
+  {
+    AuthenticatedProfessionalFinancialCaixaRoute:
+      AuthenticatedProfessionalFinancialCaixaRoute,
+    AuthenticatedProfessionalFinancialDespesasRoute:
+      AuthenticatedProfessionalFinancialDespesasRoute,
+    AuthenticatedProfessionalFinancialRelatoriosRoute:
+      AuthenticatedProfessionalFinancialRelatoriosRoute,
+    AuthenticatedProfessionalFinancialIndexRoute:
+      AuthenticatedProfessionalFinancialIndexRoute,
+  }
+
+const AuthenticatedProfessionalFinancialRouteWithChildren =
+  AuthenticatedProfessionalFinancialRoute._addFileChildren(
+    AuthenticatedProfessionalFinancialRouteChildren,
+  )
+
 interface AuthenticatedProfessionalPatientsRouteChildren {
   AuthenticatedProfessionalPatientsIndexRoute: typeof AuthenticatedProfessionalPatientsIndexRoute
   AuthenticatedProfessionalPatientsIdNewEvolutionRoute: typeof AuthenticatedProfessionalPatientsIdNewEvolutionRoute
@@ -972,7 +1074,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedProfessionalAgendaRoute: typeof AuthenticatedProfessionalAgendaRoute
   AuthenticatedProfessionalBudgetsRoute: typeof AuthenticatedProfessionalBudgetsRoute
   AuthenticatedProfessionalDashboardRoute: typeof AuthenticatedProfessionalDashboardRoute
-  AuthenticatedProfessionalFinancialRoute: typeof AuthenticatedProfessionalFinancialRoute
+  AuthenticatedProfessionalFinancialRoute: typeof AuthenticatedProfessionalFinancialRouteWithChildren
   AuthenticatedProfessionalInventoryRoute: typeof AuthenticatedProfessionalInventoryRoute
   AuthenticatedProfessionalPatientsRoute: typeof AuthenticatedProfessionalPatientsRouteWithChildren
   AuthenticatedProfessionalPrescriptionsRoute: typeof AuthenticatedProfessionalPrescriptionsRouteWithChildren
@@ -1004,7 +1106,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedProfessionalDashboardRoute:
     AuthenticatedProfessionalDashboardRoute,
   AuthenticatedProfessionalFinancialRoute:
-    AuthenticatedProfessionalFinancialRoute,
+    AuthenticatedProfessionalFinancialRouteWithChildren,
   AuthenticatedProfessionalInventoryRoute:
     AuthenticatedProfessionalInventoryRoute,
   AuthenticatedProfessionalPatientsRoute:

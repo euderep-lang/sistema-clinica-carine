@@ -1,3 +1,9 @@
+import {
+  buildCompetenceGroups,
+  type CompetenceBill,
+  computeCompetencePeriodStats,
+} from "@/lib/financial-competence";
+
 export interface ProfessionalProduction {
   id: string;
   name: string;
@@ -46,13 +52,8 @@ export function effectiveCommissionPct(base: number, adjusted: number | null | u
   return adjusted != null ? adjusted : base;
 }
 
-type BillRow = {
+type BillRow = CompetenceBill & {
   professional_id: string | null;
-  amount: number;
-  paid_amount: number;
-  status: string;
-  due_date: string;
-  paid_date: string | null;
 };
 
 type ApptRow = { professional_id: string | null; status: string; date: string };
@@ -86,26 +87,21 @@ export function buildProfessionalProduction(
     });
   }
 
+  const billsByProf = new Map<string, BillRow[]>();
   for (const bill of bills) {
     if (!bill.professional_id) continue;
-    const row = map.get(bill.professional_id);
+    const list = billsByProf.get(bill.professional_id) ?? [];
+    list.push(bill);
+    billsByProf.set(bill.professional_id, list);
+  }
+
+  for (const [profId, profBills] of billsByProf) {
+    const row = map.get(profId);
     if (!row) continue;
-
-    if (bill.due_date >= period.from && bill.due_date <= period.to) {
-      row.production += Number(bill.amount);
-      if (bill.status === "pending" || bill.status === "partial" || bill.status === "overdue") {
-        row.pending += Number(bill.amount) - Number(bill.paid_amount);
-      }
-    }
-
-    if (
-      bill.paid_date &&
-      bill.paid_date >= period.from &&
-      bill.paid_date <= period.to &&
-      (bill.status === "paid" || bill.status === "partial")
-    ) {
-      row.received += Number(bill.paid_amount);
-    }
+    const stats = computeCompetencePeriodStats(profBills, period);
+    row.production = stats.production;
+    row.received = stats.received;
+    row.pending = stats.pending;
   }
 
   for (const appt of appointments) {
@@ -122,3 +118,5 @@ export function buildProfessionalProduction(
     }))
     .sort((a, b) => b.production - a.production);
 }
+
+export { buildCompetenceGroups, computeCompetencePeriodStats };
