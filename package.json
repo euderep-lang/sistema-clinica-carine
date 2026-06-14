@@ -11,6 +11,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "db:schema": "bun run scripts/apply-schema.ts",
+    "db:export": "bun run scripts/export-schema.ts",
+    "db:setup": "bun run scripts/setup-database.ts",
     "db:migrate": "bun run scripts/migrate-supabase.ts",
     "db:seed": "bun run scripts/migrate-supabase.ts seed",
     "build:cid10": "bun run scripts/build-cid10-json.ts"
@@ -59,7 +61,7 @@
     "embla-carousel-react": "^8.6.0",
     "input-otp": "^1.4.2",
     "jspdf": "^4.2.1",
-    "lucide-react": "^0.575.0",
+    "lucide-react": "0.575.0",
     "node-forge": "^1.4.0",
     "postgres": "^3.4.9",
     "qrcode": "^1.5.4",

@@ -8,9 +8,9 @@
  *   bun run scripts/migrate-supabase.ts all      # schema → data → seed
  */
 import { createClient } from "@supabase/supabase-js";
+import postgres from "postgres";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { spawn } from "node:child_process";
 
 const ROOT = join(import.meta.dir, "..");
 const MIGRATIONS_DIR = join(ROOT, "supabase/migrations");
@@ -36,19 +36,28 @@ const DATA_TABLES = [
   "services",
   "inventory_categories",
   "inventory_items",
+  "service_inventory_items",
   "profiles",
   "appointments",
   "medical_records",
   "patient_evolutions",
+  "evolution_attachments",
   "prescriptions",
   "prescription_items",
   "budgets",
   "budget_items",
+  "consultation_charges",
+  "consultation_charge_items",
+  "patient_session_packages",
+  "session_usages",
   "bills_receivable",
   "bills_payable",
+  "commission_closings",
   "inventory_movements",
+  "patient_media_history",
   "message_templates",
   "message_logs",
+  "professional_digital_certificates",
 ] as const;
 
 /** Usuário master — único admin com acesso total ao sistema. */
@@ -63,41 +72,40 @@ function requireEnv(label: string, value: string | undefined): string {
   return value;
 }
 
-async function runPsql(sql: string, dbUrl: string) {
-  return new Promise<void>((resolve, reject) => {
-    const child = spawn("psql", [dbUrl, "-v", "ON_ERROR_STOP=1", "-c", sql], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let stderr = "";
-    child.stderr.on("data", (d) => {
-      stderr += d.toString();
-    });
-    child.on("close", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(stderr || `psql exit ${code}`));
-    });
-  });
-}
-
 async function applySchema() {
-  const dbUrl = requireEnv("DATABASE_URL ou SUPABASE_DB_URL", DATABASE_URL);
+  const dbPassword = process.env.SUPABASE_DB_PASSWORD;
+  const dbUrl =
+    DATABASE_URL ??
+    (dbPassword
+      ? `postgresql://postgres.${process.env.SUPABASE_PROJECT_ID ?? "jglzghujpxbakqqmmple"}:${encodeURIComponent(dbPassword)}@aws-1-sa-east-1.pooler.supabase.com:5432/postgres`
+      : undefined);
+
+  if (!dbUrl) {
+    throw new Error("Defina DATABASE_URL ou SUPABASE_DB_PASSWORD para aplicar o schema.");
+  }
+
+  const sql = postgres(dbUrl, { ssl: "require", max: 1, connect_timeout: 15 });
 
   const files = (await readdir(MIGRATIONS_DIR))
     .filter((f) => f.endsWith(".sql"))
     .sort();
 
-  console.log(`Aplicando ${files.length} migrations via psql…`);
+  console.log(`Aplicando ${files.length} migrations…`);
 
   for (const file of files) {
-    const sql = await readFile(join(MIGRATIONS_DIR, file), "utf8");
+    const content = await readFile(join(MIGRATIONS_DIR, file), "utf8");
     process.stdout.write(`  → ${file}… `);
     try {
-      await runPsql(sql, dbUrl);
+      await sql.unsafe(content);
       console.log("ok");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("already exists") || msg.includes("duplicate key")) {
-        console.log("já aplicado (ignorado)");
+      if (
+        msg.includes("already exists") ||
+        msg.includes("duplicate key") ||
+        /relation "public\.\w+" already exists/.test(msg)
+      ) {
+        console.log("já aplicado");
         continue;
       }
       console.log("erro");
@@ -105,6 +113,7 @@ async function applySchema() {
     }
   }
 
+  await sql.end();
   console.log("Schema aplicado com sucesso.");
 }
 
@@ -243,8 +252,8 @@ async function main() {
       await seedUsers();
       break;
     case "all":
-      if (DATABASE_URL) await applySchema();
-      else console.warn("DATABASE_URL ausente — pulando schema (aplique via SQL Editor ou supabase db push)");
+      if (DATABASE_URL || process.env.SUPABASE_DB_PASSWORD) await applySchema();
+      else console.warn("DATABASE_URL/SUPABASE_DB_PASSWORD ausente — pulando schema (aplique via SQL Editor ou bun run db:schema)");
       if (OLD_SERVICE_KEY || OLD_ANON_KEY) await copyData().catch((e) => console.warn("Cópia de dados:", e.message));
       await seedUsers();
       break;

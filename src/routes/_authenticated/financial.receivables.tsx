@@ -17,7 +17,7 @@ export const Route = createFileRoute("/_authenticated/financial/receivables")({ 
 
 interface Row { id: string; description: string; amount: number; due_date: string; payment_method: string | null; status: string; patients: { full_name: string } | null; profiles: { full_name: string } | null; }
 
-function Page() {
+export function Page() {
   const [rows, setRows] = useState<Row[]>([]);
   const [q, setQ] = useState(""); const [status, setStatus] = useState("all");
   const [from, setFrom] = useState(""); const [to, setTo] = useState("");
