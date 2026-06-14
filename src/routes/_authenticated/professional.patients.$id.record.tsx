@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { compressForUpload } from "@/lib/media-compress";
 import { createFileRoute } from "@tanstack/react-router";
@@ -12,6 +12,7 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { BeforeAfterComparisonDialog } from "@/components/professional/before-after-comparison-dialog";
 import { EvolutionEditor } from "@/components/professional/evolution-editor";
 import { RecordBottomBar } from "@/components/professional/record-bottom-bar";
 import {
@@ -31,6 +32,12 @@ import {
   type HistoryRecord,
   type MediaHistoryEntry,
 } from "@/lib/patient-history";
+import {
+  photoAttachmentCaption,
+  photoDateLabel,
+  photoGroupCaption,
+  type PhotoUploadKind,
+} from "@/lib/patient-media";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/integrations/supabase/client";
 import { randomUUID } from "@/lib/utils";
@@ -66,10 +73,19 @@ function RecordPage() {
   const [compressing, setCompressing] = useState(false);
   const [captionDialogOpen, setCaptionDialogOpen] = useState(false);
   const [pendingMedia, setPendingMedia] = useState<PendingMediaItem[]>([]);
+  const [pendingPhotoKind, setPendingPhotoKind] = useState<PhotoUploadKind | null>(null);
   const [highlightKey, setHighlightKey] = useState<string | null>(null);
   const [financialPending, setFinancialPending] = useState(false);
   const [sessionsOpen, setSessionsOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
   const [todayAppointmentLinked, setTodayAppointmentLinked] = useState(false);
+  const photoFileRef = useRef<HTMLInputElement>(null);
+  const photoKindRef = useRef<"exams" | "before_after" | null>(null);
+
+  const openPhotoPicker = (kind: "exams" | "before_after") => {
+    photoKindRef.current = kind;
+    photoFileRef.current?.click();
+  };
 
   const clearPendingMedia = useCallback(() => {
     setPendingMedia((prev) => {
@@ -79,6 +95,7 @@ function RecordPage() {
       return [];
     });
     setCaptionDialogOpen(false);
+    setPendingPhotoKind(null);
   }, []);
 
   const loadHistory = useCallback(async () => {
@@ -129,20 +146,26 @@ function RecordPage() {
     })();
   }, [id, profile, loadHistory]);
 
-  const prepareMediaFiles = async (list: FileList) => {
+  const prepareMediaFiles = async (
+    list: FileList,
+    options?: { kind?: PhotoUploadKind },
+  ) => {
     setCompressing(true);
     try {
+      const dateLabel = photoDateLabel();
       const items: PendingMediaItem[] = [];
       for (const raw of Array.from(list)) {
         const { file, sizeKb } = await compressForUpload(raw);
+        const caption = options?.kind ? photoAttachmentCaption(dateLabel) : "";
         items.push({
           id: randomUUID(),
           file,
           sizeKb,
           previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
-          caption: "",
+          caption,
         });
       }
+      setPendingPhotoKind(options?.kind ?? null);
       setPendingMedia(items);
       setCaptionDialogOpen(true);
     } catch (e) {
@@ -154,15 +177,76 @@ function RecordPage() {
 
   const confirmMediaUpload = async () => {
     if (!profile || pendingMedia.length === 0) return;
-    if (pendingMedia.some((item) => !item.caption.trim())) {
+    if (!pendingPhotoKind && pendingMedia.some((item) => !item.caption.trim())) {
       toast.error("Preencha a legenda de todos os arquivos.");
       return;
     }
 
     setUploading(true);
-    let saved = 0;
-    let lastId: string | null = null;
     try {
+      if (pendingPhotoKind) {
+        const today = new Date().toISOString().slice(0, 10);
+        const dateLabel = photoDateLabel();
+        const groupText = photoGroupCaption(pendingPhotoKind, dateLabel);
+
+        const { data: evolution, error: evErr } = await supabase
+          .from("patient_evolutions")
+          .insert({
+            tenant_id: profile.tenant_id,
+            patient_id: id,
+            professional_id: profile.id,
+            date: today,
+            evolution_text: groupText,
+          })
+          .select("id")
+          .single();
+
+        if (evErr || !evolution) {
+          throw new Error(evErr?.message ?? "Erro ao salvar fotos no histórico");
+        }
+
+        const evId = evolution.id;
+
+        for (const item of pendingMedia) {
+          const attachmentId = randomUUID();
+          const safeName = item.file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+          const storagePath = `${id}/media/${attachmentId}/${Date.now()}_${safeName}`;
+
+          const { error: upErr } = await supabase.storage
+            .from("patient-documents")
+            .upload(storagePath, item.file, { upsert: false, contentType: item.file.type });
+          if (upErr) throw new Error(upErr.message);
+
+          const { error: attErr } = await supabase.from("evolution_attachments").insert({
+            id: attachmentId,
+            tenant_id: profile.tenant_id,
+            evolution_id: evId,
+            patient_id: id,
+            professional_id: profile.id,
+            storage_path: storagePath,
+            file_name: item.file.name,
+            mime_type: item.file.type,
+            file_size_kb: item.sizeKb,
+            caption: item.caption.trim() || dateLabel,
+          });
+
+          if (attErr) throw new Error(attErr.message);
+        }
+
+        clearPendingMedia();
+        await loadHistory();
+        setHighlightKey(historyHighlightKey("evolution", evId));
+        toast.success(
+          pendingPhotoKind === "exams"
+            ? "Exames salvos no histórico"
+            : "Fotos salvas no histórico",
+        );
+        setTimeout(() => setHighlightKey(null), 4000);
+        return;
+      }
+
+      let saved = 0;
+      let lastId: string | null = null;
       for (const item of pendingMedia) {
         const mediaId = randomUUID();
         const safeName = item.file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -423,6 +507,10 @@ function RecordPage() {
           open={captionDialogOpen}
           items={pendingMedia}
           uploading={uploading}
+          photoKind={pendingPhotoKind}
+          groupCaption={
+            pendingPhotoKind ? photoGroupCaption(pendingPhotoKind) : undefined
+          }
           onCaptionChange={(itemId, caption) =>
             setPendingMedia((prev) =>
               prev.map((item) => (item.id === itemId ? { ...item, caption } : item)),
@@ -432,11 +520,39 @@ function RecordPage() {
           onCancel={clearPendingMedia}
         />
 
-        <RecordBottomBar patientId={id} />
+        <RecordBottomBar
+          patientId={id}
+          onSessionsClick={() => setSessionsOpen(true)}
+          onPhotosExamsClick={() => openPhotoPicker("exams")}
+          onPhotosBeforeAfterClick={() => openPhotoPicker("before_after")}
+          onPhotosCompareClick={() => setCompareOpen(true)}
+        />
+
+        <input
+          ref={photoFileRef}
+          type="file"
+          accept="image/*,application/pdf"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            const files = e.target.files;
+            const kind = photoKindRef.current;
+            photoKindRef.current = null;
+            if (files?.length && kind) void prepareMediaFiles(files, { kind });
+            e.target.value = "";
+          }}
+        />
 
         <PatientSessionsDialog
           open={sessionsOpen}
           onOpenChange={setSessionsOpen}
+          patientId={id}
+          patientName={displayName}
+        />
+
+        <BeforeAfterComparisonDialog
+          open={compareOpen}
+          onOpenChange={setCompareOpen}
           patientId={id}
           patientName={displayName}
         />

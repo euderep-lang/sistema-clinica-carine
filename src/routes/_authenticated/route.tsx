@@ -13,6 +13,25 @@ const PREFIX_TO_ROLE: Record<string, Role> = {
   financial: "financial",
 };
 
+/** Rotas de outro módulo que este perfil pode acessar (ex.: estoque do profissional). */
+const CROSS_ROLE_PATH_PREFIXES: Partial<Record<Role, string[]>> = {
+  professional: ["/financial/inventory", "/financial/inventory/items", "/financial/inventory/categories"],
+  receptionist: ["/financial/inventory", "/financial/inventory/items", "/financial/inventory/categories"],
+};
+
+function canAccessPath(role: Role, pathname: string) {
+  if (role === "admin") return true;
+
+  const crossRole = CROSS_ROLE_PATH_PREFIXES[role];
+  if (crossRole?.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
+    return true;
+  }
+
+  const segment = pathname.split("/")[1] ?? "";
+  const expectedRole = PREFIX_TO_ROLE[segment];
+  return !expectedRole || expectedRole === role;
+}
+
 function AuthGate() {
   const { profile, loading } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -25,11 +44,7 @@ function AuthGate() {
     );
   }
   if (!profile) return <Navigate to="/login" />;
-  if (profile.role === "admin") return <KeepAliveOutlet />;
-
-  const segment = pathname.split("/")[1] ?? "";
-  const expectedRole = PREFIX_TO_ROLE[segment];
-  if (expectedRole && expectedRole !== profile.role) {
+  if (!canAccessPath(profile.role, pathname)) {
     return <Navigate to={dashboardPathFor(profile.role)} />;
   }
   return <KeepAliveOutlet />;

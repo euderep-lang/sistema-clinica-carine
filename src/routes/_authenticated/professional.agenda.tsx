@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CalendarDays, ChevronLeft, ChevronRight, Eye, LayoutGrid, List, PlayCircle } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Eye, LayoutGrid, List, PlayCircle, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { NewAppointmentDialog } from "@/components/agenda/new-appointment-dialog";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { AgendaContactActions } from "@/components/agenda/agenda-contact-actions";
@@ -54,6 +55,7 @@ function ProfessionalAgendaPage() {
   const [date, setDate] = useState(todayISO());
   const [rows, setRows] = useState<ProfessionalAgendaAppointment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [newApptOpen, setNewApptOpen] = useState(false);
 
   const weekStart = useMemo(() => startOfWeekMonday(date), [date]);
   const weekEnd = useMemo(() => shiftDate(weekStart, 6), [weekStart]);
@@ -155,6 +157,12 @@ function ProfessionalAgendaPage() {
         <PageHeader
           title="Minha Agenda"
           description="Consultas do seu consultório. Atualize a situação e acesse prontuários."
+          actions={
+            <Button onClick={() => setNewApptOpen(true)}>
+              <Plus className="mr-2 size-4" />
+              Novo agendamento
+            </Button>
+          }
         />
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -181,6 +189,10 @@ function ProfessionalAgendaPage() {
             </Button>
             <Button variant="ghost" size="sm" onClick={() => setDate(todayISO())}>
               Hoje
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setNewApptOpen(true)}>
+              <Plus className="mr-2 size-4" />
+              Agendar
             </Button>
             <span className="text-sm capitalize text-muted-foreground">{dateLabel}</span>
           </div>
@@ -377,6 +389,17 @@ function ProfessionalAgendaPage() {
           </Card>
         )}
       </div>
+
+      <NewAppointmentDialog
+        open={newApptOpen}
+        onOpenChange={setNewApptOpen}
+        defaultProfessionalId={profile?.role === "professional" ? profile.id : undefined}
+        defaultDate={date}
+        onSaved={(savedDate) => {
+          setDate(savedDate);
+          void load();
+        }}
+      />
     </DashboardShell>
   );
 }

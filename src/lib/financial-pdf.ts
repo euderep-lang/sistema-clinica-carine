@@ -25,7 +25,7 @@ export interface ReceiptData {
   paymentMethod: string | null;
   paidDate: string;
   professional?: string | null;
-  letterhead?: LetterheadPdfAsset | null;
+  letterhead: LetterheadPdfAsset;
 }
 
 function drawClinicHeader(
@@ -68,12 +68,15 @@ function pageStart(
 ) {
   const pad = resolvePdfPadding(letterhead);
   const x = pdfContentX(pad);
+  const contentW = pdfContentW(w, pad);
+
   if (letterhead) {
     paintLetterhead(doc, letterhead, w, h);
-    return { y: pad.top, x, pad, contentW: pdfContentW(w, pad) };
+    return { y: pad.top, x, pad, contentW };
   }
+
   const y = drawClinicHeader(doc, clinic, w, x, pad.top);
-  return { y, x, pad, contentW: pdfContentW(w, pad) };
+  return { y, x, pad, contentW };
 }
 
 export function generateReceiptPDF(r: ReceiptData): Blob {
@@ -122,15 +125,16 @@ export interface BudgetPDFData {
   discountValue: number;
   finalValue: number;
   notes?: string | null;
-  letterhead?: LetterheadPdfAsset | null;
+  letterhead: LetterheadPdfAsset;
 }
 
 export function generateBudgetPDF(b: BudgetPDFData): Blob {
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   const W = 210;
   const H = 297;
-  const { y: startY, x, contentW } = pageStart(doc, b.clinic, W, H, b.letterhead);
+  const { y: startY, x, contentW, pad } = pageStart(doc, b.clinic, W, H, b.letterhead);
   let y = startY;
+  const bottomLimit = H - pad.bottom;
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
@@ -162,12 +166,14 @@ export function generateBudgetPDF(b: BudgetPDFData): Blob {
   b.items.forEach((it, i) => {
     const descW = contentW * 0.45;
     const lines = doc.splitTextToSize(it.description, descW);
+    const rowH = Math.max(5, lines.length * 4.5);
+    if (y + rowH > bottomLimit - 30) return;
     doc.text(String(i + 1), x + 2, y);
     doc.text(lines, x + 12, y);
     doc.text(String(it.quantity), x + contentW * 0.57, y, { align: "right" });
     doc.text(fmt(it.unit_price), x + contentW * 0.71, y, { align: "right" });
     doc.text(fmt(it.total_price), x + contentW - 2, y, { align: "right" });
-    y += Math.max(5, lines.length * 4.5);
+    y += rowH;
   });
 
   y += 4;
@@ -192,15 +198,17 @@ export function generateBudgetPDF(b: BudgetPDFData): Blob {
   }
   if (b.notes) {
     y += 2;
-    doc.setFont("helvetica", "bold");
-    doc.text("Observações:", x, y);
-    y += 4;
-    doc.setFont("helvetica", "normal");
-    const ln = doc.splitTextToSize(b.notes, contentW);
-    doc.text(ln, x, y);
-    y += ln.length * 4.5;
+    if (y < bottomLimit - 20) {
+      doc.setFont("helvetica", "bold");
+      doc.text("Observações:", x, y);
+      y += 4;
+      doc.setFont("helvetica", "normal");
+      const ln = doc.splitTextToSize(b.notes, contentW);
+      doc.text(ln, x, y);
+      y += ln.length * 4.5;
+    }
   }
-  y += 12;
-  doc.text("De acordo: _________________________________________   Data: _______________", x, y);
+  const signY = Math.min(y + 12, bottomLimit - 6);
+  doc.text("De acordo: _________________________________________   Data: _______________", x, signY);
   return doc.output("blob");
 }

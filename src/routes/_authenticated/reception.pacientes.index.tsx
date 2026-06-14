@@ -151,6 +151,10 @@ function PatientsList() {
               <Button className="h-11 px-6" onClick={onSearch}>
                 Buscar
               </Button>
+              <Button variant="outline" className="h-11 shrink-0" onClick={() => setOpenForm(true)}>
+                <Plus className="mr-2 size-4" />
+                Novo paciente
+              </Button>
             </div>
           </div>
 

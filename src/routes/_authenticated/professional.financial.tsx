@@ -64,7 +64,7 @@ function ProfessionalFinancialPage() {
         .select(
           "id,description,amount,paid_amount,due_date,paid_date,payment_method,status,patients(full_name)",
         )
-        .eq("professional_id", profile.id)
+        .or(`professional_id.eq.${profile.id},professional_id.is.null`)
         .order("due_date", { ascending: false })
         .limit(100);
       if (status !== "all") q = q.eq("status", status);

@@ -41,11 +41,13 @@ import { Route as AuthenticatedAdminDashboardRouteImport } from './routes/_authe
 import { Route as AuthenticatedReceptionPacientesIndexRouteImport } from './routes/_authenticated/reception.pacientes.index'
 import { Route as AuthenticatedProfessionalPrescriptionsIndexRouteImport } from './routes/_authenticated/professional.prescriptions.index'
 import { Route as AuthenticatedProfessionalPatientsIndexRouteImport } from './routes/_authenticated/professional.patients.index'
+import { Route as AuthenticatedFinancialInventoryIndexRouteImport } from './routes/_authenticated/financial.inventory.index'
 import { Route as AuthenticatedReceptionPacientesIdRouteImport } from './routes/_authenticated/reception.pacientes.$id'
 import { Route as AuthenticatedProfessionalPrescriptionsNewRouteImport } from './routes/_authenticated/professional.prescriptions.new'
 import { Route as AuthenticatedFinancialInventoryItemsRouteImport } from './routes/_authenticated/financial.inventory.items'
 import { Route as AuthenticatedFinancialInventoryCategoriesRouteImport } from './routes/_authenticated/financial.inventory.categories'
 import { Route as AuthenticatedProfessionalPatientsIdIndexRouteImport } from './routes/_authenticated/professional.patients.$id.index'
+import { Route as AuthenticatedFinancialInventoryItemsIndexRouteImport } from './routes/_authenticated/financial.inventory.items.index'
 import { Route as AuthenticatedProfessionalPatientsIdRecordRouteImport } from './routes/_authenticated/professional.patients.$id.record'
 import { Route as AuthenticatedProfessionalPatientsIdNewEvolutionRouteImport } from './routes/_authenticated/professional.patients.$id.new-evolution'
 import { Route as AuthenticatedFinancialInventoryItemsIdRouteImport } from './routes/_authenticated/financial.inventory.items.$id'
@@ -238,6 +240,12 @@ const AuthenticatedProfessionalPatientsIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedProfessionalPatientsRoute,
   } as any)
+const AuthenticatedFinancialInventoryIndexRoute =
+  AuthenticatedFinancialInventoryIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedFinancialInventoryRoute,
+  } as any)
 const AuthenticatedReceptionPacientesIdRoute =
   AuthenticatedReceptionPacientesIdRouteImport.update({
     id: '/$id',
@@ -267,6 +275,12 @@ const AuthenticatedProfessionalPatientsIdIndexRoute =
     id: '/$id/',
     path: '/$id/',
     getParentRoute: () => AuthenticatedProfessionalPatientsRoute,
+  } as any)
+const AuthenticatedFinancialInventoryItemsIndexRoute =
+  AuthenticatedFinancialInventoryItemsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedFinancialInventoryItemsRoute,
   } as any)
 const AuthenticatedProfessionalPatientsIdRecordRoute =
   AuthenticatedProfessionalPatientsIdRecordRouteImport.update({
@@ -320,12 +334,14 @@ export interface FileRoutesByFullPath {
   '/financial/inventory/items': typeof AuthenticatedFinancialInventoryItemsRouteWithChildren
   '/professional/prescriptions/new': typeof AuthenticatedProfessionalPrescriptionsNewRoute
   '/reception/pacientes/$id': typeof AuthenticatedReceptionPacientesIdRoute
+  '/financial/inventory/': typeof AuthenticatedFinancialInventoryIndexRoute
   '/professional/patients/': typeof AuthenticatedProfessionalPatientsIndexRoute
   '/professional/prescriptions/': typeof AuthenticatedProfessionalPrescriptionsIndexRoute
   '/reception/pacientes/': typeof AuthenticatedReceptionPacientesIndexRoute
   '/financial/inventory/items/$id': typeof AuthenticatedFinancialInventoryItemsIdRoute
   '/professional/patients/$id/new-evolution': typeof AuthenticatedProfessionalPatientsIdNewEvolutionRoute
   '/professional/patients/$id/record': typeof AuthenticatedProfessionalPatientsIdRecordRoute
+  '/financial/inventory/items/': typeof AuthenticatedFinancialInventoryItemsIndexRoute
   '/professional/patients/$id/': typeof AuthenticatedProfessionalPatientsIdIndexRoute
 }
 export interface FileRoutesByTo {
@@ -336,7 +352,6 @@ export interface FileRoutesByTo {
   '/admin/services': typeof AuthenticatedAdminServicesRoute
   '/admin/settings': typeof AuthenticatedAdminSettingsRoute
   '/financial/dashboard': typeof AuthenticatedFinancialDashboardRoute
-  '/financial/inventory': typeof AuthenticatedFinancialInventoryRouteWithChildren
   '/financial/receivables': typeof AuthenticatedFinancialReceivablesRoute
   '/financial/relatorios': typeof AuthenticatedFinancialRelatoriosRoute
   '/professional/agenda': typeof AuthenticatedProfessionalAgendaRoute
@@ -355,15 +370,16 @@ export interface FileRoutesByTo {
   '/reception/payments': typeof AuthenticatedReceptionPaymentsRoute
   '/professional/safeid/callback': typeof ProfessionalSafeidCallbackRoute
   '/financial/inventory/categories': typeof AuthenticatedFinancialInventoryCategoriesRoute
-  '/financial/inventory/items': typeof AuthenticatedFinancialInventoryItemsRouteWithChildren
   '/professional/prescriptions/new': typeof AuthenticatedProfessionalPrescriptionsNewRoute
   '/reception/pacientes/$id': typeof AuthenticatedReceptionPacientesIdRoute
+  '/financial/inventory': typeof AuthenticatedFinancialInventoryIndexRoute
   '/professional/patients': typeof AuthenticatedProfessionalPatientsIndexRoute
   '/professional/prescriptions': typeof AuthenticatedProfessionalPrescriptionsIndexRoute
   '/reception/pacientes': typeof AuthenticatedReceptionPacientesIndexRoute
   '/financial/inventory/items/$id': typeof AuthenticatedFinancialInventoryItemsIdRoute
   '/professional/patients/$id/new-evolution': typeof AuthenticatedProfessionalPatientsIdNewEvolutionRoute
   '/professional/patients/$id/record': typeof AuthenticatedProfessionalPatientsIdRecordRoute
+  '/financial/inventory/items': typeof AuthenticatedFinancialInventoryItemsIndexRoute
   '/professional/patients/$id': typeof AuthenticatedProfessionalPatientsIdIndexRoute
 }
 export interface FileRoutesById {
@@ -401,12 +417,14 @@ export interface FileRoutesById {
   '/_authenticated/financial/inventory/items': typeof AuthenticatedFinancialInventoryItemsRouteWithChildren
   '/_authenticated/professional/prescriptions/new': typeof AuthenticatedProfessionalPrescriptionsNewRoute
   '/_authenticated/reception/pacientes/$id': typeof AuthenticatedReceptionPacientesIdRoute
+  '/_authenticated/financial/inventory/': typeof AuthenticatedFinancialInventoryIndexRoute
   '/_authenticated/professional/patients/': typeof AuthenticatedProfessionalPatientsIndexRoute
   '/_authenticated/professional/prescriptions/': typeof AuthenticatedProfessionalPrescriptionsIndexRoute
   '/_authenticated/reception/pacientes/': typeof AuthenticatedReceptionPacientesIndexRoute
   '/_authenticated/financial/inventory/items/$id': typeof AuthenticatedFinancialInventoryItemsIdRoute
   '/_authenticated/professional/patients/$id/new-evolution': typeof AuthenticatedProfessionalPatientsIdNewEvolutionRoute
   '/_authenticated/professional/patients/$id/record': typeof AuthenticatedProfessionalPatientsIdRecordRoute
+  '/_authenticated/financial/inventory/items/': typeof AuthenticatedFinancialInventoryItemsIndexRoute
   '/_authenticated/professional/patients/$id/': typeof AuthenticatedProfessionalPatientsIdIndexRoute
 }
 export interface FileRouteTypes {
@@ -444,12 +462,14 @@ export interface FileRouteTypes {
     | '/financial/inventory/items'
     | '/professional/prescriptions/new'
     | '/reception/pacientes/$id'
+    | '/financial/inventory/'
     | '/professional/patients/'
     | '/professional/prescriptions/'
     | '/reception/pacientes/'
     | '/financial/inventory/items/$id'
     | '/professional/patients/$id/new-evolution'
     | '/professional/patients/$id/record'
+    | '/financial/inventory/items/'
     | '/professional/patients/$id/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -460,7 +480,6 @@ export interface FileRouteTypes {
     | '/admin/services'
     | '/admin/settings'
     | '/financial/dashboard'
-    | '/financial/inventory'
     | '/financial/receivables'
     | '/financial/relatorios'
     | '/professional/agenda'
@@ -479,15 +498,16 @@ export interface FileRouteTypes {
     | '/reception/payments'
     | '/professional/safeid/callback'
     | '/financial/inventory/categories'
-    | '/financial/inventory/items'
     | '/professional/prescriptions/new'
     | '/reception/pacientes/$id'
+    | '/financial/inventory'
     | '/professional/patients'
     | '/professional/prescriptions'
     | '/reception/pacientes'
     | '/financial/inventory/items/$id'
     | '/professional/patients/$id/new-evolution'
     | '/professional/patients/$id/record'
+    | '/financial/inventory/items'
     | '/professional/patients/$id'
   id:
     | '__root__'
@@ -524,12 +544,14 @@ export interface FileRouteTypes {
     | '/_authenticated/financial/inventory/items'
     | '/_authenticated/professional/prescriptions/new'
     | '/_authenticated/reception/pacientes/$id'
+    | '/_authenticated/financial/inventory/'
     | '/_authenticated/professional/patients/'
     | '/_authenticated/professional/prescriptions/'
     | '/_authenticated/reception/pacientes/'
     | '/_authenticated/financial/inventory/items/$id'
     | '/_authenticated/professional/patients/$id/new-evolution'
     | '/_authenticated/professional/patients/$id/record'
+    | '/_authenticated/financial/inventory/items/'
     | '/_authenticated/professional/patients/$id/'
   fileRoutesById: FileRoutesById
 }
@@ -766,6 +788,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProfessionalPatientsIndexRouteImport
       parentRoute: typeof AuthenticatedProfessionalPatientsRoute
     }
+    '/_authenticated/financial/inventory/': {
+      id: '/_authenticated/financial/inventory/'
+      path: '/'
+      fullPath: '/financial/inventory/'
+      preLoaderRoute: typeof AuthenticatedFinancialInventoryIndexRouteImport
+      parentRoute: typeof AuthenticatedFinancialInventoryRoute
+    }
     '/_authenticated/reception/pacientes/$id': {
       id: '/_authenticated/reception/pacientes/$id'
       path: '/$id'
@@ -801,6 +830,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProfessionalPatientsIdIndexRouteImport
       parentRoute: typeof AuthenticatedProfessionalPatientsRoute
     }
+    '/_authenticated/financial/inventory/items/': {
+      id: '/_authenticated/financial/inventory/items/'
+      path: '/'
+      fullPath: '/financial/inventory/items/'
+      preLoaderRoute: typeof AuthenticatedFinancialInventoryItemsIndexRouteImport
+      parentRoute: typeof AuthenticatedFinancialInventoryItemsRoute
+    }
     '/_authenticated/professional/patients/$id/record': {
       id: '/_authenticated/professional/patients/$id/record'
       path: '/$id/record'
@@ -827,12 +863,15 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedFinancialInventoryItemsRouteChildren {
   AuthenticatedFinancialInventoryItemsIdRoute: typeof AuthenticatedFinancialInventoryItemsIdRoute
+  AuthenticatedFinancialInventoryItemsIndexRoute: typeof AuthenticatedFinancialInventoryItemsIndexRoute
 }
 
 const AuthenticatedFinancialInventoryItemsRouteChildren: AuthenticatedFinancialInventoryItemsRouteChildren =
   {
     AuthenticatedFinancialInventoryItemsIdRoute:
       AuthenticatedFinancialInventoryItemsIdRoute,
+    AuthenticatedFinancialInventoryItemsIndexRoute:
+      AuthenticatedFinancialInventoryItemsIndexRoute,
   }
 
 const AuthenticatedFinancialInventoryItemsRouteWithChildren =
@@ -843,6 +882,7 @@ const AuthenticatedFinancialInventoryItemsRouteWithChildren =
 interface AuthenticatedFinancialInventoryRouteChildren {
   AuthenticatedFinancialInventoryCategoriesRoute: typeof AuthenticatedFinancialInventoryCategoriesRoute
   AuthenticatedFinancialInventoryItemsRoute: typeof AuthenticatedFinancialInventoryItemsRouteWithChildren
+  AuthenticatedFinancialInventoryIndexRoute: typeof AuthenticatedFinancialInventoryIndexRoute
 }
 
 const AuthenticatedFinancialInventoryRouteChildren: AuthenticatedFinancialInventoryRouteChildren =
@@ -851,6 +891,8 @@ const AuthenticatedFinancialInventoryRouteChildren: AuthenticatedFinancialInvent
       AuthenticatedFinancialInventoryCategoriesRoute,
     AuthenticatedFinancialInventoryItemsRoute:
       AuthenticatedFinancialInventoryItemsRouteWithChildren,
+    AuthenticatedFinancialInventoryIndexRoute:
+      AuthenticatedFinancialInventoryIndexRoute,
   }
 
 const AuthenticatedFinancialInventoryRouteWithChildren =

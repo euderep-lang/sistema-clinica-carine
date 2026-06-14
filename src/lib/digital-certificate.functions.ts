@@ -9,6 +9,8 @@ import {
   createPkcePair,
   discoverSafeIdCertificates,
   exchangeSafeIdAuthorizationCode,
+  getSafeIdRedirectUri,
+  getSafeIdRedirectUris,
   signPdfWithSafeIdCloud,
 } from "@/lib/safeid-cloud.server";
 import {
@@ -268,10 +270,19 @@ const safeIdRedirectUriSchema = z
     message: "redirectUri inválida",
   });
 
+function resolveSafeIdRedirectUri(origin?: string): string {
+  const redirectUri = getSafeIdRedirectUri(origin);
+  safeIdRedirectUriSchema.parse(redirectUri);
+  return redirectUri;
+}
+
+const safeIdOriginSchema = z.string().url().optional();
+
 export const initiateSafeIdSignatureAuth = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(z.object({ redirectUri: safeIdRedirectUriSchema }))
+  .inputValidator(z.object({ origin: safeIdOriginSchema }).optional())
   .handler(async ({ data, context }) => {
+    const redirectUri = resolveSafeIdRedirectUri(data?.origin);
     const profile = await requireProfessional(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -292,20 +303,20 @@ export const initiateSafeIdSignatureAuth = createServerFn({ method: "POST" })
         alreadyAuthorized: true,
         expiresAt: certRow.safeid_token_expires_at,
         authorizeUrl: null,
-        redirectUri: data.redirectUri,
+        redirectUri,
       };
     }
 
     clearPendingSafeIdAuth(profile.id);
     const { codeVerifier, codeChallenge } = createPkcePair();
-    beginPendingSafeIdAuth(profile.id, codeVerifier, data.redirectUri);
+    beginPendingSafeIdAuth(profile.id, codeVerifier, redirectUri);
     const authorizeUrl = buildSafeIdAuthorizeUrl({
       cpf: certRow.cloud_cpf,
       state: profile.id,
       codeChallenge,
-      redirectUri: data.redirectUri,
+      redirectUri,
     });
-    return { alreadyAuthorized: false, authorizeUrl, redirectUri: data.redirectUri, expiresAt: null };
+    return { alreadyAuthorized: false, authorizeUrl, redirectUri, expiresAt: null };
   });
 
 export const completeSafeIdOAuthCallback = createServerFn({ method: "POST" })
@@ -335,9 +346,10 @@ export const completeSafeIdOAuthCallback = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const getSafeIdSignatureAuthStatus = createServerFn({ method: "GET" })
+export const getSafeIdSignatureAuthStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .inputValidator(z.object({ origin: safeIdOriginSchema }).optional())
+  .handler(async ({ data, context }) => {
     const profile = await requireProfessional(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: certRow } = await supabaseAdmin
@@ -345,10 +357,33 @@ export const getSafeIdSignatureAuthStatus = createServerFn({ method: "GET" })
       .select("signing_mode, safeid_access_token_encrypted, safeid_token_expires_at")
       .eq("professional_id", profile.id)
       .maybeSingle();
-    const active = certRow?.signing_mode === "safeid_cloud" && isSafeIdSessionActive(certRow);
+    const isCloud = certRow?.signing_mode === "safeid_cloud";
+    const active = isCloud && isSafeIdSessionActive(certRow);
+    const sessionExpired =
+      isCloud &&
+      !active &&
+      Boolean(certRow?.safeid_token_expires_at || certRow?.safeid_access_token_encrypted);
+    let redirectUri: string | null = null;
+    let redirectUris: string[] = [];
+    let redirectError: string | null = null;
+    try {
+      redirectUris = getSafeIdRedirectUris();
+      if (data?.origin) {
+        redirectUri = resolveSafeIdRedirectUri(data.origin);
+      } else if (redirectUris.length === 1) {
+        redirectUri = redirectUris[0];
+      }
+    } catch (e) {
+      redirectError = (e as Error).message;
+    }
     return {
       ready: active,
+      needsAuth: isCloud && !active,
+      sessionExpired,
       expiresAt: active ? certRow?.safeid_token_expires_at ?? null : null,
+      redirectUri,
+      redirectUris,
+      redirectError,
     };
   });
 

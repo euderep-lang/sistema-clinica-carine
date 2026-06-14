@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
+  ArrowLeftRight,
+  CalendarCheck,
+  Camera,
+  Columns2,
   FilePenLine,
   Flag,
   FlaskConical,
@@ -21,9 +25,13 @@ import { cn } from "@/lib/utils";
 
 interface RecordBottomBarProps {
   patientId: string;
+  onSessionsClick?: () => void;
+  onPhotosExamsClick?: () => void;
+  onPhotosBeforeAfterClick?: () => void;
+  onPhotosCompareClick?: () => void;
 }
 
-type ItemKey = "finish" | "rx" | "exams" | "nutro" | "modules";
+type ItemKey = "finish" | "sessions" | "rx" | "nutro" | "modules" | "photos";
 
 type BarItem = {
   key: ItemKey;
@@ -35,22 +43,42 @@ type BarItem = {
 
 const MODULES = [
   { id: "receituario", label: "Receituário", key: "rx" as const },
-  { id: "exames", label: "Exames", key: "exams" as const },
   { id: "nutrologia", label: "Nutrologia", key: "nutro" as const },
 ];
 
 const ICON_STYLES: Record<ItemKey, string> = {
   finish: "text-emerald-600",
+  sessions: "text-violet-600",
   rx: "text-primary",
-  exams: "text-sky-600",
   nutro: "text-lime-600",
   modules: "text-primary",
+  photos: "text-rose-600",
 };
 
-export function RecordBottomBar({ patientId }: RecordBottomBarProps) {
+const PHOTO_OPTIONS = [
+  { id: "exams", label: "Exames", icon: FlaskConical, iconClass: "text-sky-600" },
+  { id: "before_after", label: "Anexar Antes x Depois", icon: ArrowLeftRight, iconClass: "text-amber-600" },
+  { id: "compare", label: "Comparação Antes x Depois", icon: Columns2, iconClass: "text-violet-600" },
+] as const;
+
+export function RecordBottomBar({
+  patientId,
+  onSessionsClick,
+  onPhotosExamsClick,
+  onPhotosBeforeAfterClick,
+  onPhotosCompareClick,
+}: RecordBottomBarProps) {
   const navigate = useNavigate();
   const [finishOpen, setFinishOpen] = useState(false);
   const [modulesOpen, setModulesOpen] = useState(false);
+  const [photosOpen, setPhotosOpen] = useState(false);
+
+  const openPhotoOption = (id: (typeof PHOTO_OPTIONS)[number]["id"]) => {
+    setPhotosOpen(false);
+    if (id === "exams") onPhotosExamsClick?.();
+    if (id === "before_after") onPhotosBeforeAfterClick?.();
+    if (id === "compare") onPhotosCompareClick?.();
+  };
 
   const openPrescription = () => {
     navigate({
@@ -76,6 +104,17 @@ export function RecordBottomBar({ patientId }: RecordBottomBarProps) {
       iconClass: ICON_STYLES.finish,
       onClick: () => setFinishOpen(true),
     },
+    ...(onSessionsClick
+      ? [
+          {
+            key: "sessions" as const,
+            label: "Dar baixa em sessões",
+            icon: CalendarCheck,
+            iconClass: ICON_STYLES.sessions,
+            onClick: onSessionsClick,
+          },
+        ]
+      : []),
     {
       key: "rx",
       label: "Receituário",
@@ -83,13 +122,17 @@ export function RecordBottomBar({ patientId }: RecordBottomBarProps) {
       iconClass: ICON_STYLES.rx,
       onClick: openPrescription,
     },
-    {
-      key: "exams",
-      label: "Exames",
-      icon: FlaskConical,
-      iconClass: ICON_STYLES.exams,
-      onClick: () => toast.info("Módulo de exames em desenvolvimento."),
-    },
+    ...(onPhotosExamsClick || onPhotosBeforeAfterClick || onPhotosCompareClick
+      ? [
+          {
+            key: "photos" as const,
+            label: "Fotos",
+            icon: Camera,
+            iconClass: ICON_STYLES.photos,
+            onClick: () => setPhotosOpen(true),
+          },
+        ]
+      : []),
     {
       key: "nutro",
       label: "Nutrologia",
@@ -143,6 +186,39 @@ export function RecordBottomBar({ patientId }: RecordBottomBarProps) {
         onOpenChange={setFinishOpen}
         patientId={patientId}
       />
+
+      <Sheet open={photosOpen} onOpenChange={setPhotosOpen}>
+        <SheetContent side="bottom" className="rounded-t-xl pb-8">
+          <SheetHeader>
+            <SheetTitle>Fotos</SheetTitle>
+            <SheetDescription>Escolha o tipo de foto que deseja anexar.</SheetDescription>
+          </SheetHeader>
+          <ul className="mt-4 divide-y rounded-lg border">
+            {PHOTO_OPTIONS.map((option) => {
+              const disabled =
+                option.id === "exams"
+                  ? !onPhotosExamsClick
+                  : option.id === "before_after"
+                    ? !onPhotosBeforeAfterClick
+                    : !onPhotosCompareClick;
+              if (disabled) return null;
+              const Icon = option.icon;
+              return (
+                <li key={option.id}>
+                  <button
+                    type="button"
+                    onClick={() => openPhotoOption(option.id)}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-muted/50"
+                  >
+                    <Icon className={cn("size-4 shrink-0", option.iconClass)} strokeWidth={2} />
+                    <span className="font-medium">{option.label}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </SheetContent>
+      </Sheet>
 
       <Sheet open={modulesOpen} onOpenChange={setModulesOpen}>
         <SheetContent side="bottom" className="rounded-t-xl pb-8">

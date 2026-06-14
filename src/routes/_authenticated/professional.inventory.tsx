@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
-import { Package, AlertTriangle, ShoppingCart } from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { Package, AlertTriangle, ShoppingCart, Settings2 } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -84,6 +84,15 @@ function Page() {
             <ShoppingCart className="mr-2 size-4" />
             Nova compra
           </Button>
+          <Link to="/financial/inventory/items">
+            <Button variant="outline">
+              <Settings2 className="mr-2 size-4" />
+              Gerenciar itens
+            </Button>
+          </Link>
+          <Link to="/financial/inventory/categories">
+            <Button variant="outline">Categorias</Button>
+          </Link>
         </div>
 
         <Card><CardContent className="p-0"><Table>

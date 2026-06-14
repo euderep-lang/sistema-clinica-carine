@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, Stethoscope } from "lucide-react";
+import { ArrowLeft, Pencil, Stethoscope } from "lucide-react";
 import { PatientSessionsContent } from "@/components/professional/patient-sessions-content";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/dashboard-shell";
@@ -34,6 +34,7 @@ import {
   maskPhone,
 } from "@/lib/patient-utils";
 import type { PatientFormData } from "@/components/patient-form-dialog";
+import { PatientFormDialog } from "@/components/patient-form-dialog";
 
 const PATIENT_TABS = ["dados", "financeiro", "consultas", "sessoes"] as const;
 type PatientTab = (typeof PATIENT_TABS)[number];
@@ -85,6 +86,7 @@ function ProfessionalPatientPage() {
   const [appts, setAppts] = useState<AppointmentRow[]>([]);
   const [bills, setBills] = useState<BillRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editOpen, setEditOpen] = useState(false);
   const load = async () => {
     if (!profile) return;
     setLoading(true);
@@ -108,7 +110,7 @@ function ProfessionalPatientPage() {
       .from("bills_receivable")
       .select("id,description,amount,paid_amount,due_date,paid_date,payment_method,status")
       .eq("patient_id", id)
-      .eq("professional_id", profile.id)
+      .or(`professional_id.eq.${profile.id},professional_id.is.null`)
       .order("due_date", { ascending: false });
     setBills((billData ?? []) as BillRow[]);
     setLoading(false);
@@ -168,12 +170,18 @@ function ProfessionalPatientPage() {
                 {patient.phone && <span>{maskPhone(patient.phone)}</span>}
               </div>
             </div>
-            <Button asChild>
-              <Link to="/professional/patients/$id/record" params={{ id }}>
-                <Stethoscope className="mr-2 size-4" />
-                Abrir prontuário
-              </Link>
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setEditOpen(true)}>
+                <Pencil className="mr-2 size-4" />
+                Editar ficha
+              </Button>
+              <Button asChild>
+                <Link to="/professional/patients/$id/record" params={{ id }}>
+                  <Stethoscope className="mr-2 size-4" />
+                  Abrir prontuário
+                </Link>
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -197,8 +205,12 @@ function ProfessionalPatientPage() {
 
           <TabsContent value="dados">
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-base">Dados cadastrais</CardTitle>
+                <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
+                  <Pencil className="mr-2 size-4" />
+                  Editar
+                </Button>
               </CardHeader>
               <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <Field label="Nome" value={patient.full_name} />
@@ -378,6 +390,13 @@ function ProfessionalPatientPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <PatientFormDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        initial={patient}
+        onSaved={() => void load()}
+      />
     </DashboardShell>
   );
 }

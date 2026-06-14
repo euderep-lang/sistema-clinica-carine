@@ -1,4 +1,4 @@
-export const UNITS = ["un", "cx", "rl", "L", "mL", "kg", "g", "tb", "fr", "amp", "cps"] as const;
+export const UNITS = ["un", "cx", "rl", "L", "mL", "kg", "g", "mg", "UI", "tb", "fr", "amp", "cps"] as const;
 export type MovementType = "in" | "out" | "adjustment" | "waste";
 
 export const MOVEMENT_LABEL: Record<MovementType, string> = {

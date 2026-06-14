@@ -15,7 +15,7 @@ import { maskCPF } from "@/lib/patient-utils";
 
 interface Patient { id: string; full_name: string; cpf: string | null; }
 interface Pro { id: string; full_name: string; }
-interface Appt { id: string; date: string; }
+interface Appt { id: string; date: string; professional_id: string | null; }
 
 export function NewBillReceivableDialog({ open, onOpenChange, onSaved, defaultPatientId }: {
   open: boolean; onOpenChange: (v: boolean) => void; onSaved: () => void; defaultPatientId?: string;
@@ -49,17 +49,26 @@ export function NewBillReceivableDialog({ open, onOpenChange, onSaved, defaultPa
   useEffect(() => {
     if (!patientId) { setAppts([]); return; }
     (async () => {
-      const { data } = await supabase.from("appointments").select("id, date").eq("patient_id", patientId).order("date", { ascending: false }).limit(20);
+      const { data } = await supabase.from("appointments").select("id, date, professional_id").eq("patient_id", patientId).order("date", { ascending: false }).limit(20);
       setAppts((data ?? []) as Appt[]);
     })();
   }, [patientId]);
 
+  useEffect(() => {
+    if (!apptId) return;
+    const appt = appts.find((a) => a.id === apptId);
+    if (appt?.professional_id) setProId(appt.professional_id);
+  }, [apptId, appts]);
+
   const save = async () => {
     if (!tenant) return;
-    if (!patientId || !desc || !amount || !dueDate) { toast.error("Preencha os campos obrigatórios"); return; }
+    if (!patientId || !proId || !desc || !amount || !dueDate) {
+      toast.error("Preencha paciente, profissional e demais campos obrigatórios");
+      return;
+    }
     setSaving(true);
     const { error } = await supabase.from("bills_receivable" as never).insert({
-      tenant_id: tenant.id, patient_id: patientId, professional_id: proId || null,
+      tenant_id: tenant.id, patient_id: patientId, professional_id: proId,
       appointment_id: apptId || null, description: desc, amount: parseBRLInput(amount),
       due_date: dueDate, payment_method: method || null, notes: notes || null, status: "pending",
     } as never);
@@ -98,7 +107,7 @@ export function NewBillReceivableDialog({ open, onOpenChange, onSaved, defaultPa
               </PopoverContent>
             </Popover>
           </div>
-          <div><Label>Profissional</Label>
+          <div><Label>Profissional *</Label>
             <Select value={proId} onValueChange={setProId}>
               <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
               <SelectContent>{pros.map((p) => <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>)}</SelectContent>

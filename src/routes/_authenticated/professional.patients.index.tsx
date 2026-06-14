@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Search, Users as UsersIcon } from "lucide-react";
+import { Plus, Search, Users as UsersIcon } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { PatientShortcuts } from "@/components/patient-shortcuts";
+import { PatientFormDialog } from "@/components/patient-form-dialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -40,29 +41,17 @@ function ProfessionalPatients() {
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [openForm, setOpenForm] = useState(false);
 
   const load = async () => {
     if (!profile) return;
     setLoading(true);
 
-    const { data: ap } = await supabase
-      .from("appointments")
-      .select("patient_id")
-      .eq("professional_id", profile.id)
-      .not("patient_id", "is", null);
-
-    const ids = Array.from(new Set((ap ?? []).map((a) => a.patient_id).filter(Boolean))) as string[];
-    if (ids.length === 0) {
-      setRows([]);
-      setTotal(0);
-      setLoading(false);
-      return;
-    }
-
     let q = supabase
       .from("patients")
       .select("id, full_name, record_number, phone", { count: "exact" })
-      .in("id", ids)
+      .eq("tenant_id", profile.tenant_id)
+      .eq("active", true)
       .order("record_number", { ascending: true, nullsFirst: false });
 
     if (query) {
@@ -75,9 +64,12 @@ function ProfessionalPatients() {
     }
 
     q = q.range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
-    const { data, count } = await q;
-    setRows((data ?? []) as Row[]);
-    setTotal(count ?? 0);
+    const { data, count, error } = await q;
+    if (error) setRows([]);
+    else {
+      setRows((data ?? []) as Row[]);
+      setTotal(count ?? 0);
+    }
     setLoading(false);
   };
 
@@ -110,6 +102,12 @@ function ProfessionalPatients() {
         <PageHeader
           title="Meus Pacientes"
           description="Busque pacientes e acesse ficha, prontuário, sessões e agenda."
+          actions={
+            <Button onClick={() => setOpenForm(true)}>
+              <Plus className="mr-2 size-4" />
+              Novo paciente
+            </Button>
+          }
         />
 
         <Card className="overflow-hidden">
@@ -128,6 +126,10 @@ function ProfessionalPatients() {
               <Button className="h-11 px-6" onClick={onSearch}>
                 Buscar
               </Button>
+              <Button variant="outline" className="h-11 shrink-0" onClick={() => setOpenForm(true)}>
+                <Plus className="mr-2 size-4" />
+                Novo paciente
+              </Button>
             </div>
           </div>
 
@@ -138,8 +140,12 @@ function ProfessionalPatients() {
               </div>
               <p className="font-display text-lg font-semibold">Nenhum paciente ainda</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Pacientes aparecem aqui após agendamentos no seu consultório.
+                Cadastre pacientes da clínica ou busque na lista abaixo.
               </p>
+              <Button className="mt-6" onClick={() => setOpenForm(true)}>
+                <Plus className="mr-2 size-4" />
+                Cadastrar paciente
+              </Button>
             </div>
           ) : (
             <>
@@ -220,6 +226,14 @@ function ProfessionalPatients() {
         </Card>
       </div>
 
+      <PatientFormDialog
+        open={openForm}
+        onOpenChange={setOpenForm}
+        onSaved={(id) => {
+          void load();
+          navigate({ to: "/professional/patients/$id", params: { id } });
+        }}
+      />
     </DashboardShell>
   );
 }

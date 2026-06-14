@@ -20,8 +20,8 @@ export const DEFAULT_LETTERHEAD_MARGINS: LetterheadMargins = {
 };
 
 export interface LetterheadPdfAsset {
-  imageData: string;
-  format: "JPEG" | "PNG" | "WEBP";
+  imageData?: string;
+  format?: "JPEG" | "PNG" | "WEBP";
   margins: LetterheadMargins;
 }
 
@@ -57,17 +57,23 @@ export async function loadLetterheadSettings(
 
 export async function loadLetterheadForPdf(
   professionalId: string,
-): Promise<LetterheadPdfAsset | null> {
+): Promise<LetterheadPdfAsset> {
   const settings = await loadLetterheadSettings(professionalId);
-  if (!settings.path) return null;
+  if (!settings.path) {
+    return { margins: settings.margins };
+  }
 
   const { data: signed, error: signErr } = await supabase.storage
     .from("professional-assets")
     .createSignedUrl(settings.path, 120);
-  if (signErr || !signed?.signedUrl) return null;
+  if (signErr || !signed?.signedUrl) {
+    return { margins: settings.margins };
+  }
 
   const response = await fetch(signed.signedUrl);
-  if (!response.ok) return null;
+  if (!response.ok) {
+    return { margins: settings.margins };
+  }
 
   const blob = await response.blob();
   const compressed = await compressLetterheadImage(blob);

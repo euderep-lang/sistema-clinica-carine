@@ -8,8 +8,10 @@ import {
   Eye,
   FileText,
   PlayCircle,
+  Plus,
   Users as UsersIcon,
 } from "lucide-react";
+import { NewAppointmentDialog } from "@/components/agenda/new-appointment-dialog";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { PageSection } from "@/components/layout/page-section";
@@ -42,57 +44,60 @@ function ProfessionalDashboard() {
   const [monthCount, setMonthCount] = useState(0);
   const [pendingRecords, setPendingRecords] = useState(0);
   const [nextAppt, setNextAppt] = useState<TodayAppt | null>(null);
+  const [newApptOpen, setNewApptOpen] = useState(false);
+
+  const load = async () => {
+    if (!profile) return;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const firstOfMonth = todayStr.slice(0, 8) + "01";
+
+    const { data: ap } = await supabase
+      .from("appointments")
+      .select("id, patient_id, start_time, status, patients(full_name), rooms(name)")
+      .eq("professional_id", profile.id)
+      .eq("date", todayStr)
+      .order("start_time");
+    const list = (ap ?? []) as unknown as TodayAppt[];
+    setToday(list);
+
+    const now = new Date().toTimeString().slice(0, 5);
+    const upcoming = list.find(
+      (a) =>
+        (a.start_time ?? "") >= now &&
+        a.status !== "completed" &&
+        a.status !== "cancelled",
+    );
+    setNextAppt(upcoming ?? null);
+
+    const { count: mc } = await supabase
+      .from("appointments")
+      .select("*", { count: "exact", head: true })
+      .eq("professional_id", profile.id)
+      .eq("status", "completed")
+      .gte("date", firstOfMonth);
+    setMonthCount(mc ?? 0);
+
+    const { data: completed } = await supabase
+      .from("appointments")
+      .select("id")
+      .eq("professional_id", profile.id)
+      .eq("status", "completed");
+    const ids = (completed ?? []).map((c) => c.id);
+    if (ids.length === 0) {
+      setPendingRecords(0);
+      return;
+    }
+    const { data: linked } = await supabase
+      .from("medical_records")
+      .select("appointment_id")
+      .in("appointment_id", ids);
+    const linkedSet = new Set((linked ?? []).map((l) => l.appointment_id));
+    setPendingRecords(ids.filter((i) => !linkedSet.has(i)).length);
+  };
 
   useEffect(() => {
-    if (!profile) return;
-    const load = async () => {
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const firstOfMonth = todayStr.slice(0, 8) + "01";
-
-      const { data: ap } = await supabase
-        .from("appointments")
-        .select("id, patient_id, start_time, status, patients(full_name), rooms(name)")
-        .eq("professional_id", profile.id)
-        .eq("date", todayStr)
-        .order("start_time");
-      const list = (ap ?? []) as unknown as TodayAppt[];
-      setToday(list);
-
-      const now = new Date().toTimeString().slice(0, 5);
-      const upcoming = list.find(
-        (a) =>
-          (a.start_time ?? "") >= now &&
-          a.status !== "completed" &&
-          a.status !== "cancelled",
-      );
-      setNextAppt(upcoming ?? null);
-
-      const { count: mc } = await supabase
-        .from("appointments")
-        .select("*", { count: "exact", head: true })
-        .eq("professional_id", profile.id)
-        .eq("status", "completed")
-        .gte("date", firstOfMonth);
-      setMonthCount(mc ?? 0);
-
-      const { data: completed } = await supabase
-        .from("appointments")
-        .select("id")
-        .eq("professional_id", profile.id)
-        .eq("status", "completed");
-      const ids = (completed ?? []).map((c) => c.id);
-      if (ids.length === 0) {
-        setPendingRecords(0);
-        return;
-      }
-      const { data: linked } = await supabase
-        .from("medical_records")
-        .select("appointment_id")
-        .in("appointment_id", ids);
-      const linkedSet = new Set((linked ?? []).map((l) => l.appointment_id));
-      setPendingRecords(ids.filter((i) => !linkedSet.has(i)).length);
-    };
-    load();
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile]);
 
   const { upcoming, attended } = useMemo(() => {
@@ -112,6 +117,12 @@ function ProfessionalDashboard() {
         description={
           [profile?.specialty, profile?.crm].filter(Boolean).join(" · ") ||
           "Sua agenda e pendências do dia."
+        }
+        actions={
+          <Button onClick={() => setNewApptOpen(true)}>
+            <Plus className="mr-2 size-4" />
+            Novo agendamento
+          </Button>
         }
       />
 
@@ -138,7 +149,15 @@ function ProfessionalDashboard() {
         </div>
       </PageSection>
 
-      <PageSection title="Agenda de hoje">
+      <PageSection
+        title="Agenda de hoje"
+        actions={
+          <Button variant="outline" size="sm" onClick={() => setNewApptOpen(true)}>
+            <Plus className="mr-2 size-4" />
+            Adicionar agendamento
+          </Button>
+        }
+      >
         <div className="grid gap-4 lg:grid-cols-2">
           <AgendaGroup
             title="A ser atendidos"
@@ -157,6 +176,13 @@ function ProfessionalDashboard() {
           />
         </div>
       </PageSection>
+
+      <NewAppointmentDialog
+        open={newApptOpen}
+        onOpenChange={setNewApptOpen}
+        defaultProfessionalId={profile?.role === "professional" ? profile.id : undefined}
+        onSaved={() => void load()}
+      />
     </DashboardShell>
   );
 }

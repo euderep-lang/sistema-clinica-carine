@@ -44,15 +44,17 @@ import { blobToBase64, base64ToBlob } from "@/lib/blob-utils";
 import {
   getDigitalCertificateStatus,
   getSafeIdSignatureAuthStatus,
-  initiateSafeIdSignatureAuth,
   signPrescriptionPdf,
   type DigitalCertificateStatus,
 } from "@/lib/digital-certificate.functions";
+import { SafeIdSignatureAuthDialog } from "@/components/professional/safe-id-signature-auth-dialog";
+import { isSafeIdSessionExpiredMessage } from "@/lib/safeid-auth";
 
 export const Route = createFileRoute("/_authenticated/professional/prescriptions/new")({
   validateSearch: (s: Record<string, unknown>) => ({
     patient_id: typeof s.patient_id === "string" ? s.patient_id : undefined,
     duplicate: typeof s.duplicate === "string" ? s.duplicate : undefined,
+    edit: typeof s.edit === "string" ? s.edit : undefined,
   }),
   component: NewPrescription,
 });
@@ -183,6 +185,38 @@ function MedAutocomplete({ value, onChange }: { value: string; onChange: (v: str
   );
 }
 
+function mapDbItemsToForm(
+  srcItems: Array<{
+    medication: string;
+    concentration: string | null;
+    pharmaceutical_form: string | null;
+    quantity: string | null;
+    dosage: string | null;
+    route: string | null;
+    frequency: string | null;
+    duration: string | null;
+    instructions: string | null;
+  }>,
+): ItemForm[] {
+  return srcItems.map((it) => {
+    const [dv, ...du] = (it.dosage ?? "").split(" ");
+    const parsedQty = parsePrescriptionQuantity(it.quantity);
+    return {
+      medication: it.medication,
+      concentration: it.concentration ?? "",
+      pharmaceutical_form: it.pharmaceutical_form ?? "",
+      quantityMode: parsedQty.mode,
+      quantityValue: parsedQty.value,
+      doseValue: dv ?? "",
+      doseUnit: du.join(" ") || "comprimido(s)",
+      route: it.route ?? "Oral",
+      frequency: it.frequency ?? "1x ao dia",
+      duration: it.duration ?? "",
+      instructions: it.instructions ?? "",
+    };
+  });
+}
+
 function NewPrescription() {
   const navigate = useNavigate();
   const { profile, tenant } = useAuth();
@@ -198,17 +232,15 @@ function NewPrescription() {
   const [type, setType] = useState<RxType>("simples");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<ItemForm[]>([emptyItem()]);
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [loadingDraft, setLoadingDraft] = useState(Boolean(search.edit));
   const [saving, setSaving] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [doneDialog, setDoneDialog] = useState<{ blob: Blob; url: string; path: string; signed: boolean } | null>(null);
   const [safeIdDialogOpen, setSafeIdDialogOpen] = useState(false);
-  const [safeIdAuthReady, setSafeIdAuthReady] = useState(false);
-  const [safeIdAuthLoading, setSafeIdAuthLoading] = useState(false);
-  const [safeIdAuthError, setSafeIdAuthError] = useState<string | null>(null);
-  const [safeIdAuthorizeUrl, setSafeIdAuthorizeUrl] = useState<string | null>(null);
+  const [safeIdRenewal, setSafeIdRenewal] = useState(false);
   const [certStatus, setCertStatus] = useState<DigitalCertificateStatus | null>(null);
   const fetchCertStatus = useServerFn(getDigitalCertificateStatus);
-  const initiateSafeIdAuth = useServerFn(initiateSafeIdSignatureAuth);
   const fetchSafeIdAuthStatus = useServerFn(getSafeIdSignatureAuthStatus);
   const signPdf = useServerFn(signPrescriptionPdf);
 
@@ -224,28 +256,47 @@ function NewPrescription() {
         setClinicAddress(addr);
       }
       if (profile) {
-        const { data: appts } = await supabase
-          .from("appointments")
-          .select("patient_id")
-          .eq("professional_id", profile.id)
-          .not("patient_id", "is", null);
-        const patientIds = [...new Set((appts ?? []).map((a) => a.patient_id).filter(Boolean))] as string[];
-        if (patientIds.length > 0) {
-          const { data: pts } = await supabase
-            .from("patients")
-            .select(
-              "id, full_name, cpf, birth_date, phone, address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip",
-            )
-            .in("id", patientIds)
-            .eq("active", true)
-            .order("full_name");
-          setPatients((pts ?? []) as PatientLite[]);
-        } else {
-          setPatients([]);
-        }
+        const { data: pts } = await supabase
+          .from("patients")
+          .select(
+            "id, full_name, cpf, birth_date, phone, address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip",
+          )
+          .eq("tenant_id", profile.tenant_id)
+          .eq("active", true)
+          .order("full_name");
+        setPatients((pts ?? []) as PatientLite[]);
       }
 
-      if (search.duplicate && profile) {
+      if (search.edit && profile) {
+        setLoadingDraft(true);
+        const { data: src } = await supabase
+          .from("prescriptions" as never)
+          .select("*")
+          .eq("id", search.edit)
+          .eq("professional_id", profile.id)
+          .eq("status", "draft")
+          .maybeSingle() as never;
+        if (!src) {
+          toast.error("Rascunho não encontrado ou já finalizado");
+          navigate({ to: "/professional/prescriptions" });
+          return;
+        }
+        const s = src as { id: string; patient_id: string; date: string; type: RxType; notes: string | null };
+        const { data: srcItems } = await supabase
+          .from("prescription_items" as never)
+          .select("*")
+          .eq("prescription_id", s.id)
+          .order("position") as never;
+        setDraftId(s.id);
+        setPatientId(s.patient_id);
+        setDate(s.date);
+        setType(s.type);
+        setNotes(s.notes ?? "");
+        if (srcItems && (srcItems as unknown[]).length) {
+          setItems(mapDbItemsToForm(srcItems as Parameters<typeof mapDbItemsToForm>[0]));
+        }
+        setLoadingDraft(false);
+      } else if (search.duplicate && profile) {
         const { data: src } = await supabase
           .from("prescriptions" as never)
           .select("*")
@@ -260,31 +311,11 @@ function NewPrescription() {
           setNotes(s.notes ?? "");
         }
         if (srcItems && (srcItems as unknown[]).length) {
-          setItems((srcItems as Array<{
-            medication: string; concentration: string | null; pharmaceutical_form: string | null;
-            quantity: string | null; dosage: string | null; route: string | null;
-            frequency: string | null; duration: string | null; instructions: string | null;
-          }>).map((it) => {
-            const [dv, ...du] = (it.dosage ?? "").split(" ");
-            const parsedQty = parsePrescriptionQuantity(it.quantity);
-            return {
-              medication: it.medication,
-              concentration: it.concentration ?? "",
-              pharmaceutical_form: it.pharmaceutical_form ?? "",
-              quantityMode: parsedQty.mode,
-              quantityValue: parsedQty.value,
-              doseValue: dv ?? "",
-              doseUnit: du.join(" ") || "comprimido(s)",
-              route: it.route ?? "Oral",
-              frequency: it.frequency ?? "1x ao dia",
-              duration: it.duration ?? "",
-              instructions: it.instructions ?? "",
-            };
-          }));
+          setItems(mapDbItemsToForm(srcItems as Parameters<typeof mapDbItemsToForm>[0]));
         }
       }
     })();
-  }, [tenant?.id, search.duplicate, profile?.id]);
+  }, [tenant?.id, search.duplicate, search.edit, profile?.id, navigate]);
 
   useEffect(() => {
     if (!profile || profile.role !== "professional") return;
@@ -296,8 +327,17 @@ function NewPrescription() {
   const patient = patients.find((p) => p.id === patientId) ?? null;
 
   const filteredPatients = useMemo(() => {
-    const q = patientSearch.toLowerCase();
-    return patients.filter((p) => !q || p.full_name.toLowerCase().includes(q) || (p.cpf ?? "").includes(q)).slice(0, 30);
+    const q = patientSearch.trim().toLowerCase();
+    if (!q) return patients.slice(0, 30);
+    const digits = q.replace(/\D/g, "");
+    return patients
+      .filter((p) => {
+        if (p.full_name.toLowerCase().includes(q)) return true;
+        if (digits && (p.cpf ?? "").replace(/\D/g, "").includes(digits)) return true;
+        if (digits && (p.phone ?? "").replace(/\D/g, "").includes(digits)) return true;
+        return false;
+      })
+      .slice(0, 30);
   }, [patients, patientSearch]);
 
   const updateItem = (i: number, patch: Partial<ItemForm>) =>
@@ -358,6 +398,11 @@ function NewPrescription() {
 
   const finalizeLabel = canSignWithCert ? "Assinar e finalizar" : "Finalizar e gerar documento";
 
+  const openSafeIdAuthDialog = (renewal: boolean) => {
+    setSafeIdRenewal(renewal);
+    setSafeIdDialogOpen(true);
+  };
+
   const onFinalizeClick = () => {
     const err = validate();
     if (err) {
@@ -367,120 +412,89 @@ function NewPrescription() {
     if (certStatus?.configured && certStatus.signingMode === "safeid_cloud") {
       void (async () => {
         try {
-          const status = await fetchSafeIdAuthStatus();
+          const status = await fetchSafeIdAuthStatus({ data: { origin: window.location.origin } });
           if (status.ready) {
-            void save(true);
+            void save(true, { sign: true });
             return;
           }
+          openSafeIdAuthDialog(Boolean(status.sessionExpired));
         } catch {
-          /* abre o fluxo de autorização abaixo */
+          openSafeIdAuthDialog(false);
         }
-        setSafeIdAuthReady(false);
-        setSafeIdAuthError(null);
-        setSafeIdAuthorizeUrl(null);
-        setSafeIdDialogOpen(true);
       })();
       return;
     }
-    void save(true);
+    void save(true, { sign: canSignWithCert });
   };
 
-  useEffect(() => {
-    if (!safeIdDialogOpen || certStatus?.signingMode !== "safeid_cloud") return;
+  const onDownloadPdfClick = () => {
+    const err = validate();
+    if (err) {
+      toast.error(err);
+      return;
+    }
+    void save(true, { sign: false });
+  };
 
-    let cancelled = false;
-    setSafeIdAuthLoading(true);
-
-    const openAuthorizeWindow = (url: string) => {
-      const popup = window.open(url, "safeid-oauth", "width=520,height=720");
-      if (!popup) {
-        toast.error("Permita pop-ups neste site para abrir a autorização SafeID.");
-      }
-    };
-
-    const redirectUri = `${window.location.origin}/professional/safeid/callback`;
-
-    (async () => {
-      try {
-        const status = await fetchSafeIdAuthStatus();
-        if (cancelled) return;
-        if (status.ready) {
-          setSafeIdAuthReady(true);
-          return;
-        }
-
-        const result = await initiateSafeIdAuth({ data: { redirectUri } });
-        if (cancelled) return;
-        if (result.alreadyAuthorized) {
-          setSafeIdAuthReady(true);
-          return;
-        }
-        if (!result.authorizeUrl) return;
-        setSafeIdAuthorizeUrl(result.authorizeUrl);
-        openAuthorizeWindow(result.authorizeUrl);
-        toast.message("Confirme a autorização no app SafeID (válida por 12 horas)");
-      } catch (e) {
-        if (!cancelled) {
-          const msg = (e as Error).message;
-          const hint =
-            msg === "Failed to fetch"
-              ? "Não foi possível falar com o servidor. Use http://192.168.42.31:8080 e feche abas em outras portas."
-              : msg;
-          setSafeIdAuthError(hint);
-          toast.error(hint);
-        }
-      } finally {
-        if (!cancelled) setSafeIdAuthLoading(false);
-      }
-    })();
-
-    const onMessage = (event: MessageEvent) => {
-      if (event.data?.type === "safeid-oauth-done") {
-        void fetchSafeIdAuthStatus().then((status) => {
-          if (status.ready) setSafeIdAuthReady(true);
-        });
-      }
-    };
-    window.addEventListener("message", onMessage);
-
-    const interval = window.setInterval(async () => {
-      try {
-        const status = await fetchSafeIdAuthStatus();
-        if (status.ready) setSafeIdAuthReady(true);
-      } catch {
-        /* ignore polling errors */
-      }
-    }, 2000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-      window.removeEventListener("message", onMessage);
-    };
-  }, [safeIdDialogOpen, certStatus?.signingMode]);
-
-  const save = async (finalize: boolean) => {
+  const save = async (finalize: boolean, options?: { sign?: boolean }) => {
     const err = validate();
     if (err) { toast.error(err); return; }
     if (!profile || !tenant) return;
     setSaving(true);
     try {
-      const { data: rxIns, error: rxErr } = await supabase.from("prescriptions" as never).insert({
-        tenant_id: tenant.id, patient_id: patientId, professional_id: profile.id,
-        date, type, status: finalize ? "finalized" : "draft", notes: notes || null,
-      } as never).select("id").single() as never;
-      if (rxErr || !rxIns) throw new Error((rxErr as { message: string } | null)?.message ?? "Erro ao salvar");
-      const rxId = (rxIns as { id: string }).id;
-
+      const shouldSign =
+        finalize && (options?.sign !== undefined ? options.sign : canSignWithCert);
       const data = buildRxData();
       const itemsInsert = data.items.filter((i) => i.medication.trim()).map((i) => ({
-        prescription_id: rxId, position: i.position, medication: i.medication,
-        concentration: i.concentration, pharmaceutical_form: i.pharmaceutical_form,
-        quantity: i.quantity, dosage: i.dosage, route: i.route,
-        frequency: i.frequency, duration: i.duration, instructions: i.instructions,
+        position: i.position,
+        medication: i.medication,
+        concentration: i.concentration,
+        pharmaceutical_form: i.pharmaceutical_form,
+        quantity: i.quantity,
+        dosage: i.dosage,
+        route: i.route,
+        frequency: i.frequency,
+        duration: i.duration,
+        instructions: i.instructions,
       }));
+
+      let rxId = draftId;
+
+      if (draftId) {
+        const { error: rxErr } = await supabase
+          .from("prescriptions" as never)
+          .update({
+            patient_id: patientId,
+            date,
+            type,
+            status: finalize ? "finalized" : "draft",
+            notes: notes || null,
+          } as never)
+          .eq("id", draftId)
+          .eq("professional_id", profile.id)
+          .eq("status", "draft") as never;
+        if (rxErr) throw new Error(rxErr.message);
+
+        const { error: delErr } = await supabase
+          .from("prescription_items" as never)
+          .delete()
+          .eq("prescription_id", draftId) as never;
+        if (delErr) throw new Error(delErr.message);
+      } else {
+        const { data: rxIns, error: rxErr } = await supabase.from("prescriptions" as never).insert({
+          tenant_id: tenant.id, patient_id: patientId, professional_id: profile.id,
+          date, type, status: finalize ? "finalized" : "draft", notes: notes || null,
+        } as never).select("id").single() as never;
+        if (rxErr || !rxIns) throw new Error((rxErr as { message: string } | null)?.message ?? "Erro ao salvar");
+        rxId = (rxIns as { id: string }).id;
+      }
+
+      if (!rxId) throw new Error("Erro ao salvar receita");
+
       if (itemsInsert.length) {
-        const { error: itErr } = await supabase.from("prescription_items" as never).insert(itemsInsert as never);
+        const { error: itErr } = await supabase.from("prescription_items" as never).insert(
+          itemsInsert.map((i) => ({ ...i, prescription_id: rxId })) as never,
+        );
         if (itErr) throw new Error(itErr.message);
       }
 
@@ -489,13 +503,13 @@ function NewPrescription() {
         let blob = await generatePrescriptionPDF({
           ...data,
           letterhead,
-          digitalSignature: canSignWithCert,
+          digitalSignature: shouldSign,
         });
         let signed = false;
         let signedAt: string | null = null;
         let signatureCn: string | null = null;
 
-        if (canSignWithCert) {
+        if (shouldSign) {
           const bottomMarginMm = letterhead?.margins.bottom ?? (type === "simples" ? 14 : 25);
           const signatureLineMmFromTop =
             type === "simples"
@@ -547,14 +561,21 @@ function NewPrescription() {
         toast.success(
           signed
             ? "Receita assinada digitalmente e salva no histórico do paciente"
-            : "Receita finalizada e salva no histórico do paciente",
+            : shouldSign
+              ? "Receita finalizada e salva no histórico do paciente"
+              : "PDF gerado sem assinatura digital e salvo no histórico do paciente",
         );
       } else {
-        toast.success("Rascunho salvo");
+        toast.success(draftId ? "Rascunho atualizado" : "Rascunho salvo");
         navigate({ to: "/professional/prescriptions" });
       }
     } catch (e) {
-      toast.error((e as Error).message);
+      const msg = (e as Error).message;
+      if (certStatus?.signingMode === "safeid_cloud" && isSafeIdSessionExpiredMessage(msg)) {
+        openSafeIdAuthDialog(true);
+        return;
+      }
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
@@ -566,8 +587,16 @@ function NewPrescription() {
     window.open(`https://wa.me/55${d}?text=${encodeURIComponent("Segue sua receita médica")}`, "_blank");
   };
 
+  if (loadingDraft) {
+    return (
+      <DashboardShell title={draftId ? "Editar rascunho" : "Nova Receita"}>
+        <div className="py-20 text-center text-muted-foreground">Carregando rascunho…</div>
+      </DashboardShell>
+    );
+  }
+
   return (
-    <DashboardShell title="Nova Receita">
+    <DashboardShell title={draftId ? "Editar rascunho" : "Nova Receita"}>
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 pb-24">
         {/* FORM */}
         <div className="lg:col-span-3 space-y-6">
@@ -760,6 +789,12 @@ function NewPrescription() {
           <Button variant="ghost" onClick={() => setCancelOpen(true)}>Cancelar</Button>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => save(false)} disabled={saving}>Salvar Rascunho</Button>
+            {canSignWithCert && (
+              <Button variant="outline" onClick={onDownloadPdfClick} disabled={saving}>
+                <FileDown className="h-4 w-4 mr-2" />
+                Baixar PDF
+              </Button>
+            )}
             <Button onClick={onFinalizeClick} disabled={saving}>
               {finalizeLabel}
             </Button>
@@ -767,57 +802,13 @@ function NewPrescription() {
         </div>
       </div>
 
-      <Dialog open={safeIdDialogOpen} onOpenChange={setSafeIdDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Autorizar assinatura SafeID</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 text-sm text-muted-foreground">
-            <p>
-              <strong className="text-foreground">1.</strong> Uma janela de autorização foi aberta. Confirme a notificação
-              no app <strong>SafeID</strong> no celular.
-            </p>
-            <p>
-              <strong className="text-foreground">2.</strong> Após aprovar, a autorização vale por{" "}
-              <strong className="text-foreground">12 horas</strong> — você assina várias receitas sem repetir o passo.
-            </p>
-            {safeIdAuthError && <p className="text-destructive">{safeIdAuthError}</p>}
-            {safeIdAuthLoading && <p className="text-amber-700">Preparando autorização…</p>}
-            {!safeIdAuthLoading && !safeIdAuthReady && !safeIdAuthError && (
-              <p className="text-amber-700">Aguardando confirmação no app SafeID…</p>
-            )}
-            {safeIdAuthReady && (
-              <p className="text-emerald-700">Autorização confirmada. Clique em Assinar e finalizar.</p>
-            )}
-          </div>
-          {safeIdAuthorizeUrl && !safeIdAuthReady && !safeIdAuthError && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => window.open(safeIdAuthorizeUrl, "safeid-oauth", "width=520,height=720")}
-            >
-              Abrir autorização novamente
-            </Button>
-          )}
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setSafeIdDialogOpen(false)} disabled={saving}>
-              Cancelar
-            </Button>
-            <Button
-              disabled={saving || !safeIdAuthReady}
-              onClick={async () => {
-                setSafeIdDialogOpen(false);
-                await save(true);
-                setSafeIdAuthReady(false);
-                setSafeIdAuthorizeUrl(null);
-              }}
-            >
-              Assinar e finalizar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <SafeIdSignatureAuthDialog
+        open={safeIdDialogOpen}
+        onOpenChange={setSafeIdDialogOpen}
+        renewal={safeIdRenewal}
+        saving={saving}
+        onAuthorized={() => void save(true, { sign: true })}
+      />
 
       <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
         <DialogContent>

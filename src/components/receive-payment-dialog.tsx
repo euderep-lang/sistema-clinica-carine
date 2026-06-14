@@ -13,7 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
 import { PAYMENT_METHODS, parseBRLInput, fmt, fmtDate } from "@/lib/currency";
 import { generateReceiptPDF } from "@/lib/financial-pdf";
-import { loadLetterheadForPdf, resolveLetterheadProfessionalId } from "@/lib/letterhead";
+import { loadLetterheadForPdf, resolveLetterheadProfessionalId, DEFAULT_LETTERHEAD_MARGINS } from "@/lib/letterhead";
 
 interface Patient { id: string; full_name: string; }
 interface Bill {
@@ -98,7 +98,9 @@ export function ReceivePaymentDialog({ open, onOpenChange, onSaved, defaultPatie
       const { data: tdata } = await supabase.from("tenants").select("name, address, phone, email, cnpj").eq("id", tenant.id).maybeSingle();
       const totalReceived = received;
       const profId = resolveLetterheadProfessionalId(profile, selectedBills[0].professional_id);
-      const letterhead = profId ? await loadLetterheadForPdf(profId) : null;
+      const letterhead = profId
+        ? await loadLetterheadForPdf(profId)
+        : { margins: DEFAULT_LETTERHEAD_MARGINS };
       const blob = generateReceiptPDF({
         clinic: { name: tdata?.name ?? tenant.name, address: tdata?.address, phone: tdata?.phone, email: tdata?.email, cnpj: tdata?.cnpj },
         number: selectedBills[0].receipt_number,

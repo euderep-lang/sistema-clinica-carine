@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Plus, FileDown, Copy, FilePlus2 } from "lucide-react";
+import { Plus, FileDown, Copy, FilePlus2, PenLine } from "lucide-react";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { Button } from "@/components/ui/button";
@@ -56,6 +56,17 @@ function statusBadge(s: string) {
   return <Badge variant="secondary">Rascunho</Badge>;
 }
 
+function signatureBadge(row: RxRow) {
+  if (row.signed_at) {
+    return <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">Assinada</Badge>;
+  }
+  return (
+    <Badge variant="outline" className="text-muted-foreground">
+      Não assinada
+    </Badge>
+  );
+}
+
 function PrescriptionsList() {
   const { profile } = useAuth();
   const navigate = useNavigate();
@@ -106,6 +117,10 @@ function PrescriptionsList() {
     navigate({ to: "/professional/prescriptions/new", search: { duplicate: id } as never });
   };
 
+  const editDraft = (id: string) => {
+    navigate({ to: "/professional/prescriptions/new", search: { edit: id } as never });
+  };
+
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   if (!profile) return null;
@@ -151,23 +166,34 @@ function PrescriptionsList() {
                   <TableHead>Paciente</TableHead>
                   <TableHead>Tipo</TableHead>
                   <TableHead>Situação</TableHead>
+                  <TableHead>Assinatura</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-12">Carregando...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-12">Carregando...</TableCell></TableRow>
                 ) : rows.length === 0 ? (
-                  <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-12">Nenhuma receita emitida ainda</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-12">Nenhuma receita emitida ainda</TableCell></TableRow>
                 ) : rows.map((r) => (
                   <TableRow key={r.id}>
                     <TableCell className="whitespace-nowrap">{formatRxGeneratedAt(r)}</TableCell>
                     <TableCell className="font-medium">{r.patients?.full_name ?? "—"}</TableCell>
                     <TableCell>{typeBadge(r.type)}</TableCell>
                     <TableCell>{statusBadge(r.status)}</TableCell>
+                    <TableCell>{signatureBadge(r)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex gap-1 justify-end">
-                        <Button size="sm" variant="ghost" onClick={() => openPdf(r.pdf_url)} disabled={!r.pdf_url}><FileDown className="h-4 w-4" /></Button>
+                        {r.status === "draft" ? (
+                          <Button size="sm" onClick={() => editDraft(r.id)}>
+                            <PenLine className="h-4 w-4 mr-1" />
+                            Continuar
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="ghost" onClick={() => openPdf(r.pdf_url)} disabled={!r.pdf_url}>
+                            <FileDown className="h-4 w-4" />
+                          </Button>
+                        )}
                         <Button size="sm" variant="ghost" onClick={() => duplicate(r.id)}><Copy className="h-4 w-4" /></Button>
                         <Button size="sm" variant="ghost" onClick={() => navigate({ to: "/professional/prescriptions/new", search: { patient_id: r.patient_id } as never })}><FilePlus2 className="h-4 w-4" /></Button>
                       </div>

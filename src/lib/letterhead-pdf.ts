@@ -16,7 +16,7 @@ export function paintLetterhead(
   x = 0,
   y = 0,
 ) {
-  if (!lh) return;
+  if (!lh?.imageData || !lh.format) return;
   doc.addImage(lh.imageData, lh.format, x, y, w, h);
 }
 

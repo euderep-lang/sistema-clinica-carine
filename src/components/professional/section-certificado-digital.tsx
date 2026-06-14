@@ -386,7 +386,7 @@ export function SectionCertificadoDigital() {
             >
               SafeID Integração
             </a>{" "}
-            (SAFEID_CLIENT_ID e SAFEID_CLIENT_SECRET no .env do servidor).
+            (SAFEID_CLIENT_ID, SAFEID_CLIENT_SECRET e SAFEID_REDIRECT_URI no .env do servidor).
           </p>
         </CardContent>
       </Card>

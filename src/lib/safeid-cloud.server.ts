@@ -29,14 +29,33 @@ function endpoint(base: string, path: string): string {
   return `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 }
 
-export function getSafeIdRedirectUri(): string {
-  const uri = process.env.SAFEID_REDIRECT_URI?.trim();
-  if (!uri) {
+export function getSafeIdRedirectUris(): string[] {
+  const raw = process.env.SAFEID_REDIRECT_URI?.trim();
+  if (!raw) {
     throw new Error(
-      "SAFEID_REDIRECT_URI não configurada. Cadastre a mesma URL no painel SafeID Integração (ex.: http://SEU-IP:8081/professional/safeid/callback).",
+      "SAFEID_REDIRECT_URI não configurada. Cadastre a mesma URL no painel SafeID Integração (ex.: http://SEU-IP:8080/professional/safeid/callback).",
     );
   }
-  return uri;
+  return raw
+    .split(",")
+    .map((u) => u.trim())
+    .filter(Boolean);
+}
+
+export function getSafeIdRedirectUri(origin?: string): string {
+  const uris = getSafeIdRedirectUris();
+  if (origin) {
+    const normalized = origin.replace(/\/+$/, "");
+    const match = uris.find((u) => u.replace(/\/professional\/safeid\/callback\/?$/, "") === normalized);
+    if (match) return match;
+    throw new Error(
+      `Nenhuma SAFEID_REDIRECT_URI corresponde a ${origin}. Cadastre ${normalized}/professional/safeid/callback no painel SafeID e no .env.`,
+    );
+  }
+  if (uris.length === 1) return uris[0];
+  throw new Error(
+    "SAFEID_REDIRECT_URI tem várias URLs. O app precisa informar a origem atual (window.location.origin).",
+  );
 }
 
 export function getSafeIdConfig(): SafeIdConfig {
