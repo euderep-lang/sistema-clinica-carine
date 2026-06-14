@@ -1,0 +1,382 @@
+import { useEffect, useMemo, useState } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { CalendarDays, ChevronLeft, ChevronRight, Eye, LayoutGrid, List, PlayCircle } from "lucide-react";
+import { toast } from "sonner";
+import { DashboardShell } from "@/components/dashboard-shell";
+import { PageHeader } from "@/components/layout/page-header";
+import { AgendaContactActions } from "@/components/agenda/agenda-contact-actions";
+import {
+  ProfessionalAgendaDayView,
+  type ProfessionalAgendaAppointment,
+} from "@/components/agenda/professional-agenda-day-view";
+import { ProfessionalAgendaWeekView } from "@/components/agenda/professional-agenda-week-view";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  formatTimeInterval,
+  formatWeekRange,
+  shiftDate,
+  startOfWeekMonday,
+  todayISO,
+} from "@/lib/agenda-utils";
+import {
+  APPOINTMENT_STATUS_LABEL,
+  APPOINTMENT_TYPE_LABEL,
+  PROFESSIONAL_AGENDA_STATUS_ITEM,
+  PROFESSIONAL_AGENDA_STATUS_OPTIONS,
+  PROFESSIONAL_AGENDA_STATUS_TRIGGER,
+  PROFESSIONAL_AGENDA_STATUS_VALUES,
+} from "@/lib/appointment-types";
+import { useAuth } from "@/lib/mock-auth";
+import { cn } from "@/lib/utils";
+
+export const Route = createFileRoute("/_authenticated/professional/agenda")({
+  component: ProfessionalAgendaPage,
+});
+
+type ViewMode = "weekly" | "daily" | "list";
+
+function ProfessionalAgendaPage() {
+  const { profile } = useAuth();
+  const navigate = useNavigate();
+  const [viewMode, setViewMode] = useState<ViewMode>("weekly");
+  const [date, setDate] = useState(todayISO());
+  const [rows, setRows] = useState<ProfessionalAgendaAppointment[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const weekStart = useMemo(() => startOfWeekMonday(date), [date]);
+  const weekEnd = useMemo(() => shiftDate(weekStart, 6), [weekStart]);
+
+  const load = async () => {
+    if (!profile) return;
+    setLoading(true);
+    let q = supabase
+      .from("appointments")
+      .select("id,date,start_time,end_time,status,type,patient_id,patients(full_name,phone),rooms(name)")
+      .eq("professional_id", profile.id)
+      .order("date")
+      .order("start_time");
+
+    if (viewMode === "weekly") {
+      q = q.gte("date", weekStart).lte("date", weekEnd);
+    } else {
+      q = q.eq("date", date);
+    }
+
+    const { data, error } = await q;
+    if (error) toast.error(error.message);
+    setRows((data ?? []) as ProfessionalAgendaAppointment[]);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, date, viewMode, weekStart, weekEnd]);
+
+  const visibleRows = useMemo(() => {
+    if (viewMode === "weekly") return rows;
+    return rows.filter((r) => r.date === date);
+  }, [rows, viewMode, date]);
+
+  const summary = useMemo(() => {
+    const source = viewMode === "weekly" ? rows : visibleRows;
+    const total = source.filter((r) => r.status !== "cancelled").length;
+    const done = source.filter((r) => r.status === "completed").length;
+    const pending = source.filter(
+      (r) => !["completed", "cancelled", "no_show"].includes(r.status),
+    ).length;
+    return { total, done, pending };
+  }, [rows, visibleRows, viewMode]);
+
+  const updateStatus = async (id: string, status: string) => {
+    const { data, error } = await supabase
+      .from("appointments")
+      .update({ status })
+      .eq("id", id)
+      .select("id, status")
+      .maybeSingle();
+    if (error) {
+      toast.error(error.message);
+      return false;
+    }
+    if (!data) {
+      toast.error("Não foi possível atualizar a consulta.");
+      return false;
+    }
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, status: data.status } : r)));
+    return true;
+  };
+
+  const startAppointment = async (appointment: ProfessionalAgendaAppointment) => {
+    if (!appointment.patient_id) return;
+    const ok = await updateStatus(appointment.id, "in_progress");
+    if (!ok) return;
+    navigate({
+      to: "/professional/patients/$id/record",
+      params: { id: appointment.patient_id },
+    });
+  };
+
+  const handleStatusChange = async (id: string, status: string) => {
+    const ok = await updateStatus(id, status);
+    if (ok) toast.success("Situação atualizada");
+    return ok;
+  };
+
+  const shiftPeriod = (days: number) => setDate((d) => shiftDate(d, days));
+
+  const dateLabel =
+    viewMode === "weekly"
+      ? formatWeekRange(weekStart)
+      : new Date(`${date}T12:00:00`).toLocaleDateString("pt-BR", {
+          weekday: "long",
+          day: "2-digit",
+          month: "long",
+          year: "numeric",
+        });
+
+  const summaryScope = viewMode === "weekly" ? "na semana" : "no dia";
+
+  return (
+    <DashboardShell title="Minha Agenda">
+      <div className="space-y-6">
+        <PageHeader
+          title="Minha Agenda"
+          description="Consultas do seu consultório. Atualize a situação e acesse prontuários."
+        />
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => shiftPeriod(viewMode === "weekly" ? -7 : -1)}
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <Input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-40"
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => shiftPeriod(viewMode === "weekly" ? 7 : 1)}
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setDate(todayISO())}>
+              Hoje
+            </Button>
+            <span className="text-sm capitalize text-muted-foreground">{dateLabel}</span>
+          </div>
+
+          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
+            <TabsList>
+              <TabsTrigger value="weekly" className="gap-1.5">
+                <CalendarDays className="size-4" />
+                Semanal
+              </TabsTrigger>
+              <TabsTrigger value="daily" className="gap-1.5">
+                <LayoutGrid className="size-4" />
+                Diária
+              </TabsTrigger>
+              <TabsTrigger value="list" className="gap-1.5">
+                <List className="size-4" />
+                Lista
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Consultas {summaryScope}</p>
+              <p className="text-2xl font-bold">{summary.total}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Atendidas</p>
+              <p className="text-2xl font-bold text-emerald-600">{summary.done}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Pendentes</p>
+              <p className="text-2xl font-bold text-amber-600">{summary.pending}</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {viewMode === "weekly" && (
+          <ProfessionalAgendaWeekView
+            weekStart={weekStart}
+            rows={rows}
+            loading={loading}
+            onStatusChange={handleStatusChange}
+            onStart={(a) => void startAppointment(a)}
+            onDayClick={(day) => {
+              setDate(day);
+              setViewMode("daily");
+            }}
+          />
+        )}
+
+        {viewMode === "daily" && (
+          <ProfessionalAgendaDayView
+            date={date}
+            rows={visibleRows}
+            loading={loading}
+            onStatusChange={handleStatusChange}
+            onStart={(a) => void startAppointment(a)}
+          />
+        )}
+
+        {viewMode === "list" && (
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-center">Horário</TableHead>
+                    <TableHead className="text-center">Paciente</TableHead>
+                    <TableHead className="text-center">Consultório</TableHead>
+                    <TableHead className="text-center">Tipo</TableHead>
+                    <TableHead className="text-center">Situação</TableHead>
+                    <TableHead className="text-center">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loading ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                        Carregando…
+                      </TableCell>
+                    </TableRow>
+                  ) : visibleRows.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                        Nenhuma consulta neste dia.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    visibleRows.map((a) => (
+                      <TableRow key={a.id}>
+                        <TableCell className="text-center font-mono text-sm">
+                          {formatTimeInterval(a.start_time, a.end_time)}
+                        </TableCell>
+                        <TableCell className="text-center font-medium">
+                          {a.patients?.full_name ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-center text-sm text-muted-foreground">
+                          {a.rooms?.name ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-center text-sm">
+                          {APPOINTMENT_TYPE_LABEL[a.type ?? ""] ?? a.type ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex justify-center">
+                            <Select
+                              value={
+                                PROFESSIONAL_AGENDA_STATUS_VALUES.has(a.status) ? a.status : undefined
+                              }
+                              onValueChange={async (value) => {
+                                await handleStatusChange(a.id, value);
+                              }}
+                            >
+                              <SelectTrigger
+                                className={cn(
+                                  "w-36 border font-medium shadow-none",
+                                  PROFESSIONAL_AGENDA_STATUS_TRIGGER[a.status] ??
+                                    PROFESSIONAL_AGENDA_STATUS_TRIGGER.scheduled,
+                                )}
+                              >
+                                <SelectValue
+                                  placeholder={APPOINTMENT_STATUS_LABEL[a.status] ?? a.status}
+                                />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {PROFESSIONAL_AGENDA_STATUS_OPTIONS.map((opt) => (
+                                  <SelectItem
+                                    key={opt.value}
+                                    value={opt.value}
+                                    className={cn(
+                                      "my-0.5 border font-medium",
+                                      PROFESSIONAL_AGENDA_STATUS_ITEM[opt.value],
+                                    )}
+                                  >
+                                    {opt.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex flex-wrap justify-center gap-1">
+                            <AgendaContactActions
+                              phone={a.patients?.phone}
+                              patientName={a.patients?.full_name}
+                              size="icon"
+                            />
+                            {["scheduled", "confirmed", "rescheduled"].includes(a.status) &&
+                              a.patient_id && (
+                                <Button size="sm" onClick={() => void startAppointment(a)}>
+                                  <PlayCircle className="mr-1 size-4" />
+                                  Iniciar
+                                </Button>
+                              )}
+                            {a.patient_id && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() =>
+                                  navigate({
+                                    to: "/professional/patients/$id/record",
+                                    params: { id: a.patient_id! },
+                                  })
+                                }
+                              >
+                                <Eye className="mr-1 size-4" />
+                                Prontuário
+                              </Button>
+                            )}
+                            {a.status === "in_progress" && (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => void handleStatusChange(a.id, "completed")}
+                              >
+                                Concluir
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </DashboardShell>
+  );
+}
