@@ -162,6 +162,9 @@ export async function upsertConversation(
   options?: { incrementUnread?: boolean },
 ) {
   const phone = normalizeBrazilPhone(fromPhone);
+  if (!phone) {
+    throw new Error(`Telefone inválido para conversa WhatsApp: ${fromPhone || "(vazio)"}`);
+  }
   const autoPatient = await findPatientByPhone(tenantId, phone);
   const existing = await findConversationByPhoneTail(tenantId, phone);
   const receptionistId = await getDefaultReceptionAssignee(tenantId);
@@ -452,7 +455,10 @@ export async function syncZApiChatsToCrm(tenantId: string, chats: {
   let synced = 0;
   for (const chat of chats) {
     if (chat.isGroup) continue;
-    if (!chat.phone) continue;
+    if (!chat.phone?.trim()) continue;
+
+    const phone = normalizeBrazilPhone(chat.phone);
+    if (!phone) continue;
 
     const tsRaw = chat.lastMessageTime;
     const ts = tsRaw
@@ -461,7 +467,7 @@ export async function syncZApiChatsToCrm(tenantId: string, chats: {
     const preview = zapiChatPreview(chat);
     const unread = Number(chat.messagesUnread ?? 0);
 
-    const conv = await upsertConversation(tenantId, chat.phone, chat.name ?? null, preview, ts, {
+    const conv = await upsertConversation(tenantId, phone, chat.name ?? null, preview, ts, {
       incrementUnread: false,
     });
 

@@ -77,20 +77,47 @@ export function findConversationByPhone<T extends WaConversationPhoneRow>(
   })[0]!;
 }
 
+/** Chave de agrupamento para deduplicar conversas na lista. */
+export function conversationGroupKey(row: WaConversationPhoneRow & { channel?: string | null }): string {
+  const tail = phoneTail11(normalizeBrazilPhone(row.contact_phone));
+  if (tail) return tail;
+  const name = (row.contact_name ?? "sem-nome").trim().toLowerCase();
+  const channel = row.channel ?? "whatsapp";
+  return `no-phone:${channel}:${name}`;
+}
+
+function pickBestConversation<T extends WaConversationPhoneRow>(rows: T[]): T {
+  return [...rows].sort((a, b) => {
+    const score = (r: WaConversationPhoneRow) =>
+      (r.patient_id ? 4 : 0) +
+      (r.contact_name && !/^\d+$/.test(r.contact_name.replace(/\D/g, "")) ? 2 : 0) +
+      (r.last_message_at ? 1 : 0) +
+      (r.unread_count ?? 0) * 0.01;
+    const diff = score(b) - score(a);
+    if (diff !== 0) return diff;
+    return (a.created_at ?? "").localeCompare(b.created_at ?? "");
+  })[0]!;
+}
+
 /** Lista única por celular — evita “Amor” + paciente com o mesmo número. */
 export function dedupeConversationsByPhone<T extends WaConversationPhoneRow>(rows: T[]): T[] {
   const groups = new Map<string, T[]>();
   for (const row of rows) {
-    const tail = phoneTail11(normalizeBrazilPhone(row.contact_phone));
-    const list = groups.get(tail) ?? [];
+    const key = conversationGroupKey(row);
+    const list = groups.get(key) ?? [];
     list.push(row);
-    groups.set(tail, list);
+    groups.set(key, list);
   }
 
   const deduped: T[] = [];
   for (const group of groups.values()) {
-    const keeper = findConversationByPhone(group, group[0]!.contact_phone);
-    if (keeper) deduped.push(keeper);
+    const tail = phoneTail11(normalizeBrazilPhone(group[0]!.contact_phone));
+    const keeper = tail
+      ? findConversationByPhone(group, group[0]!.contact_phone) ?? pickBestConversation(group)
+      : pickBestConversation(group);
+
+    const totalUnread = group.reduce((sum, row) => sum + (row.unread_count ?? 0), 0);
+    deduped.push({ ...keeper, unread_count: totalUnread });
   }
 
   return deduped.sort(

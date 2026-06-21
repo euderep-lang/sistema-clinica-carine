@@ -75,7 +75,7 @@ export const getCrmMetrics = createServerFn({ method: "GET" })
         .is("assigned_to", null),
       context.supabase
         .from("wa_conversations" as never)
-        .select("unread_count")
+        .select("id", { count: "exact", head: true })
         .eq("tenant_id", tenantId)
         .gt("unread_count", 0),
       context.supabase
@@ -92,10 +92,7 @@ export const getCrmMetrics = createServerFn({ method: "GET" })
         .gte("created_at", new Date(Date.now() - 7 * 86400000).toISOString()),
     ]);
 
-    const unreadTotal = ((unreadRes.data ?? []) as { unread_count: number }[]).reduce(
-      (s, r) => s + r.unread_count,
-      0,
-    );
+    const unreadTotal = unreadRes.count ?? 0;
 
     let avgFirstResponseMinutes: number | null = null;
     const withResponse = (responseRes.data ?? []) as { first_response_at: string; created_at: string }[];
