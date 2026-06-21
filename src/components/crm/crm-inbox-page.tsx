@@ -15,7 +15,6 @@ import {
   Paperclip,
   Plus,
   FileAudio,
-  RefreshCw,
   Reply,
   Search,
   Send,
@@ -117,7 +116,6 @@ import {
   linkWaPatient,
   reopenWaConversation,
   searchWaMessages,
-  syncWaChatsFromZApi,
   toggleWaConversationTag,
   markWaObjection,
   processWaFollowUps,
@@ -228,9 +226,7 @@ export function CrmInboxPage() {
   const markObjectionFn = useServerFn(markWaObjection);
   const processFollowUpsFn = useServerFn(processWaFollowUps);
   const searchMsgFn = useServerFn(searchWaMessages);
-  const syncChatsFn = useServerFn(syncWaChatsFromZApi);
   const createDealFn = useServerFn(createWaDeal);
-  const [syncingChats, setSyncingChats] = useState(false);
 
   const selected = useMemo(
     () => conversations.find((c) => c.id === selectedId) ?? null,
@@ -1005,20 +1001,6 @@ export function CrmInboxPage() {
     }
   };
 
-  const syncChatsFromWhatsApp = async () => {
-    setSyncingChats(true);
-    try {
-      const res = await syncChatsFn();
-      await loadConversations({ silent: true });
-      if (selectedId) await loadConversationDetails(selectedId);
-      toast.success(`${res.synced} conversa(s) sincronizada(s) com o WhatsApp`);
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setSyncingChats(false);
-    }
-  };
-
   const assignQueueToReception = async (allOpen = false) => {
     try {
       const res = await assignQueueFn({ data: { allOpen } });
@@ -1131,17 +1113,6 @@ export function CrmInboxPage() {
                 setMobileView("list");
               }}
             />
-            {provider === "zapi" ? (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={syncingChats}
-                onClick={() => void syncChatsFromWhatsApp()}
-              >
-                <RefreshCw className={cn("mr-2 size-4", syncingChats && "animate-spin")} />
-                Sincronizar chats
-              </Button>
-            ) : null}
             {(profile?.role === "admin" || profile?.role === "receptionist") ? (
               <Button variant="outline" size="sm" onClick={() => void assignQueueToReception(true)}>
                 Atribuir à recepção
@@ -1535,10 +1506,7 @@ export function CrmInboxPage() {
                           A Z-API não permite importar conversas antigas do celular.
                         </p>
                         <p className="mt-2">
-                          {selected?.last_message_preview === "Sincronizado com WhatsApp" ||
-                          selected?.last_message_preview === "Aguardando mensagens (webhook)"
-                            ? "Este contato veio do botão “Sincronizar chats” (só a lista, sem mensagens)."
-                            : "Envie ou receba uma mensagem agora para começar o histórico aqui."}
+                          Envie ou receba uma mensagem agora para começar o histórico aqui.
                         </p>
                       </div>
                     </div>

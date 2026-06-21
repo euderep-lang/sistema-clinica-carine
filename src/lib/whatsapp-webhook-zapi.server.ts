@@ -18,6 +18,10 @@ interface ZApiReceivedPayload {
   senderName?: string;
   chatName?: string;
   isGroup?: boolean;
+  isNewsletter?: boolean;
+  isStatusReply?: boolean;
+  broadcast?: boolean;
+  notification?: string;
   status?: string;
   text?: { message?: string };
   image?: { imageUrl?: string; mimeType?: string; caption?: string };
@@ -91,12 +95,27 @@ function mediaFromZApi(payload: ZApiReceivedPayload): {
   return { messageType: "unknown", body: previewFromZApi(payload) };
 }
 
+/** Ignora status, stories, notificações e listas — não são conversas reais. */
+function shouldIgnoreZApiMessage(payload: ZApiReceivedPayload): boolean {
+  if (payload.isGroup) return true;
+  if (payload.isNewsletter) return true;
+  if (payload.isStatusReply) return true;
+  if (payload.broadcast) return true;
+  if (payload.notification) return true;
+  const phone = payload.phone ?? "";
+  if (phone.includes("@broadcast") || phone.includes("status@")) return true;
+  return false;
+}
+
 async function processZApiReceived(tenantId: string, payload: ZApiReceivedPayload) {
   if (!payload.phone || !payload.messageId) {
     console.warn("[Z-API webhook] ignorado: sem phone ou messageId", payload.type);
     return;
   }
-  if (payload.isGroup) return;
+  if (shouldIgnoreZApiMessage(payload)) {
+    console.info("[Z-API webhook] ignorado (status/notificação):", payload.notification ?? payload.phone);
+    return;
+  }
 
   const media = mediaFromZApi(payload);
   const preview = previewFromZApi(payload);
