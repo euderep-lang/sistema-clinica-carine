@@ -3,21 +3,20 @@ import { createMiddleware } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from './types'
+import { getSupabaseServerEnv } from '@/lib/supabase-env.server'
 
 
 
 export const requireSupabaseAuth = createMiddleware({ type: 'function' }).server(
   async ({ next }) => {
-    
-    const SUPABASE_URL = process.env.SUPABASE_URL;
-    const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY;
+    const { url: SUPABASE_URL, publishableKey: SUPABASE_PUBLISHABLE_KEY } = getSupabaseServerEnv();
 
     if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
       const missing = [
-        ...(!SUPABASE_URL ? ['SUPABASE_URL'] : []),
-        ...(!SUPABASE_PUBLISHABLE_KEY ? ['SUPABASE_PUBLISHABLE_KEY'] : []),
+        ...(!SUPABASE_URL ? ['SUPABASE_URL (ou VITE_SUPABASE_URL)'] : []),
+        ...(!SUPABASE_PUBLISHABLE_KEY ? ['SUPABASE_PUBLISHABLE_KEY (ou VITE_SUPABASE_PUBLISHABLE_KEY)'] : []),
       ];
-      const message = `Variável(is) de ambiente do Supabase ausente(s): ${missing.join(', ')}. Configure-as no arquivo .env (veja .env.example).`;
+      const message = `Variável(is) de ambiente do Supabase ausente(s): ${missing.join(', ')}. Configure-as no .env local e na Vercel (Settings → Environment Variables).`;
       console.error(`[Supabase] ${message}`);
       throw new Error(message);
     }
@@ -44,8 +43,8 @@ export const requireSupabaseAuth = createMiddleware({ type: 'function' }).server
     }
 
     const supabase = createClient<Database>(
-      SUPABASE_URL!,
-      SUPABASE_PUBLISHABLE_KEY!,
+      SUPABASE_URL,
+      SUPABASE_PUBLISHABLE_KEY,
       {
         global: {
           headers: {

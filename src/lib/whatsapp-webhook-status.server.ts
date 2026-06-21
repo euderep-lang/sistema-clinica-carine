@@ -19,7 +19,7 @@ export async function getWhatsAppWebhookStatus() {
     }
   }
 
-  const ok = supabase.ready && Boolean(tenantId) && provider === "zapi" && Boolean(zapi);
+  const ok = supabase.ready && supabase.authReady && Boolean(tenantId) && provider === "zapi" && Boolean(zapi);
 
   return {
     ok,
@@ -38,6 +38,9 @@ export async function getWhatsAppWebhookStatus() {
       !supabase.hasUrl ? "Configure SUPABASE_URL na Vercel (ou VITE_SUPABASE_URL)." : null,
       !supabase.hasServiceRoleKey
         ? "Configure SUPABASE_SERVICE_ROLE_KEY na Vercel — obrigatório para o webhook gravar mensagens."
+        : null,
+      !supabase.hasPublishableKey
+        ? "Configure SUPABASE_PUBLISHABLE_KEY na Vercel (ou VITE_SUPABASE_PUBLISHABLE_KEY) — necessário para enviar mensagens pelo CRM."
         : null,
       provider !== "zapi" ? "Configure WHATSAPP_PROVIDER=zapi na Vercel." : null,
       !zapi ? "Configure ZAPI_INSTANCE_ID, ZAPI_TOKEN e ZAPI_CLIENT_TOKEN na Vercel." : null,
