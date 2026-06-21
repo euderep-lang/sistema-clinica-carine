@@ -1653,7 +1653,7 @@ async function handleWhatsAppWebhook(request) {
 let serverEntryPromise;
 async function getServerEntry() {
   if (!serverEntryPromise) {
-    serverEntryPromise = import("./assets/server-CAXiU2vY.js").then((n) => n.s).then(
+    serverEntryPromise = import("./assets/server-CATTbrgJ.js").then((n) => n.s).then(
       (m) => m.default ?? m
     );
   }

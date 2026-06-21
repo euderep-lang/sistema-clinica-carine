@@ -167,7 +167,10 @@ export async function handleZApiWebhook(request: Request): Promise<Response> {
     return new Response("OK", { status: 200 });
   }
 
-  const tenantId = await resolveTenantId();
+  const tenantId = await resolveTenantId().catch((e) => {
+    console.error("[Z-API webhook] falha ao conectar Supabase (verifique SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY na Vercel):", e);
+    return null;
+  });
   if (!tenantId) return new Response("OK", { status: 200 });
 
   try {

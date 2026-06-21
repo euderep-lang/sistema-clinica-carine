@@ -2,7 +2,7 @@
  * Configura webhooks da Z-API apontando para o ClinicOS.
  *
  * Uso:
- *   ZAPI_WEBHOOK_BASE_URL=https://xxxx.ngrok-free.app bun run scripts/setup-zapi-webhook.ts
+ *   ZAPI_WEBHOOK_BASE_URL=https://sistema-clinicos.vercel.app bun run scripts/setup-zapi-webhook.ts
  */
 import { getZApiConfig } from "../src/lib/whatsapp-zapi.server";
 
@@ -38,14 +38,8 @@ async function zapiPut(path: string, body: unknown) {
 async function main() {
   console.log("Webhook:", webhookUrl);
 
-  await zapiPut("/update-webhook-received", { value: webhookUrl });
-  console.log("✓ Ao receber");
-
-  await zapiPut("/update-webhook-received-delivery", { value: webhookUrl });
-  console.log("✓ Ao receber (incl. enviadas por mim)");
-
-  await zapiPut("/update-webhook-delivery", { value: webhookUrl });
-  console.log("✓ Ao enviar");
+  await zapiPut("/update-every-webhooks", { value: webhookUrl, notifySentByMe: true });
+  console.log("✓ Todos os webhooks (receber, enviar, status, etc.)");
 
   console.log("\nPronto. Mande um WhatsApp de teste e abra /crm/inbox");
 }

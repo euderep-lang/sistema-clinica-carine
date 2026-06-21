@@ -20,6 +20,6 @@ export const crmFilterPill = (active: boolean) =>
 export const crmComposerBar =
   "border-t border-border/50 bg-[#f0f2f5]/95 px-3 py-2.5 backdrop-blur-sm dark:bg-background/95 pb-[max(0.625rem,env(safe-area-inset-bottom))]";
 
-/** 3 colunas iguais no desktop — classes padrão Tailwind (arbitrary grid não entra no build) */
+/** 3 colunas no desktop (20% / 50% / 30%) — grid-template via style inline no shell */
 export const crmPanelShell =
-  "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border/60 bg-card shadow-[0_1px_3px_rgba(0,0,0,0.06)] lg:grid lg:grid-cols-3";
+  "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border/60 bg-card shadow-[0_1px_3px_rgba(0,0,0,0.06)] lg:grid";

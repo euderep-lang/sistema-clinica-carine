@@ -1078,7 +1078,8 @@ export function CrmInboxPage() {
             <li>ZAPI_CLIENT_TOKEN (se ativou token de segurança)</li>
           </ul>
           <p className="mt-3">
-            Webhook Z-API (HTTPS): <code className="rounded bg-muted px-1">https://seu-dominio/api/whatsapp/webhook</code>
+            Webhook Z-API (HTTPS):{" "}
+            <code className="rounded bg-muted px-1">https://sistema-clinicos.vercel.app/api/whatsapp/webhook</code>
           </p>
           <p className="mt-3 text-xs">
             No painel Z-API → Instâncias → editar → configure o webhook <strong>Ao receber</strong>.
@@ -1205,7 +1206,10 @@ export function CrmInboxPage() {
           }}
         />
 
-        <div className={cn(crmPanelShell, "min-h-0 flex-1 lg:grid-cols-3")}>
+        <div
+          className={cn(crmPanelShell, "min-h-0 flex-1")}
+          style={{ gridTemplateColumns: "20% 50% 30%" }}
+        >
           {/* Coluna 1 — Contatos */}
           <aside
             className={cn(

@@ -1,0 +1,1 @@
+import{j as o,D as r}from"./index-Dzk7Z7I9.js";import{S as t}from"./section-servicos-Dxlqb7Yd.js";import"./info-e0fZvSF6.js";function n(){return o.jsx(r,{title:"Serviços",children:o.jsx(t,{})})}export{n as component};
