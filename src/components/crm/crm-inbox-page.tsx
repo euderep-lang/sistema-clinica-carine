@@ -1205,11 +1205,11 @@ export function CrmInboxPage() {
           }}
         />
 
-        <div className={cn(crmPanelShell, "min-h-0 flex-1")}>
-          {/* Lista */}
+        <div className={cn(crmPanelShell, "min-h-0 flex-1 lg:grid-cols-3")}>
+          {/* Coluna 1 — Contatos */}
           <aside
             className={cn(
-              "flex min-w-0 flex-col overflow-hidden border-border/60 bg-muted/20 lg:border-r",
+              "flex min-h-0 min-w-0 flex-col overflow-hidden border-border/60 bg-muted/20 lg:border-r",
               mobileView !== "list" && "hidden lg:flex",
             )}
           >
@@ -1421,10 +1421,10 @@ export function CrmInboxPage() {
             </div>
           </aside>
 
-          {/* Chat */}
+          {/* Coluna 2 — Chat */}
           <main
             className={cn(
-              "flex min-w-0 flex-col overflow-hidden",
+              "flex min-h-0 min-w-0 flex-col overflow-hidden",
               mobileView === "list" && "hidden lg:flex",
               mobileView === "details" && "hidden lg:flex",
             )}
@@ -1652,10 +1652,11 @@ export function CrmInboxPage() {
             )}
           </main>
 
-          {/* Painel lateral */}
+          {/* Coluna 3 — Funções (tags, paciente, tarefas…) */}
           <aside
             className={cn(
               crmDetailAsideShell,
+              "min-h-0 min-w-0",
               mobileView !== "details" && "hidden lg:flex",
             )}
           >
