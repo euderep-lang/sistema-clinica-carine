@@ -59,19 +59,19 @@ export const crmDetailTabTrigger =
   "group flex min-w-[4.5rem] shrink-0 flex-col items-center gap-1 rounded-xl px-2 py-2 text-[10px] font-medium transition-all lg:min-w-0 lg:w-full data-[state=active]:bg-background data-[state=active]:text-emerald-800 data-[state=active]:shadow-sm data-[state=active]:ring-1 data-[state=active]:ring-emerald-200/80 dark:data-[state=active]:text-emerald-200 dark:data-[state=active]:ring-emerald-900/50 text-muted-foreground hover:bg-background/70 hover:text-foreground";
 
 export const crmDetailAsideShell =
-  "flex w-full shrink-0 flex-col border-border/60 bg-[#f7f9f8] dark:bg-zinc-950 lg:w-[min(100%,340px)] lg:border-l";
+  "flex min-w-0 w-full shrink-0 flex-col overflow-hidden border-border/60 bg-[#f7f9f8] dark:bg-zinc-950 lg:w-auto lg:border-l";
 
 export const crmDetailTabsRoot = "flex min-h-0 flex-1 flex-col lg:flex-row";
 
 export const crmDetailTabList =
-  "mx-0 flex h-auto w-full shrink-0 gap-1 overflow-x-auto border-b border-border/50 bg-background/80 p-2 [-ms-overflow-style:none] [scrollbar-width:none] lg:w-[4.75rem] lg:flex-col lg:overflow-visible lg:border-b-0 lg:border-r lg:p-1.5 [&::-webkit-scrollbar]:hidden";
+  "mx-0 flex h-auto w-full shrink-0 gap-1 overflow-x-auto border-b border-border/50 bg-background/80 p-2 [-ms-overflow-style:none] [scrollbar-width:none] lg:w-[4.25rem] lg:flex-col lg:overflow-visible lg:border-b-0 lg:border-r lg:p-1 [&::-webkit-scrollbar]:hidden";
 
 export const crmDetailContentWrap = "flex min-h-0 min-w-0 flex-1 flex-col";
 
 export const crmDetailHeader =
-  "shrink-0 border-b border-border/40 bg-background/90 px-4 py-3 backdrop-blur-sm";
+  "shrink-0 border-b border-border/40 bg-background/90 px-3 py-2.5 backdrop-blur-sm";
 
-export const crmDetailScroll = "min-h-0 flex-1 overflow-y-auto px-4 py-4";
+export const crmDetailScroll = "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3";
 
 export const crmDetailTabContent = "mt-0 space-y-4 focus-visible:outline-none focus-visible:ring-0";
 

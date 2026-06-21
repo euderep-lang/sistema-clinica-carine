@@ -702,6 +702,7 @@ function renderTemplate(content, vars) {
   return content.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] ?? `{{${k}}}`);
 }
 const TEMPLATE_VARS = [
+  "primeiro_nome",
   "nome_paciente",
   "data_consulta",
   "hora_consulta",
@@ -1652,7 +1653,7 @@ async function handleWhatsAppWebhook(request) {
 let serverEntryPromise;
 async function getServerEntry() {
   if (!serverEntryPromise) {
-    serverEntryPromise = import("./assets/server-COT59iTL.js").then((n) => n.s).then(
+    serverEntryPromise = import("./assets/server-CAXiU2vY.js").then((n) => n.s).then(
       (m) => m.default ?? m
     );
   }
@@ -1692,7 +1693,7 @@ const server = {
   }
 };
 export {
-  dedupeConversationsByPhone as $,
+  TEMPLATE_VARS as $,
   sendWhatsAppTemplate as A,
   getWhatsAppStatusPayload as B,
   sendMetaSocialText as C,
@@ -1721,19 +1722,19 @@ export {
   fmtMoney as Z,
   fmtMessageTime as _,
   applyThemeColors as a,
-  fmtRelativeTime as a0,
-  DEFAULT_HOURS as a1,
-  maskCNPJ as a2,
-  maskPhone as a3,
-  maskCEP as a4,
-  DAY_LABELS as a5,
-  fetchViaCEP as a6,
-  setTenantSetting as a7,
-  FONT_OPTIONS as a8,
-  loadGoogleFont as a9,
-  resolveSpecialties as aa,
-  isLegacySpecialtyList as ab,
-  TEMPLATE_VARS as ac,
+  dedupeConversationsByPhone as a0,
+  fmtRelativeTime as a1,
+  DEFAULT_HOURS as a2,
+  maskCNPJ as a3,
+  maskPhone as a4,
+  maskCEP as a5,
+  DAY_LABELS as a6,
+  fetchViaCEP as a7,
+  setTenantSetting as a8,
+  FONT_OPTIONS as a9,
+  loadGoogleFont as aa,
+  resolveSpecialties as ab,
+  isLegacySpecialtyList as ac,
   SAMPLE_VARS as ad,
   currentYearMonth as ae,
   formatClinicAddressLines as af,

@@ -1,0 +1,1 @@
+import{j as o,D as r}from"./index-BHmDq_lw.js";import{S as t}from"./section-servicos-C0LVPiL4.js";import"./info-Bk-o1dSK.js";function n(){return o.jsx(r,{title:"Serviços",children:o.jsx(t,{})})}export{n as component};

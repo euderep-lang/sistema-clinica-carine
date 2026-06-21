@@ -1091,10 +1091,10 @@ export function CrmInboxPage() {
 
   return (
     <DashboardShell title="CRM WhatsApp" fullWidth>
-      <div className="flex h-[calc(100dvh-4rem)] flex-col gap-3 lg:h-[calc(100dvh-7.5rem)]">
+      <div className="flex h-[calc(100dvh-4rem)] min-w-0 flex-col gap-3 overflow-x-hidden lg:h-[calc(100dvh-7.5rem)]">
         {/* Toolbar desktop */}
-        <div className="hidden shrink-0 items-center justify-between gap-4 lg:flex">
-          <div className="min-w-0">
+        <div className="hidden min-w-0 shrink-0 flex-wrap items-center justify-between gap-3 lg:flex">
+          <div className="min-w-0 shrink">
             <div className="flex items-center gap-2.5">
               <h1 className="font-display text-xl font-semibold tracking-tight">Inbox WhatsApp</h1>
               <CrmConnectionBadge subtle />
@@ -1105,7 +1105,7 @@ export function CrmInboxPage() {
                 : "Atendimento compartilhado da clínica"}
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2">
             <CrmGlobalSearch onOpenConversation={(id) => selectConversation(id)} />
             <CrmBroadcastDialog conversations={conversations} provider={provider} />
             <Button variant="outline" size="sm" asChild>
@@ -1209,11 +1209,11 @@ export function CrmInboxPage() {
           {/* Lista */}
           <aside
             className={cn(
-              "flex w-full min-w-0 shrink-0 flex-col overflow-hidden border-border/60 bg-muted/20 lg:w-[320px] lg:max-w-[320px] lg:border-r",
+              "flex min-w-0 flex-col overflow-hidden border-border/60 bg-muted/20 lg:border-r",
               mobileView !== "list" && "hidden lg:flex",
             )}
           >
-            <div className="space-y-2.5 border-b border-border/50 p-3">
+            <div className="space-y-2 border-b border-border/50 p-2.5">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -1424,7 +1424,7 @@ export function CrmInboxPage() {
           {/* Chat */}
           <main
             className={cn(
-              "flex min-w-0 flex-1 flex-col",
+              "flex min-w-0 flex-col overflow-hidden",
               mobileView === "list" && "hidden lg:flex",
               mobileView === "details" && "hidden lg:flex",
             )}
@@ -1439,8 +1439,8 @@ export function CrmInboxPage() {
               </div>
             ) : (
               <>
-                <div className="flex items-center justify-between gap-3 border-b border-border/50 bg-background/95 px-4 py-3 backdrop-blur-sm">
-                  <div className="flex min-w-0 items-center gap-3">
+                <div className="flex items-center justify-between gap-2 border-b border-border/50 bg-background/95 px-3 py-2.5 backdrop-blur-sm">
+                  <div className="flex min-w-0 items-center gap-2.5">
                     {composeTarget ? (
                       <CrmContactAvatar
                         name={composeTarget.name}
@@ -1507,7 +1507,7 @@ export function CrmInboxPage() {
                     ) : null}
                   </div>
                 ) : null}
-                <ScrollArea className={cn("flex-1 px-4 py-4", crmChatBg)}>
+                <ScrollArea className={cn("min-h-0 flex-1 overflow-x-hidden px-3 py-3", crmChatBg)}>
                   {composeTarget ? (
                     <div className="flex min-h-[min(50vh,320px)] flex-col items-center justify-center py-12">
                       <div className="max-w-sm rounded-2xl bg-background/85 px-5 py-4 text-center text-sm text-muted-foreground shadow-sm backdrop-blur-sm">

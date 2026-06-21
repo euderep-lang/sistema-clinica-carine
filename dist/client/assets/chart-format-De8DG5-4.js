@@ -1,1 +1,0 @@
-import{cy as o}from"./index-BNTeBg0F.js";const n=92;function r(t){return o(Number(t))}function c(t){return o(Number(t))}const i={width:n,tickMargin:4,tickFormatter:r},e={tickFormatter:r,tickMargin:8},s={top:8,right:12,left:4,bottom:0};export{i as a,e as b,s as c,c as f};
