@@ -241,6 +241,7 @@ export function ProfessionalAgendaWeekView({
                               <div className="flex flex-wrap gap-1">
                                 <AgendaContactActions
                                   phone={row.patients?.phone}
+                                  patientId={row.patient_id}
                                   patientName={row.patients?.full_name}
                                   size="icon"
                                 />

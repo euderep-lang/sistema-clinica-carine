@@ -11,6 +11,12 @@ export default defineConfig({
     server: {
       port: 8080,
       strictPort: true,
+      allowedHosts: [
+        "localhost",
+        ".ngrok-free.dev",
+        ".ngrok-free.app",
+        ".ngrok.io",
+      ],
     },
   },
   tanstackStart: {

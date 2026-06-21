@@ -1,11 +1,9 @@
+import { fmtDateFromDate } from "@/lib/locale";
+
 export type PhotoUploadKind = "exams" | "before_after";
 
 export function photoDateLabel(date = new Date()) {
-  return date.toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  return fmtDateFromDate(date);
 }
 
 export function photoGroupCaption(kind: PhotoUploadKind, dateLabel = photoDateLabel()) {
@@ -13,5 +11,5 @@ export function photoGroupCaption(kind: PhotoUploadKind, dateLabel = photoDateLa
 }
 
 export function photoAttachmentCaption(dateLabel = photoDateLabel()) {
-  return dateLabel;
+  return `Anexo do dia ${dateLabel}`;
 }

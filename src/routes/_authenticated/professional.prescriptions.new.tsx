@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { todayISO, fmtDate } from "@/lib/locale";
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { ArrowLeft, Plus, Trash2, Stethoscope, AlertTriangle, Shield, Copy, FileDown, Send } from "lucide-react";
-import { toast } from "sonner";
+import { openCrmInbox } from "@/lib/crm-navigation";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -228,7 +229,7 @@ function NewPrescription() {
   const [patientId, setPatientId] = useState<string>(search.patient_id ?? "");
   const [patientSearch, setPatientSearch] = useState("");
   const [patientOpen, setPatientOpen] = useState(false);
-  const [date, setDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState<string>(todayISO());
   const [type, setType] = useState<RxType>("simples");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<ItemForm[]>([emptyItem()]);
@@ -583,8 +584,11 @@ function NewPrescription() {
 
   const sendWhats = () => {
     if (!patient?.phone) { toast.error("Paciente sem telefone"); return; }
-    const d = patient.phone.replace(/\D/g, "");
-    window.open(`https://wa.me/55${d}?text=${encodeURIComponent("Segue sua receita médica")}`, "_blank");
+    openCrmInbox(navigate, {
+      patientId: patientId || undefined,
+      phone: patient.phone,
+      draft: "Segue sua receita médica",
+    });
   };
 
   if (loadingDraft) {
@@ -833,7 +837,7 @@ function NewPrescription() {
           </p>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => doneDialog && window.open(doneDialog.url, "_blank")}><FileDown className="h-4 w-4 mr-2" />Baixar documento</Button>
-            <Button onClick={sendWhats}><Send className="h-4 w-4 mr-2" />Enviar por WhatsApp</Button>
+            <Button onClick={sendWhats}><Send className="h-4 w-4 mr-2" />Enviar pelo CRM</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -916,7 +920,7 @@ function SpecialControlPreview({ data }: { data: RxData }) {
 
           <div className="mt-auto space-y-3 pt-4">
             <div className="flex items-end justify-between gap-4">
-              <span className="text-[11px]">DATA: {new Date(data.date + "T00:00").toLocaleDateString("pt-BR")}</span>
+              <span className="text-[11px]">DATA: {fmtDate(data.date)}</span>
               <div className="flex-1 text-center">
                 <div className="border-b border-black/50" />
                 <p className="mt-1 text-[8px]">Assinatura e Carimbo do Emitente</p>
@@ -977,7 +981,7 @@ function SimplePreviewPanel({ data }: { data: RxData }) {
             {[
               data.patient.cpf ? `CPF: ${maskCPF(data.patient.cpf)}` : null,
               age !== null ? `Idade: ${age} anos` : null,
-              `Data: ${new Date(data.date + "T00:00").toLocaleDateString("pt-BR")}`,
+              `Data: ${fmtDate(data.date)}`,
             ]
               .filter(Boolean)
               .join(" · ")}
@@ -1057,7 +1061,7 @@ function StandardPreviewPanel({ data }: { data: RxData }) {
           <span>
             Paciente: <strong>{data.patient.full_name}</strong>
           </span>
-          <span>Data: {new Date(data.date + "T00:00").toLocaleDateString("pt-BR")}</span>
+          <span>Data: {fmtDate(data.date)}</span>
         </div>
         <div className="flex justify-between text-[11px]">
           <span>CPF: {data.patient.cpf ? maskCPF(data.patient.cpf) : "—"}</span>

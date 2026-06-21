@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { todayISO, shiftDateISO } from "@/lib/locale";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AlertTriangle, TrendingUp, TrendingDown, Wallet, BarChart3 } from "lucide-react";
 import { BarChart, Bar, Line, ComposedChart, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
@@ -11,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { fmt, fmtDate, BILL_STATUS_LABEL, BILL_STATUS_CLASS, isOverdue } from "@/lib/currency";
+import { chartMoneyMargin, chartMoneyYAxisProps, fmtChartMoneyTooltip } from "@/lib/chart-format";
 
 export const Route = createFileRoute("/_authenticated/financial/dashboard")({ component: Dashboard });
 
@@ -28,7 +30,7 @@ function Dashboard() {
     setPay(((p ?? []) as unknown) as BP[]);
   })(); }, []);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayISO();
   const month = today.slice(0, 7);
   const monthIncome = recv.filter((b) => b.paid_date && b.paid_date.startsWith(month)).reduce((s, b) => s + Number(b.paid_amount), 0);
   const monthExpense = pay.filter((b) => b.paid_date && b.paid_date.startsWith(month)).reduce((s, b) => s + Number(b.amount), 0);
@@ -40,12 +42,11 @@ function Dashboard() {
   const days: { day: string; income: number; expense: number; balance: number }[] = [];
   let cumulative = 0;
   for (let i = 29; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate() - i);
-    const k = d.toISOString().slice(0, 10);
+    const k = shiftDateISO(today, -i);
     const inc = recv.filter((b) => b.paid_date === k).reduce((s, b) => s + Number(b.paid_amount), 0);
     const exp = pay.filter((b) => b.paid_date === k).reduce((s, b) => s + Number(b.amount), 0);
     cumulative += inc - exp;
-    days.push({ day: `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}`, income: inc, expense: exp, balance: cumulative });
+    days.push({ day: fmtDate(k).slice(0, 5), income: inc, expense: exp, balance: cumulative });
   }
 
   const overdueRecv = recv.filter((b) => isOverdue(b.due_date, b.status));
@@ -102,11 +103,11 @@ function Dashboard() {
           <CardContent>
             <div className="h-72 w-full">
               <ResponsiveContainer>
-                <ComposedChart data={days}>
+                <ComposedChart data={days} margin={chartMoneyMargin}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="day" />
-                  <YAxis />
-                  <Tooltip formatter={(v: number) => fmt(v)} />
+                  <YAxis {...chartMoneyYAxisProps} />
+                  <Tooltip formatter={(v: number) => fmtChartMoneyTooltip(v)} />
                   <Legend />
                   <Bar dataKey="income" name="Receita" fill="var(--color-success)" />
                   <Bar dataKey="expense" name="Despesa" fill="var(--color-destructive)" />

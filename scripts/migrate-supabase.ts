@@ -103,6 +103,7 @@ async function applySchema() {
       if (
         msg.includes("already exists") ||
         msg.includes("duplicate key") ||
+        msg.includes("already member of publication") ||
         /relation "public\.\w+" already exists/.test(msg)
       ) {
         console.log("já aplicado");
@@ -173,6 +174,14 @@ async function copyData() {
   }
 
   for (const table of DATA_TABLES) {
+    if (table === "profiles") {
+      const existingProfiles = await fetchAll(newClient, "profiles");
+      if (existingProfiles.length > 0) {
+        console.log(`  profiles: ${existingProfiles.length} já existem — pulando cópia`);
+        continue;
+      }
+    }
+
     const rows = await fetchAll(oldClient, table);
     if (!rows.length) {
       console.log(`  ${table}: vazio`);
@@ -212,12 +221,10 @@ async function seedUsers() {
     console.log("  auth criado");
   } else {
     const { error } = await admin.auth.admin.updateUserById(userId, {
-      password,
       email_confirm: true,
-      user_metadata: { full_name: MASTER_NAME },
     });
     if (error) throw error;
-    console.log("  auth atualizado");
+    console.log("  auth verificado (senha e cargo não são alterados automaticamente)");
   }
 
   await admin.from("tenants").update({
@@ -226,14 +233,34 @@ async function seedUsers() {
     email,
   }).eq("id", TENANT_ID);
 
-  const { error: pErr } = await admin.from("profiles").upsert({
-    id: userId,
-    tenant_id: TENANT_ID,
-    full_name: MASTER_NAME,
-    role: "admin",
-    active: true,
-  });
-  if (pErr) throw pErr;
+  const { data: existingProfile } = await admin
+    .from("profiles")
+    .select("id, role, full_name")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (!existingProfile) {
+    const { error: pErr } = await admin.from("profiles").insert({
+      id: userId,
+      tenant_id: TENANT_ID,
+      full_name: MASTER_NAME,
+      role: "admin",
+      active: true,
+    });
+    if (pErr) throw pErr;
+    console.log("  perfil master criado");
+  } else {
+    const { error: pErr } = await admin
+      .from("profiles")
+      .update({
+        tenant_id: TENANT_ID,
+        active: true,
+        full_name: existingProfile.full_name?.trim() ? existingProfile.full_name : MASTER_NAME,
+      })
+      .eq("id", userId);
+    if (pErr) throw pErr;
+    console.log("  perfil master mantido (cargo e senha preservados)");
+  }
 
   console.log("Usuário master admin pronto (acesso total).");
 }

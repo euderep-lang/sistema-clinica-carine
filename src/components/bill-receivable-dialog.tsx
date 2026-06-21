@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { todayISO, fmtDate } from "@/lib/locale";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -28,7 +29,7 @@ export function NewBillReceivableDialog({ open, onOpenChange, onSaved, defaultPa
   const [proId, setProId] = useState("");
   const [desc, setDesc] = useState("");
   const [amount, setAmount] = useState("");
-  const [dueDate, setDueDate] = useState(new Date().toISOString().slice(0, 10));
+  const [dueDate, setDueDate] = useState(todayISO());
   const [method, setMethod] = useState<string>("");
   const [notes, setNotes] = useState("");
   const [apptId, setApptId] = useState("");
@@ -128,7 +129,7 @@ export function NewBillReceivableDialog({ open, onOpenChange, onSaved, defaultPa
             <div><Label>Vincular a agendamento</Label>
               <Select value={apptId} onValueChange={setApptId}>
                 <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
-                <SelectContent>{appts.map((a) => <SelectItem key={a.id} value={a.id}>{new Date(a.date).toLocaleDateString("pt-BR")}</SelectItem>)}</SelectContent>
+                <SelectContent>{appts.map((a) => <SelectItem key={a.id} value={a.id}>{fmtDate(a.date)}</SelectItem>)}</SelectContent>
               </Select>
             </div>
           )}

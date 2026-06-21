@@ -8,7 +8,6 @@ import {
   User,
   type LucideIcon,
 } from "lucide-react";
-import { whatsappUrl } from "@/lib/agenda-utils";
 import { cn } from "@/lib/utils";
 
 type ShortcutLink = {
@@ -130,7 +129,6 @@ export function PatientShortcuts({
   variant?: "reception" | "professional";
   onSessionsClick?: (patientId: string) => void;
 }) {
-  const wa = whatsappUrl(phone);
   const shortcuts = variant === "professional" ? PROFESSIONAL_SHORTCUTS : RECEPTION_SHORTCUTS;
 
   return (
@@ -167,17 +165,15 @@ export function PatientShortcuts({
           </Link>
         ),
       )}
-      {wa && (
-        <button
-          type="button"
-          title="WhatsApp"
-          aria-label="Abrir WhatsApp do paciente"
-          onClick={() => window.open(wa, "_blank", "noopener,noreferrer")}
-          className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full bg-green-100 text-green-700 transition-colors duration-200 hover:bg-green-200"
-        >
-          <MessageCircle className="size-4" strokeWidth={2.25} />
-        </button>
-      )}
+      <Link
+        to="/crm/inbox"
+        search={{ patient: patientId }}
+        title="CRM WhatsApp"
+        aria-label="Abrir conversa no CRM WhatsApp"
+        className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full bg-green-100 text-green-700 transition-colors duration-200 hover:bg-green-200"
+      >
+        <MessageCircle className="size-4" strokeWidth={2.25} />
+      </Link>
     </div>
   );
 }

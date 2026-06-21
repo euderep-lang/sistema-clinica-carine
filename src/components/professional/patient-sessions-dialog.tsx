@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { fmtDateFromDate } from "@/lib/locale";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -70,7 +71,7 @@ function PatientPackagesList({ packages, onCheckoff, onHistory }: PatientPackage
               <div>
                 <p className="font-medium">{pkg.service_name}</p>
                 <p className="text-xs text-muted-foreground">
-                  Compra em {new Date(pkg.purchased_at).toLocaleDateString("pt-BR")} ·{" "}
+                  Compra em {fmtDateFromDate(new Date(pkg.purchased_at))} ·{" "}
                   {fmt(pkg.unit_price)}
                 </p>
               </div>

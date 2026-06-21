@@ -3,6 +3,7 @@ import {
   type CompetenceBill,
   computeCompetencePeriodStats,
 } from "@/lib/financial-competence";
+import { currentYearMonth, todayISO } from "@/lib/locale";
 
 export interface ProfessionalProduction {
   id: string;
@@ -35,14 +36,7 @@ export function periodFromYearMonth(yearMonth: string): PeriodBounds | null {
   };
 }
 
-export function currentYearMonth(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-export function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+export { currentYearMonth, todayISO };
 
 export function commissionValue(received: number, pct: number): number {
   return received * (pct / 100);

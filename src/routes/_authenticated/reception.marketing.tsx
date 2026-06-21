@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { fmtDateTime, fmtDateFromDate, shiftDateISO, todayISO } from "@/lib/locale";
 import { useEffect, useMemo, useState } from "react";
 import { Cake, Send, Users, BarChart3, Megaphone, ExternalLink, Check, Download } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
@@ -15,7 +16,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
-import { applyVars, buildWhatsAppLink, logMessage, age, daysSince, type PatientLite, CHANNEL_BADGE } from "@/lib/messaging";
+import { applyVars, logMessage, age, daysSince, type PatientLite, CHANNEL_BADGE } from "@/lib/messaging";
+import { openCrmInbox } from "@/lib/crm-navigation";
 import { toast } from "sonner";
 import { randomUUID } from "@/lib/utils";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
@@ -51,6 +53,7 @@ function MarketingPage() {
 // ============ Aniversariantes
 
 function AniversariantesTab({ tenantId, tenantName, userId }: { tenantId: string; tenantName: string; userId: string }) {
+  const navigate = useNavigate();
   const [month, setMonth] = useState(new Date().getMonth());
   const [patients, setPatients] = useState<PatientLite[]>([]);
   const [template, setTemplate] = useState<Tpl | null>(null);
@@ -77,7 +80,7 @@ function AniversariantesTab({ tenantId, tenantName, userId }: { tenantId: string
   async function sendBirthday(p: PatientLite) {
     if (!p.phone) { toast.error("Sem telefone"); return; }
     const content = template ? applyVars(template.content, p, tenantName) : `Olá ${p.full_name}, a equipe ${tenantName} deseja um feliz aniversário! 🎉`;
-    window.open(buildWhatsAppLink(p.phone, content), "_blank", "noopener,noreferrer");
+    openCrmInbox(navigate, { patientId: p.id, phone: p.phone, draft: content });
     try { await logMessage({ tenant_id: tenantId, patient_id: p.id, template_id: template?.id ?? null, channel: "whatsapp", content, sent_by: userId }); setContacted({ ...contacted, [p.id]: true }); }
     catch { toast.error("Falha ao registrar"); }
   }
@@ -95,8 +98,8 @@ function AniversariantesTab({ tenantId, tenantName, userId }: { tenantId: string
           <SelectContent>{monthNames.map((m, i) => <SelectItem key={i} value={String(i)}>{m}</SelectItem>)}</SelectContent>
         </Select>
         <Button onClick={async () => {
-          if (!confirm(`Enviar mensagem de aniversário para ${monthPatients.length} pacientes?`)) return;
-          for (const p of monthPatients) { if (!contacted[p.id]) { await sendBirthday(p); await new Promise(r => setTimeout(r, 400)); } }
+          if (!confirm(`Preparar mensagens de aniversário para ${monthPatients.length} pacientes no CRM?`)) return;
+          toast.info("Envie cada mensagem pelo CRM clicando no paciente.");
         }}><Send className="size-4 mr-2" />Enviar para todos do mês</Button>
       </div>
 
@@ -156,6 +159,7 @@ function AniversariantesTab({ tenantId, tenantName, userId }: { tenantId: string
 interface InactivePatient extends PatientLite { last_appointment: string | null; last_professional: string | null; days: number; }
 
 function InativosTab({ tenantId, tenantName, userId }: { tenantId: string; tenantName: string; userId: string }) {
+  const navigate = useNavigate();
   const [period, setPeriod] = useState<number>(90);
   const [rows, setRows] = useState<InactivePatient[]>([]);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
@@ -187,7 +191,7 @@ function InativosTab({ tenantId, tenantName, userId }: { tenantId: string; tenan
   async function sendReactivation(p: InactivePatient) {
     if (!p.phone) { toast.error("Sem telefone"); return; }
     const content = applyVars(customMsg, p, tenantName);
-    window.open(buildWhatsAppLink(p.phone, content), "_blank", "noopener,noreferrer");
+    openCrmInbox(navigate, { patientId: p.id, phone: p.phone, draft: content });
     try { await logMessage({ tenant_id: tenantId, patient_id: p.id, channel: "whatsapp", content, sent_by: userId }); }
     catch { toast.error("Falha ao registrar"); }
   }
@@ -195,7 +199,7 @@ function InativosTab({ tenantId, tenantName, userId }: { tenantId: string; tenan
   async function bulkSend() {
     const ids = Object.keys(selected).filter(k => selected[k]);
     if (ids.length === 0) return;
-    for (const id of ids) { const r = rows.find(x => x.id === id); if (r) { await sendReactivation(r); await new Promise(r2 => setTimeout(r2, 400)); } }
+    toast.info(`${ids.length} paciente(s) selecionado(s). Envie pelo CRM clicando em cada um.`);
   }
 
   function exportCSV() {
@@ -252,7 +256,7 @@ function InativosTab({ tenantId, tenantName, userId }: { tenantId: string; tenan
                   <td className="p-3"><Checkbox checked={!!selected[r.id]} onCheckedChange={v => setSelected({ ...selected, [r.id]: !!v })} /></td>
                   <td><Avatar className="size-8"><AvatarFallback>{initials(r.full_name)}</AvatarFallback></Avatar></td>
                   <td>{r.full_name}</td>
-                  <td>{r.last_appointment ? new Date(r.last_appointment).toLocaleDateString("pt-BR") : "—"}</td>
+                  <td>{r.last_appointment ? fmtDateFromDate(new Date(r.last_appointment)) : "—"}</td>
                   <td>{r.last_professional ?? "—"}</td>
                   <td>{r.phone ?? "—"}</td>
                   <td><span className={dayColor(r.days)}>{r.days >= 99999 ? "∞" : r.days}</span></td>
@@ -273,6 +277,7 @@ function InativosTab({ tenantId, tenantName, userId }: { tenantId: string; tenan
 interface Campaign { id: string; date: string; segment: string; channel: string; count: number; template: string; }
 
 function CampanhasTab({ tenantId, tenantName, userId }: { tenantId: string; tenantName: string; userId: string }) {
+  const navigate = useNavigate();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [segment, setSegment] = useState<string>("");
   const [patients, setPatients] = useState<PatientLite[]>([]);
@@ -317,7 +322,7 @@ function CampanhasTab({ tenantId, tenantName, userId }: { tenantId: string; tena
     if (!p.phone) { setSendIndex(sendIndex + 1); return; }
     const tpl = templates.find(t => t.id === tplId);
     const msg = tpl ? applyVars(tpl.content, p, tenantName) : applyVars(content, p, tenantName);
-    window.open(buildWhatsAppLink(p.phone, msg), "_blank", "noopener,noreferrer");
+    openCrmInbox(navigate, { patientId: p.id, phone: p.phone, draft: msg });
     try { await logMessage({ tenant_id: tenantId, patient_id: p.id, template_id: tplId === "custom" ? null : tplId, channel, content: msg, sent_by: userId }); } catch { /* noop */ }
     setSendIndex(sendIndex + 1);
   }
@@ -414,7 +419,7 @@ function CampanhasTab({ tenantId, tenantName, userId }: { tenantId: string; tena
             )}
           </div>
           <DialogFooter>
-            {sendIndex < segmentPatients.length ? <Button onClick={sendNext}><ExternalLink className="size-4 mr-2" />Abrir próximo</Button> : <Button onClick={() => { setSendOpen(false); setStep(1); setSegment(""); setContent(""); }}>Concluir</Button>}
+            {sendIndex < segmentPatients.length ? <Button onClick={sendNext}><Send className="size-4 mr-2" />Abrir no CRM</Button> : <Button onClick={() => { setSendOpen(false); setStep(1); setSegment(""); setContent(""); }}>Concluir</Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -426,7 +431,7 @@ function CampanhasTab({ tenantId, tenantName, userId }: { tenantId: string; tena
             <thead className="text-left text-xs text-muted-foreground uppercase tracking-wide"><tr><th className="p-3">Data</th><th>Segmento</th><th>Canal</th><th>Total</th><th>Modelo</th></tr></thead>
             <tbody>
               {history.map(c => (
-                <tr key={c.id} className="border-t"><td className="p-3">{new Date(c.date).toLocaleString("pt-BR")}</td><td>{c.segment}</td><td>{c.channel}</td><td>{c.count}</td><td>{c.template}</td></tr>
+                <tr key={c.id} className="border-t"><td className="p-3">{fmtDateTime(c.date)}</td><td>{c.segment}</td><td>{c.channel}</td><td>{c.count}</td><td>{c.template}</td></tr>
               ))}
               {history.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-muted-foreground">Sem campanhas ainda</td></tr>}
             </tbody>
@@ -458,8 +463,8 @@ function RelatorioTab() {
 
   const byDay: Record<string, { day: string; whatsapp: number; sms: number }> = {};
   for (let i = 29; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate() - i);
-    const k = d.toISOString().slice(5, 10); byDay[k] = { day: k, whatsapp: 0, sms: 0 };
+    const k = shiftDateISO(todayISO(), -i).slice(5, 10);
+    byDay[k] = { day: k, whatsapp: 0, sms: 0 };
   }
   logs.forEach(l => { const k = l.sent_at.slice(5, 10); if (byDay[k]) { if (l.channel === "whatsapp") byDay[k].whatsapp++; else if (l.channel === "sms") byDay[k].sms++; } });
   const dayData = Object.values(byDay);
@@ -523,7 +528,7 @@ function RelatorioTab() {
             <thead className="text-left text-xs text-muted-foreground uppercase tracking-wide"><tr><th className="p-3">Nome</th><th>Canal</th><th>Vezes usado</th><th>Último uso</th></tr></thead>
             <tbody>
               {Object.values(tplCounts).map(t => (
-                <tr key={t.name} className="border-t"><td className="p-3">{t.name}</td><td><Badge variant="outline" className={CHANNEL_BADGE[t.channel]?.cls}>{CHANNEL_BADGE[t.channel]?.label ?? t.channel}</Badge></td><td>{t.count}</td><td>{new Date(t.last).toLocaleString("pt-BR")}</td></tr>
+                <tr key={t.name} className="border-t"><td className="p-3">{t.name}</td><td><Badge variant="outline" className={CHANNEL_BADGE[t.channel]?.cls}>{CHANNEL_BADGE[t.channel]?.label ?? t.channel}</Badge></td><td>{t.count}</td><td>{fmtDateTime(t.last)}</td></tr>
               ))}
               {Object.values(tplCounts).length === 0 && <tr><td colSpan={4} className="py-6 text-center text-muted-foreground">Sem dados</td></tr>}
             </tbody>

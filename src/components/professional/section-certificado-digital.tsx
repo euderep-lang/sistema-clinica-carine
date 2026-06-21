@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { fmtDateTimeFromDate, fmtDateFromDate } from "@/lib/locale";
 import { useServerFn } from "@tanstack/react-start";
 import { Cloud, FileKey2, Loader2, ShieldCheck, Smartphone, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -23,7 +24,7 @@ const ACCEPT = ".pfx,.p12";
 
 function formatDate(iso: string | null) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("pt-BR");
+  return fmtDateFromDate(new Date(iso));
 }
 
 type ConfigTab = "a1" | "cloud";
@@ -237,7 +238,7 @@ export function SectionCertificadoDigital() {
                   {status.safeIdSessionActive && status.safeIdSessionExpiresAt ? (
                     <p className="text-emerald-700 font-medium">
                       Sessão SafeID ativa até{" "}
-                      {new Date(status.safeIdSessionExpiresAt).toLocaleString("pt-BR", {
+                      {fmtDateTimeFromDate(new Date(status.safeIdSessionExpiresAt), {
                         day: "2-digit",
                         month: "2-digit",
                         hour: "2-digit",

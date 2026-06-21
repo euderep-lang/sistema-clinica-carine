@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { fmtDate, getZonedTimeParts, todayISO } from "@/lib/locale";
 import { useNavigate } from "@tanstack/react-router";
 import { Bell, Clock, AlertCircle, Package, Cake, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -41,9 +42,8 @@ export function NotificationsBell() {
   async function load() {
     if (!profile) return;
     setReadState(getRead());
-    const now = new Date();
-    const today = now.toISOString().slice(0, 10);
-    const hhmm = now.toTimeString().slice(0, 5);
+    const today = todayISO();
+    const hhmm = `${String(getZonedTimeParts().hour).padStart(2, "0")}:${String(getZonedTimeParts().minute).padStart(2, "0")}`;
     const list: Notif[] = [];
     const ops = isOpsStaff(profile.role);
     const financial = isFinancialStaff(profile.role);
@@ -89,7 +89,7 @@ export function NotificationsBell() {
       });
     });
     ((overdueBillsRes.data ?? []) as unknown as { id: string; amount: number; due_date: string; patients?: { full_name: string } }[]).forEach(b => {
-      list.push({ key: `bill:${b.id}`, type: "bill", title: `Cobrança de ${fmt(b.amount)} para ${b.patients?.full_name ?? "—"} venceu em ${new Date(b.due_date).toLocaleDateString("pt-BR")}`, href: "/financial/receivables" });
+      list.push({ key: `bill:${b.id}`, type: "bill", title: `Cobrança de ${fmt(b.amount)} para ${b.patients?.full_name ?? "—"} venceu em ${fmtDate(b.due_date)}`, href: "/financial/receivables" });
     });
     ((lowStockRes.data ?? []) as { id: string; name: string; current_stock: number; min_stock: number; unit: string }[])
       .filter(i => i.current_stock <= i.min_stock).slice(0, 20).forEach(i => {

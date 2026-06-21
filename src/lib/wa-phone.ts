@@ -1,0 +1,100 @@
+/** Normalização e comparação de telefones BR para o CRM WhatsApp. */
+
+export function digitsOnly(phone: string): string {
+  return phone.replace(/@.+$/i, "").replace(/\D/g, "");
+}
+
+/** Últimos 11 dígitos (DDD + número) — identifica o mesmo celular em formatos diferentes. */
+export function phoneTail11(phone: string): string {
+  const normalized = normalizeBrazilPhone(phone);
+  if (normalized) return normalized.slice(-11);
+  return digitsOnly(phone).slice(-11);
+}
+
+/**
+ * E.164 Brasil: 55 + DDD + número.
+ * Insere o 9º dígito em celulares antigos (8 dígitos locais).
+ */
+export function normalizeBrazilPhone(input: string): string {
+  let d = digitsOnly(input);
+  if (!d) return d;
+  if (d.startsWith("0")) d = d.slice(1);
+  if (!d.startsWith("55")) d = `55${d}`;
+
+  // 55 + DDD(2) + 8 dígitos locais (celular legado sem o 9º dígito)
+  if (d.length === 12) {
+    const ddd = d.slice(2, 4);
+    const local = d.slice(4);
+    if (local.length === 8 && /^[6789]/.test(local)) {
+      d = `55${ddd}9${local}`;
+    }
+  }
+
+  return d;
+}
+
+export function phonesMatch(a: string, b: string): boolean {
+  const na = normalizeBrazilPhone(a);
+  const nb = normalizeBrazilPhone(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  return phoneTail11(na) === phoneTail11(nb);
+}
+
+export type WaConversationPhoneRow = {
+  id: string;
+  contact_phone: string;
+  contact_name?: string | null;
+  patient_id?: string | null;
+  unread_count?: number;
+  status?: string;
+  last_after_hours_reply_at?: string | null;
+  last_message_at?: string | null;
+  created_at?: string;
+};
+
+/** Encontra conversa existente mesmo com formatos diferentes de telefone (ex.: com/sem 55 ou 9º dígito). */
+export function findConversationByPhone<T extends WaConversationPhoneRow>(
+  rows: T[] | null | undefined,
+  phone: string,
+): T | null {
+  if (!rows?.length) return null;
+  const canonical = normalizeBrazilPhone(phone);
+  const tail = phoneTail11(canonical);
+
+  const matches = rows.filter((r) => phonesMatch(r.contact_phone, canonical));
+  if (!matches.length) return null;
+  if (matches.length === 1) return matches[0]!;
+
+  return [...matches].sort((a, b) => {
+    const score = (r: WaConversationPhoneRow) =>
+      (r.patient_id ? 4 : 0) +
+      (r.contact_name && !/^\d+$/.test(r.contact_name.replace(/\D/g, "")) ? 2 : 0) +
+      (r.last_message_at ? 1 : 0);
+    const diff = score(b) - score(a);
+    if (diff !== 0) return diff;
+    return (a.created_at ?? "").localeCompare(b.created_at ?? "");
+  })[0]!;
+}
+
+/** Lista única por celular — evita “Amor” + paciente com o mesmo número. */
+export function dedupeConversationsByPhone<T extends WaConversationPhoneRow>(rows: T[]): T[] {
+  const groups = new Map<string, T[]>();
+  for (const row of rows) {
+    const tail = phoneTail11(normalizeBrazilPhone(row.contact_phone));
+    const list = groups.get(tail) ?? [];
+    list.push(row);
+    groups.set(tail, list);
+  }
+
+  const deduped: T[] = [];
+  for (const group of groups.values()) {
+    const keeper = findConversationByPhone(group, group[0]!.contact_phone);
+    if (keeper) deduped.push(keeper);
+  }
+
+  return deduped.sort(
+    (a, b) =>
+      new Date(b.last_message_at ?? 0).getTime() - new Date(a.last_message_at ?? 0).getTime(),
+  );
+}

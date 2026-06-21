@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { tomorrowISO, fmtDateFromDate, fmtTimeFromDate, fmtDate } from "@/lib/locale";
 import { useEffect, useMemo, useState } from "react";
 import { MessageSquare, Phone, Send, Search, Check, ExternalLink } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
@@ -14,7 +15,9 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
-import { applyVars, buildWhatsAppLink, logMessage, formatDateTimeBR, CHANNEL_BADGE, STATUS_BADGE, type Channel, type PatientLite } from "@/lib/messaging";
+import { applyVars, logMessage, formatDateTimeBR, CHANNEL_BADGE, STATUS_BADGE, type Channel, type PatientLite } from "@/lib/messaging";
+import { openCrmInbox } from "@/lib/crm-navigation";
+import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/reception/mensagens")({
@@ -47,6 +50,7 @@ function MensagensPage() {
 }
 
 function EnviarTab({ tenantId, tenantName, userId }: { tenantId: string; tenantName: string; userId: string }) {
+  const navigate = useNavigate();
   const [patients, setPatients] = useState<PatientLite[]>([]);
   const [templates, setTemplates] = useState<Tpl[]>([]);
   const [logs, setLogs] = useState<LogRow[]>([]);
@@ -106,14 +110,14 @@ function EnviarTab({ tenantId, tenantName, userId }: { tenantId: string; tenantN
     if (!content.trim()) { toast.error("Mensagem vazia"); return; }
     if (channel === "whatsapp") {
       if (!patient.phone) { toast.error("Paciente sem telefone"); return; }
-      window.open(buildWhatsAppLink(patient.phone, content), "_blank", "noopener,noreferrer");
+      openCrmInbox(navigate, { patientId: patient.id, phone: patient.phone, draft: content });
     } else {
       await navigator.clipboard.writeText(content).catch(() => {});
       toast.info("Integração de mensagem de texto em breve. Texto copiado para a área de transferência.");
     }
     try {
       await logMessage({ tenant_id: tenantId, patient_id: patient.id, template_id: tplId === "custom" ? null : tplId, channel, content, sent_by: userId });
-      toast.success("Mensagem registrada. Confirme o envio no aplicativo.");
+      toast.success("Mensagem registrada. Finalize o envio no CRM.");
       await loadLogs();
     } catch (e) {
       toast.error("Falha ao registrar mensagem");
@@ -197,7 +201,7 @@ function EnviarTab({ tenantId, tenantName, userId }: { tenantId: string; tenantN
             <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 p-3 border border-emerald-200 dark:border-emerald-800">
               <div className="text-xs font-medium text-emerald-900 dark:text-emerald-100 mb-1">Pré-visualização</div>
               <div className="text-sm whitespace-pre-wrap text-emerald-950 dark:text-emerald-50">{content}</div>
-              <div className="text-[10px] text-emerald-700 dark:text-emerald-300 text-right mt-1">{new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>
+              <div className="text-[10px] text-emerald-700 dark:text-emerald-300 text-right mt-1">{fmtTimeFromDate()}</div>
             </div>
           )}
 
@@ -263,14 +267,12 @@ function EnviarTab({ tenantId, tenantName, userId }: { tenantId: string; tenantN
 interface ApptRow { id: string; date: string; start_time: string; patient_id: string; professional_id: string | null; status: string; patients?: { id: string; full_name: string; phone: string | null } | null; profiles?: { full_name: string } | null; }
 
 function RemindersTab({ tenantId, tenantName, userId }: { tenantId: string; tenantName: string; userId: string }) {
+  const navigate = useNavigate();
   const [appts, setAppts] = useState<ApptRow[]>([]);
   const [template, setTemplate] = useState<Tpl | null>(null);
   const [sentMap, setSentMap] = useState<Record<string, string>>({});
 
-  const tomorrow = useMemo(() => {
-    const d = new Date(); d.setDate(d.getDate() + 1);
-    return d.toISOString().slice(0, 10);
-  }, []);
+  const tomorrow = useMemo(() => tomorrowISO(), []);
   const storageKey = `reminders_sent_${tomorrow}`;
 
   useEffect(() => {
@@ -294,10 +296,10 @@ function RemindersTab({ tenantId, tenantName, userId }: { tenantId: string; tena
   async function sendOne(a: ApptRow) {
     if (!a.patients?.phone) { toast.error("Paciente sem telefone"); return; }
     const patient: PatientLite = { id: a.patients.id, full_name: a.patients.full_name, phone: a.patients.phone };
-    const extras = { data_consulta: new Date(a.date).toLocaleDateString("pt-BR"), hora_consulta: a.start_time.slice(0, 5), nome_profissional: a.profiles?.full_name ?? "" };
+    const extras = { data_consulta: fmtDate(a.date), hora_consulta: a.start_time.slice(0, 5), nome_profissional: a.profiles?.full_name ?? "" };
     const fallback = `Olá ${patient.full_name}, lembrando da sua consulta amanhã às ${extras.hora_consulta} em ${tenantName}.`;
     const content = template ? applyVars(template.content, patient, tenantName, extras) : fallback;
-    window.open(buildWhatsAppLink(patient.phone, content), "_blank", "noopener,noreferrer");
+    openCrmInbox(navigate, { patientId: patient.id, phone: patient.phone, draft: content });
     try {
       await logMessage({ tenant_id: tenantId, patient_id: patient.id, template_id: template?.id ?? null, channel: "whatsapp", content, sent_by: userId });
       persistSent({ ...sentMap, [a.id]: new Date().toISOString() });
@@ -307,7 +309,7 @@ function RemindersTab({ tenantId, tenantName, userId }: { tenantId: string; tena
   async function sendAll() {
     const pending = appts.filter(a => !sentMap[a.id] && a.patients?.phone);
     if (pending.length === 0) { toast.info("Nenhum lembrete pendente"); return; }
-    for (const a of pending) { await sendOne(a); await new Promise(r => setTimeout(r, 400)); }
+    toast.info(`${pending.length} lembrete(s) pendente(s). Envie pelo CRM clicando em cada paciente.`);
   }
 
   return (
@@ -315,7 +317,7 @@ function RemindersTab({ tenantId, tenantName, userId }: { tenantId: string; tena
       <CardHeader>
         <div className="flex justify-between items-start">
           <div>
-            <CardTitle>Lembretes para amanhã — {new Date(tomorrow).toLocaleDateString("pt-BR")}</CardTitle>
+            <CardTitle>Lembretes para amanhã — {fmtDate(tomorrow)}</CardTitle>
             <p className="text-sm text-muted-foreground mt-1">Envie lembretes de consulta para os pacientes agendados amanhã.</p>
           </div>
           <Button onClick={sendAll}><Send className="size-4 mr-2" />Enviar todos pendentes</Button>

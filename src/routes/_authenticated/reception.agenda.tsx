@@ -1,5 +1,7 @@
+import { fmtDateLong } from "@/lib/locale";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { Building2, CalendarDays, LayoutGrid, List, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/dashboard-shell";
@@ -34,6 +36,10 @@ import {
 } from "@/lib/agenda-utils";
 import { useAuth } from "@/lib/mock-auth";
 import { printWithLetterhead } from "@/lib/letterhead-print";
+import {
+  triggerAppointmentFollowUp,
+  triggerAppointmentStatusFollowUp,
+} from "@/lib/whatsapp-crm.functions";
 
 export const Route = createFileRoute("/_authenticated/reception/agenda")({
   component: AgendaPage,
@@ -69,6 +75,8 @@ const STATUS_CLASS: Record<string, string> = {
 
 function AgendaPage() {
   const { profile } = useAuth();
+  const followUpFn = useServerFn(triggerAppointmentFollowUp);
+  const statusFollowUpFn = useServerFn(triggerAppointmentStatusFollowUp);
   const [viewMode, setViewMode] = useState<"timeline" | "rooms" | "list">("timeline");
   const [date, setDate] = useState(todayISO());
   const [timeFrom, setTimeFrom] = useState("08:00");
@@ -214,25 +222,37 @@ function AgendaPage() {
       return;
     }
     setSaving(true);
-    const { error } = await supabase.from("appointments").insert({
-      tenant_id: profile.tenant_id,
-      patient_id: form.patient_id,
-      professional_id: form.professional_id,
-      room_id: form.room_id === "none" ? null : form.room_id,
-      date: form.date,
-      start_time: form.start_time,
-      end_time: form.end_time || addOneHour(form.start_time),
-      type: form.type || "consultation",
-      specialty: form.specialty || null,
-      notes: form.notes || null,
-      status: "scheduled",
-      created_by: profile.id,
-    });
+    const { data: created, error } = await supabase
+      .from("appointments")
+      .insert({
+        tenant_id: profile.tenant_id,
+        patient_id: form.patient_id,
+        professional_id: form.professional_id,
+        room_id: form.room_id === "none" ? null : form.room_id,
+        date: form.date,
+        start_time: form.start_time,
+        end_time: form.end_time || addOneHour(form.start_time),
+        type: form.type || "consultation",
+        specialty: form.specialty || null,
+        notes: form.notes || null,
+        status: "scheduled",
+        created_by: profile.id,
+      })
+      .select("id")
+      .single();
     setSaving(false);
     if (error) {
       toast.error(error.message);
       return;
     }
+    void followUpFn({
+      data: {
+        appointmentId: created.id,
+        patientId: form.patient_id,
+        professionalId: form.professional_id,
+        startsAt: new Date(`${form.date}T${form.start_time}:00`).toISOString(),
+      },
+    }).catch(() => {});
     toast.success("Consulta agendada");
     setOpen(false);
     setDate(form.date);
@@ -240,11 +260,23 @@ function AgendaPage() {
   };
 
   const updateStatus = async (id: string, status: string) => {
+    const row = rows.find((r) => r.id === id);
     const { error } = await supabase.from("appointments").update({ status }).eq("id", id);
     if (error) toast.error(error.message);
     else {
-      setRows((current) => current.map((row) => row.id === id ? { ...row, status } : row));
+      setRows((current) => current.map((r) => (r.id === id ? { ...r, status } : r)));
       toast.success("Situação atualizada");
+      if (row?.patient_id && row.professional_id && (status === "completed" || status === "no_show")) {
+        void statusFollowUpFn({
+          data: {
+            appointmentId: id,
+            patientId: row.patient_id,
+            professionalId: row.professional_id,
+            status,
+            startsAt: new Date(`${row.date}T${row.start_time}:00`).toISOString(),
+          },
+        }).catch(() => {});
+      }
     }
   };
 
@@ -337,7 +369,7 @@ function AgendaPage() {
                 <CardHeader className="flex flex-row items-center justify-between gap-3">
                   <CardTitle className="flex items-center gap-2 text-base capitalize">
                     <CalendarDays className="size-4" />
-                    {new Date(`${date}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit" })}
+                    {fmtDateLong(date)}
                   </CardTitle>
                   <Badge variant="outline">{filteredRows.length} horários</Badge>
                 </CardHeader>
@@ -374,7 +406,7 @@ function AgendaPage() {
                             {row.patients?.phone && <div className="text-xs text-muted-foreground">{row.patients.phone}</div>}
                           </TableCell>
                           <TableCell>
-                            <AgendaContactActions phone={row.patients?.phone} patientName={row.patients?.full_name} size="icon" />
+                            <AgendaContactActions phone={row.patients?.phone} patientId={row.patient_id} patientName={row.patients?.full_name} size="icon" />
                           </TableCell>
                           <TableCell>{row.profiles?.full_name ?? "—"}</TableCell>
                           <TableCell>{row.rooms?.name ?? "—"}</TableCell>

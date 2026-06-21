@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { todayISO } from "@/lib/locale";
 import { toast } from "sonner";
 import { compressForUpload } from "@/lib/media-compress";
 import { createFileRoute } from "@tanstack/react-router";
@@ -185,7 +186,7 @@ function RecordPage() {
     setUploading(true);
     try {
       if (pendingPhotoKind) {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = todayISO();
         const dateLabel = photoDateLabel();
         const groupText = photoGroupCaption(pendingPhotoKind, dateLabel);
 
@@ -297,7 +298,7 @@ function RecordPage() {
     if (!profile) return;
     setSaving(true);
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayISO();
       const appointmentId = await findPatientAppointmentToday(id, profile.id);
       let evId: string;
 

@@ -1,5 +1,7 @@
 import { createFileRoute, Navigate, useRouterState } from "@tanstack/react-router";
 import { KeepAliveOutlet } from "@/components/keep-alive-outlet";
+import { useWaMessageNotifications } from "@/hooks/use-wa-message-notifications";
+import { useWaReminderNotifications } from "@/hooks/use-wa-reminder-notifications";
 import { dashboardPathFor, useAuth, type Role } from "@/lib/mock-auth";
 
 export const Route = createFileRoute("/_authenticated")({
@@ -22,6 +24,10 @@ const CROSS_ROLE_PATH_PREFIXES: Partial<Record<Role, string[]>> = {
 function canAccessPath(role: Role, pathname: string) {
   if (role === "admin") return true;
 
+  if (pathname === "/crm/inbox" || pathname.startsWith("/crm/")) {
+    return role === "admin" || role === "professional" || role === "receptionist";
+  }
+
   const crossRole = CROSS_ROLE_PATH_PREFIXES[role];
   if (crossRole?.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
     return true;
@@ -35,6 +41,9 @@ function canAccessPath(role: Role, pathname: string) {
 function AuthGate() {
   const { profile, loading } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  useWaMessageNotifications();
+  useWaReminderNotifications();
 
   if (loading) {
     return (

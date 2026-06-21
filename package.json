@@ -15,6 +15,12 @@
     "db:setup": "bun run scripts/setup-database.ts",
     "db:migrate": "bun run scripts/migrate-supabase.ts",
     "db:seed": "bun run scripts/migrate-supabase.ts seed",
+    "db:import-patients": "bun run scripts/import-patients-xlsx.ts",
+    "zapi:webhook": "bun run scripts/setup-zapi-webhook.ts",
+    "wa:sync-chats": "bun run scripts/sync-zapi-chats.ts",
+    "wa:assign-reception": "bun run scripts/assign-wa-to-reception.ts",
+    "wa:process-follow-ups": "bun run scripts/process-wa-follow-ups.ts",
+    "wa:clear-messages": "bun run scripts/clear-wa-messages.ts",
     "build:cid10": "bun run scripts/build-cid10-json.ts"
   },
   "dependencies": {
@@ -61,6 +67,7 @@
     "embla-carousel-react": "^8.6.0",
     "input-otp": "^1.4.2",
     "jspdf": "^4.2.1",
+    "lamejs": "^1.2.1",
     "lucide-react": "0.575.0",
     "node-forge": "^1.4.0",
     "postgres": "^3.4.9",
@@ -98,6 +105,7 @@
     "prettier": "^3.7.3",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.56.1",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "xlsx": "^0.18.5"
   }
 }

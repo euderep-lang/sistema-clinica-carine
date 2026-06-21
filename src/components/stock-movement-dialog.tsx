@@ -1,3 +1,4 @@
+import { fmtDateTimeLocalInput } from "@/lib/locale";
 import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -48,7 +49,7 @@ export function StockMovementDialog({
   const [selItem, setSelItem] = useState<string>(itemId ?? "");
   const [type, setType] = useState<MovementType>(fixedType ?? "in");
   const [quantity, setQuantity] = useState<string>("");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 16));
+  const [date, setDate] = useState(fmtDateTimeLocalInput());
   const [reason, setReason] = useState<string>(fixedReason ?? "");
   const [unitCost, setUnitCost] = useState<string>("");
   const [patient, setPatient] = useState<string>("");
@@ -61,7 +62,7 @@ export function StockMovementDialog({
     setType(fixedType ?? "in");
     setReason(fixedReason ?? "");
     setQuantity(""); setUnitCost(""); setPatient(""); setNotes("");
-    setDate(new Date().toISOString().slice(0, 16));
+    setDate(fmtDateTimeLocalInput());
     (async () => {
       const { data: it } = await supabase.from("inventory_items" as never)
         .select("id,name,unit,current_stock,min_stock").eq("active", true).order("name") as unknown as { data: Item[] };

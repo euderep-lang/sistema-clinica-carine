@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { fmtDateTimeFromDate } from "@/lib/locale";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Plus, FileDown, Copy, FilePlus2, PenLine } from "lucide-react";
 import { toast } from "sonner";
@@ -34,7 +35,7 @@ function formatRxGeneratedAt(row: RxRow) {
     row.status === "finalized"
       ? row.signed_at ?? row.updated_at
       : row.created_at;
-  return new Date(iso).toLocaleString("pt-BR", {
+  return fmtDateTimeFromDate(new Date(iso), {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",

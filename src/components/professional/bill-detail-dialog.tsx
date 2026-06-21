@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { todayISO } from "@/lib/locale";
 import { Loader2, RotateCcw, ShoppingBag } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -63,7 +64,7 @@ import {
 const CREDIT_INSTALLMENTS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return todayISO();
 }
 
 function buildPaymentNotes(

@@ -1,4 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
+import { todayISO } from "@/lib/locale";
 import { Eye, PlayCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -68,7 +69,7 @@ export function ProfessionalAgendaDayView({
   const navigate = useNavigate();
   const slots = buildHourSlots(AGENDA_DAY_START, AGENDA_DAY_END, AGENDA_SLOT_MINUTES);
   const totalMinutes = (AGENDA_DAY_END - AGENDA_DAY_START) * 60;
-  const nowPercent = date === new Date().toISOString().slice(0, 10) ? currentTimePercent() : null;
+  const nowPercent = date === todayISO() ? currentTimePercent() : null;
 
   return (
     <div className="flex min-h-[520px] flex-col overflow-hidden rounded-lg border bg-card">
@@ -148,6 +149,7 @@ export function ProfessionalAgendaDayView({
                     </div>
                     <AgendaContactActions
                       phone={row.patients?.phone}
+                      patientId={row.patient_id}
                       patientName={row.patients?.full_name}
                       size="icon"
                     />

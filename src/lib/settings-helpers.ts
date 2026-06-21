@@ -199,8 +199,13 @@ export function renderTemplate(content: string, vars: Record<string, string>): s
 }
 
 export const TEMPLATE_VARS = [
-  "nome_paciente", "data_consulta", "hora_consulta",
-  "nome_profissional", "nome_clinica", "link_confirmacao",
+  "primeiro_nome",
+  "nome_paciente",
+  "data_consulta",
+  "hora_consulta",
+  "nome_profissional",
+  "nome_clinica",
+  "link_confirmacao",
 ] as const;
 
 export const SAMPLE_VARS: Record<string, string> = {

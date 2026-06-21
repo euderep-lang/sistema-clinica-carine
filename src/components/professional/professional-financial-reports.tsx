@@ -38,6 +38,12 @@ import {
   isOverdue,
   PAYMENT_LABEL,
 } from "@/lib/currency";
+import {
+  chartMoneyMargin,
+  chartMoneyXAxisProps,
+  chartMoneyYAxisProps,
+  fmtChartMoneyTooltip,
+} from "@/lib/chart-format";
 import { computeCompetencePeriodStats } from "@/lib/financial-competence";
 import { loadProfessionalExpenses } from "@/lib/expenses";
 import type { SaleBillRow } from "@/lib/sales";
@@ -429,11 +435,11 @@ function ProducaoReport({ from, to }: { from: string; to: string }) {
       </CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={260}>
-          <BarChart data={chart}>
+          <BarChart data={chart} margin={chartMoneyMargin}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="name" />
-            <YAxis tickFormatter={(v) => fmt(v)} />
-            <Tooltip formatter={(v: number) => fmt(v)} />
+            <YAxis {...chartMoneyYAxisProps} />
+            <Tooltip formatter={(v: number) => fmtChartMoneyTooltip(v)} />
             <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
@@ -494,11 +500,11 @@ function DespesasReport({
             <p className="text-muted-foreground">Sem despesas no período.</p>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={byCategory} layout="vertical">
+              <BarChart data={byCategory} layout="vertical" margin={chartMoneyMargin}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" tickFormatter={(v) => fmt(v)} />
+                <XAxis type="number" {...chartMoneyXAxisProps} />
                 <YAxis type="category" dataKey="name" width={100} />
-                <Tooltip formatter={(v: number) => fmt(v)} />
+                <Tooltip formatter={(v: number) => fmtChartMoneyTooltip(v)} />
                 <Bar dataKey="value" fill="#ef4444" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>

@@ -6,6 +6,7 @@ import {
   SessionCheckoffDialog,
   type SessionCheckoffTarget,
 } from "@/components/professional/session-checkoff-dialog";
+import { PostConsultationFollowUpDialog } from "@/components/professional/post-consultation-follow-up-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -79,6 +80,8 @@ export function FinishConsultationDialog({
   const [checkoffTarget, setCheckoffTarget] = useState<SessionCheckoffTarget | null>(null);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [followUpOpen, setFollowUpOpen] = useState(false);
+  const [finishedAppointmentId, setFinishedAppointmentId] = useState<string | null>(null);
 
   const loadPackages = useCallback(async () => {
     const { data, error } = await supabase
@@ -204,7 +207,7 @@ export function FinishConsultationDialog({
       return;
     }
 
-    const result = data as { total?: number; bill_id?: string } | null;
+    const result = data as { total?: number; bill_id?: string; appointment_id?: string } | null;
     if (result?.total && result.total > 0) {
       toast.success(`Consulta finalizada · ${fmt(result.total)} lançado no financeiro`);
     } else {
@@ -212,6 +215,12 @@ export function FinishConsultationDialog({
     }
 
     onOpenChange(false);
+    setFinishedAppointmentId(result?.appointment_id ?? null);
+    setFollowUpOpen(true);
+  };
+
+  const goToAgenda = () => {
+    setFollowUpOpen(false);
     navigate({ to: "/professional/agenda" });
   };
 
@@ -389,6 +398,15 @@ export function FinishConsultationDialog({
       onOpenChange={setCheckoffOpen}
       target={checkoffTarget}
       onSuccess={() => void loadPackages()}
+    />
+
+    <PostConsultationFollowUpDialog
+      open={followUpOpen}
+      onOpenChange={setFollowUpOpen}
+      patientId={patientId}
+      patientName={patientName}
+      appointmentId={finishedAppointmentId}
+      onComplete={goToAgenda}
     />
     </>
   );

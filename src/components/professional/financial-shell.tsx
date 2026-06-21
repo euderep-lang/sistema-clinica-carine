@@ -1,10 +1,17 @@
 import type { ReactNode } from "react";
-import { Outlet } from "@tanstack/react-router";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
-import { FinancialNav } from "@/components/professional/financial-nav";
+import { FinancialNav, type FinancialTab } from "@/components/professional/financial-nav";
 
-export function FinancialShell({ children }: { children: ReactNode }) {
+export function FinancialShell({
+  activeTab,
+  onTabChange,
+  children,
+}: {
+  activeTab: FinancialTab;
+  onTabChange: (tab: FinancialTab) => void;
+  children: ReactNode;
+}) {
   return (
     <DashboardShell title="Financeiro">
       <div className="space-y-6">
@@ -12,13 +19,9 @@ export function FinancialShell({ children }: { children: ReactNode }) {
           title="Meu financeiro"
           description="Cobranças, caixa do dia, despesas e relatórios do seu consultório."
         />
-        <FinancialNav />
+        <FinancialNav activeTab={activeTab} onTabChange={onTabChange} />
         {children}
       </div>
     </DashboardShell>
   );
-}
-
-export function FinancialLayout() {
-  return <Outlet />;
 }

@@ -96,7 +96,7 @@ export function computeCompetencePeriodStats(
     if (competenceInPeriod) {
       production += Number(bill.amount);
       if (["pending", "partial", "overdue"].includes(bill.status)) {
-        pending += Number(bill.amount) - Number(b.paid_amount);
+        pending += Number(bill.amount) - Number(bill.paid_amount);
       }
     }
 

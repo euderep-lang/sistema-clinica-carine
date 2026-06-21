@@ -11,6 +11,7 @@ import {
   CreditCard,
   MessageSquare,
   Megaphone,
+  Inbox,
   FileText,
   Receipt,
   TrendingDown,
@@ -52,6 +53,8 @@ const NAV: Record<Role, { label: string; items: NavItem[] }[]> = {
         { title: "Painel", url: "/admin/dashboard", icon: LayoutDashboard },
         { title: "Agenda", url: "/reception/agenda", icon: Calendar },
         { title: "Pacientes", url: "/reception/pacientes", icon: Users },
+        { title: "CRM WhatsApp", url: "/crm/inbox", icon: Inbox },
+        { title: "Funil de vendas", url: "/crm/pipeline", icon: LineChart },
       ],
     },
     {
@@ -79,6 +82,8 @@ const NAV: Record<Role, { label: string; items: NavItem[] }[]> = {
     {
       label: "Comunicação",
       items: [
+        { title: "CRM WhatsApp", url: "/crm/inbox", icon: Inbox },
+        { title: "Funil de vendas", url: "/crm/pipeline", icon: LineChart },
         { title: "Mensagens", url: "/reception/mensagens", icon: MessageSquare },
         { title: "Campanhas", url: "/reception/marketing", icon: Megaphone },
       ],
@@ -91,6 +96,8 @@ const NAV: Record<Role, { label: string; items: NavItem[] }[]> = {
         { title: "Painel", url: "/professional/dashboard", icon: LayoutDashboard },
         { title: "Minha Agenda", url: "/professional/agenda", icon: Calendar },
         { title: "Pacientes", url: "/professional/patients", icon: Users },
+        { title: "CRM WhatsApp", url: "/crm/inbox", icon: Inbox },
+        { title: "Funil de vendas", url: "/crm/pipeline", icon: LineChart },
         { title: "Prontuários", url: "/professional/prontuarios", icon: FileText },
         { title: "Receituário", url: "/professional/prescriptions", icon: FileText },
         { title: "Sessões", url: "/professional/sessions", icon: CalendarCheck },

@@ -1,20 +1,42 @@
-export const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-export const fmt = (n: number | string | null | undefined) => BRL.format(Number(n ?? 0));
+export {
+  CURRENCY_CODE,
+  LOCALE,
+  TIMEZONE,
+  fmt,
+  fmtMoney,
+  fmtDate,
+  fmtDateFromDate,
+  fmtDateTime,
+  fmtDateTimeFromDate,
+  fmtTime,
+  fmtTimeFromDate,
+  fmtMonthYear,
+  fmtRelativeTime,
+  fmtMessageTime,
+  parseBRLInput,
+  todayISO,
+  firstDayOfMonthISO,
+  tomorrowISO,
+  shiftDateISO,
+  addMonthsISO,
+  currentYearMonth,
+  formatYMD,
+  fmtDateLong,
+  fmtDateShortWeekday,
+  fmtDateFull,
+  fmtDateTimeLocalInput,
+  fmtNumber,
+  isOverdue,
+  compareStringsPt,
+} from "@/lib/locale";
 
-export const parseBRLInput = (s: string): number => {
-  const clean = s.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".");
-  const n = Number(clean);
-  return Number.isFinite(n) ? n : 0;
-};
-
-export const fmtDate = (s: string | null | undefined) => {
-  if (!s) return "—";
-  const d = new Date(s + "T00:00:00");
-  return d.toLocaleDateString("pt-BR");
-};
-
-export const isOverdue = (due: string, status: string) =>
-  (status === "pending" || status === "partial") && new Date(due + "T00:00:00") < new Date(new Date().toDateString());
+export {
+  chartMoneyMargin,
+  chartMoneyXAxisProps,
+  chartMoneyYAxisProps,
+  fmtChartMoneyTick,
+  fmtChartMoneyTooltip,
+} from "@/lib/chart-format";
 
 export const PAYMENT_METHODS: { value: string; label: string; icon: string }[] = [
   { value: "cash", label: "Dinheiro", icon: "💵" },
@@ -26,10 +48,16 @@ export const PAYMENT_METHODS: { value: string; label: string; icon: string }[] =
   { value: "other", label: "Outro", icon: "•" },
 ];
 
-export const PAYMENT_LABEL: Record<string, string> = Object.fromEntries(PAYMENT_METHODS.map((p) => [p.value, p.label]));
+export const PAYMENT_LABEL: Record<string, string> = Object.fromEntries(
+  PAYMENT_METHODS.map((p) => [p.value, p.label]),
+);
 
 export const BILL_STATUS_LABEL: Record<string, string> = {
-  pending: "Pendente", partial: "Parcial", paid: "Pago", overdue: "Vencida", cancelled: "Cancelada",
+  pending: "Pendente",
+  partial: "Parcial",
+  paid: "Pago",
+  overdue: "Vencida",
+  cancelled: "Cancelada",
 };
 
 export const BILL_STATUS_CLASS: Record<string, string> = {
@@ -41,7 +69,11 @@ export const BILL_STATUS_CLASS: Record<string, string> = {
 };
 
 export const BUDGET_STATUS_LABEL: Record<string, string> = {
-  draft: "Rascunho", sent: "Enviado", approved: "Aprovado", rejected: "Rejeitado", expired: "Expirado",
+  draft: "Rascunho",
+  sent: "Enviado",
+  approved: "Aprovado",
+  rejected: "Rejeitado",
+  expired: "Expirado",
 };
 
 export const BUDGET_STATUS_CLASS: Record<string, string> = {
@@ -52,4 +84,13 @@ export const BUDGET_STATUS_CLASS: Record<string, string> = {
   expired: "bg-orange-100 text-orange-700",
 };
 
-export const PAYABLE_CATEGORIES = ["Aluguel","Salários","Materiais","Equipamentos","Divulgação","Serviços","Impostos","Outros"];
+export const PAYABLE_CATEGORIES = [
+  "Aluguel",
+  "Salários",
+  "Materiais",
+  "Equipamentos",
+  "Divulgação",
+  "Serviços",
+  "Impostos",
+  "Outros",
+];

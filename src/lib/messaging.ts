@@ -1,5 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
+import { fmtDate, fmtDateFromDate, fmtDateTime, fmtDateTimeFromDate } from "@/lib/locale";
 import { renderTemplate } from "@/lib/settings-helpers";
+
+import { buildCrmInboxSearch, type CrmInboxSearch } from "@/lib/crm-navigation";
 
 export type Channel = "whatsapp" | "sms";
 
@@ -14,10 +17,9 @@ export function digitsOnly(phone: string | null | undefined): string {
   return (phone ?? "").replace(/\D/g, "");
 }
 
-export function buildWhatsAppLink(phone: string | null | undefined, content: string): string {
-  let d = digitsOnly(phone);
-  if (d.length > 0 && !d.startsWith("55")) d = "55" + d;
-  return `https://wa.me/${d}?text=${encodeURIComponent(content)}`;
+/** @deprecated Use `openCrmInbox` / `buildCrmInboxSearch` — conversas abrem no CRM. */
+export function buildWhatsAppLink(phone: string | null | undefined, content: string): CrmInboxSearch {
+  return buildCrmInboxSearch({ phone, draft: content });
 }
 
 export function buildVars(patient: PatientLite, tenantName: string, extras?: Record<string, string>): Record<string, string> {
@@ -70,13 +72,11 @@ export function age(birth?: string | null, on: Date = new Date()): number | null
 }
 
 export function formatDateBR(d: string | Date): string {
-  const dt = typeof d === "string" ? new Date(d) : d;
-  return dt.toLocaleDateString("pt-BR");
+  return typeof d === "string" ? fmtDate(d) : fmtDateFromDate(d);
 }
 
 export function formatDateTimeBR(d: string | Date): string {
-  const dt = typeof d === "string" ? new Date(d) : d;
-  return dt.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+  return typeof d === "string" ? fmtDateTime(d) : fmtDateTimeFromDate(d);
 }
 
 export const CHANNEL_BADGE: Record<string, { label: string; cls: string }> = {

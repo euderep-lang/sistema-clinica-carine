@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { todayISO } from "@/lib/locale";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
@@ -54,7 +55,7 @@ export function AgendaRoomsOverview({
 }) {
   const slots = buildHourSlots(AGENDA_DAY_START, AGENDA_DAY_END, AGENDA_SLOT_MINUTES);
   const totalMinutes = (AGENDA_DAY_END - AGENDA_DAY_START) * 60;
-  const nowPercent = date === new Date().toISOString().slice(0, 10) ? currentTimePercent() : null;
+  const nowPercent = date === todayISO() ? currentTimePercent() : null;
 
   const columns = (() => {
     const cols: RoomColumn[] = rooms.map((r) => ({ id: r.id, name: r.name, color: r.color }));
@@ -203,6 +204,7 @@ export function AgendaRoomsOverview({
                           {onReschedule && <AgendaRescheduleButton row={row} onReschedule={onReschedule} />}
                           <AgendaContactActions
                             phone={row.patients?.phone}
+                            patientId={row.patient_id}
                             patientName={row.patients?.full_name}
                             size="icon"
                           />

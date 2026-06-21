@@ -1,3 +1,4 @@
+import { addMonthsISO } from "@/lib/locale";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface SaleItemInput {
@@ -54,12 +55,7 @@ export function buildInstallmentDueDates(
   count: number,
   intervalMonths = 1,
 ): string[] {
-  const base = new Date(firstDue + "T12:00:00");
-  return Array.from({ length: count }, (_, i) => {
-    const d = new Date(base);
-    d.setMonth(d.getMonth() + i * intervalMonths);
-    return d.toISOString().slice(0, 10);
-  });
+  return Array.from({ length: count }, (_, i) => addMonthsISO(firstDue, i * intervalMonths));
 }
 
 export function previewInstallments(

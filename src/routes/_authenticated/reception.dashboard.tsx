@@ -1,3 +1,4 @@
+import { getZonedTimeParts, todayISO, tomorrowISO } from "@/lib/locale";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Cake, CalendarCheck, MessageSquare } from "lucide-react";
@@ -19,17 +20,18 @@ function ReceptionDashboard() {
 
   useEffect(() => {
     (async () => {
-      const now = new Date();
-      const tomorrow = new Date(now.getTime() + 86400000).toISOString().slice(0, 10);
-      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+      const { month, day } = getZonedTimeParts();
+      const tomorrow = tomorrowISO();
+      const startOfDay = `${todayISO()}T03:00:00.000Z`;
 
       const { data: pts } = await supabase
         .from("patients")
         .select("birth_date")
         .not("birth_date", "is", null);
       const bday = (pts ?? []).filter((p) => {
-        const d = new Date(p.birth_date as string);
-        return d.getDate() === now.getDate() && d.getMonth() === now.getMonth();
+        const bd = (p.birth_date as string).slice(5, 10);
+        const [m, d] = bd.split("-").map(Number);
+        return m === month && d === day;
       }).length;
       setBirthdaysToday(bday);
 
@@ -50,7 +52,7 @@ function ReceptionDashboard() {
   }, []);
 
   const greeting = (() => {
-    const h = new Date().getHours();
+    const h = getZonedTimeParts().hour;
     if (h < 12) return "Bom dia";
     if (h < 18) return "Boa tarde";
     return "Boa noite";

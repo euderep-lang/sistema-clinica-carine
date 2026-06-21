@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { todayISO } from "@/lib/locale";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -34,7 +35,7 @@ export function BillQuickReceiveDialog({
   const [outstanding, setOutstanding] = useState(0);
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("pix");
-  const [paidDate, setPaidDate] = useState(new Date().toISOString().slice(0, 10));
+  const [paidDate, setPaidDate] = useState(todayISO());
 
   useEffect(() => {
     if (!open || !billId) return;
@@ -54,7 +55,7 @@ export function BillQuickReceiveDialog({
       setDescription(data.description);
       setOutstanding(rest);
       setAmount(rest.toFixed(2).replace(".", ","));
-      setPaidDate(new Date().toISOString().slice(0, 10));
+      setPaidDate(todayISO());
       setLoading(false);
     })();
   }, [open, billId, onOpenChange]);

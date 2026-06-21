@@ -1,4 +1,5 @@
 import { Fragment, useRef, useState } from "react";
+import { fmtDateTimeFromDate } from "@/lib/locale";
 import { FileText, Image as ImageIcon, Loader2, Paperclip } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -65,7 +66,7 @@ function MediaHistoryCard({
   entry: MediaHistoryEntry;
   highlight?: boolean;
 }) {
-  const when = new Date(entry.created_at).toLocaleString("pt-BR", {
+  const when = fmtDateTimeFromDate(new Date(entry.created_at), {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -119,7 +120,7 @@ function EvolutionHistoryItem({ entry, highlight }: { entry: EvolutionEntry; hig
   const shown =
     expanded || !long ? entry.evolution_text : `${entry.evolution_text.slice(0, 280)}…`;
 
-  const when = new Date(entry.created_at || entry.date).toLocaleString("pt-BR", {
+  const when = fmtDateTimeFromDate(new Date(entry.created_at || entry.date), {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",

@@ -1,21 +1,26 @@
+import { buildCrmInboxSearch } from "@/lib/crm-navigation";
+import {
+  fmtDateFromDate,
+  parseDateOnly,
+  shiftDateISO,
+  todayISO,
+  getZonedTimeParts,
+} from "@/lib/locale";
+
+export { todayISO };
+
 export const AGENDA_DAY_START = 8;
 export const AGENDA_DAY_END = 22;
 export const AGENDA_SLOT_MINUTES = 60;
 
-export function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 export function shiftDate(iso: string, days: number) {
-  const d = new Date(`${iso}T12:00:00`);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return shiftDateISO(iso, days);
 }
 
 /** Segunda-feira da semana que contém a data (ISO). */
 export function startOfWeekMonday(iso: string) {
-  const d = new Date(`${iso}T12:00:00`);
-  const weekday = d.getDay();
+  const d = parseDateOnly(iso);
+  const weekday = d.getUTCDay();
   const diff = weekday === 0 ? -6 : 1 - weekday;
   return shiftDate(iso, diff);
 }
@@ -26,14 +31,14 @@ export function weekDaysFromMonday(mondayIso: string) {
 
 export function formatWeekRange(mondayIso: string) {
   const sunday = shiftDate(mondayIso, 6);
-  const mon = new Date(`${mondayIso}T12:00:00`);
-  const sun = new Date(`${sunday}T12:00:00`);
-  const sameMonth = mon.getMonth() === sun.getMonth();
-  const monPart = mon.toLocaleDateString("pt-BR", { day: "numeric", month: "short" });
-  const sunPart = sun.toLocaleDateString("pt-BR", {
+  const mon = parseDateOnly(mondayIso);
+  const sun = parseDateOnly(sunday);
+  const sameMonth = mon.getUTCMonth() === sun.getUTCMonth();
+  const monPart = fmtDateFromDate(mon, { day: "numeric", month: "short" });
+  const sunPart = fmtDateFromDate(sun, {
     day: "numeric",
     month: sameMonth ? undefined : "short",
-    year: mon.getFullYear() !== sun.getFullYear() ? "numeric" : undefined,
+    year: mon.getUTCFullYear() !== sun.getUTCFullYear() ? "numeric" : undefined,
   });
   return `${monPart} – ${sunPart}`;
 }
@@ -66,11 +71,11 @@ export function phoneDigits(phone: string | null | undefined) {
   return d.length >= 10 ? `55${d}` : "";
 }
 
-export function whatsappUrl(phone: string | null | undefined, message?: string) {
-  const digits = phoneDigits(phone);
-  if (!digits) return null;
-  const base = `https://wa.me/${digits}`;
-  return message ? `${base}?text=${encodeURIComponent(message)}` : base;
+/** @deprecated Use `buildCrmInboxSearch` — conversas abrem no CRM. */
+export function whatsappUrl(phone: string | null | undefined, _message?: string) {
+  const search = buildCrmInboxSearch({ phone });
+  if (!search.phone) return null;
+  return "/crm/inbox";
 }
 
 export function telUrl(phone: string | null | undefined) {
@@ -80,7 +85,7 @@ export function telUrl(phone: string | null | undefined) {
 }
 
 export function formatAgendaDate(date: string) {
-  return new Date(`${date}T12:00:00`).toLocaleDateString("pt-BR", {
+  return fmtDateFromDate(parseDateOnly(date), {
     weekday: "long",
     day: "2-digit",
     month: "short",
@@ -98,8 +103,8 @@ export function buildHourSlots(startHour = AGENDA_DAY_START, endHour = AGENDA_DA
 }
 
 export function currentTimePercent(startHour = AGENDA_DAY_START, endHour = AGENDA_DAY_END) {
-  const now = new Date();
-  const mins = now.getHours() * 60 + now.getMinutes();
+  const { hour, minute } = getZonedTimeParts();
+  const mins = hour * 60 + minute;
   const start = startHour * 60;
   const end = endHour * 60;
   if (mins < start || mins > end) return null;

@@ -12,9 +12,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DEFAULT_APPOINTMENT_TYPES } from "@/lib/appointment-types";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { supabase } from "@/integrations/supabase/client";
+import { clearKeepAliveCache } from "@/components/keep-alive-outlet";
 import { useAuth } from "@/lib/mock-auth";
-import { createTenantUser, getTenantUserEmail, resetTenantUserPassword } from "@/lib/admin-users.functions";
+import {
+  createTenantUser,
+  getTenantUserEmail,
+  listTenantUsers,
+  updateTenantUser,
+  type TenantUserRow,
+} from "@/lib/admin-users.functions";
 import {
   getTenantSetting,
   isLegacySpecialtyList,
@@ -35,29 +41,14 @@ const ROLE_CLASS: Record<Role, string> = {
   financial: "bg-amber-100 text-amber-700 border-amber-200",
 };
 
-interface Row {
-  id: string;
-  full_name: string;
-  role: Role;
-  specialty: string | null;
-  crm: string | null;
-  cpf: string | null;
-  phone: string | null;
-  active: boolean;
-  commission_pct: number | null;
-  email?: string;
-}
-
-function genPassword() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789abcdefghjkmnpqrstuvwxyz!@#$";
-  let p = ""; for (let i = 0; i < 10; i++) p += chars[Math.floor(Math.random() * chars.length)]; return p;
-}
+interface Row extends TenantUserRow {}
 
 export function SectionUsuarios() {
-  const { profile } = useAuth();
+  const { profile, refresh } = useAuth();
   const create = useServerFn(createTenantUser);
+  const update = useServerFn(updateTenantUser);
+  const listUsers = useServerFn(listTenantUsers);
   const fetchEmail = useServerFn(getTenantUserEmail);
-  const resetPassword = useServerFn(resetTenantUserPassword);
   const [rows, setRows] = useState<Row[]>([]);
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [open, setOpen] = useState(false);
@@ -65,6 +56,7 @@ export function SectionUsuarios() {
   const [tempPwd, setTempPwd] = useState<string | null>(null);
   const [pwdContext, setPwdContext] = useState<"created" | "reset" | null>(null);
   const [resetPwd, setResetPwd] = useState(genPassword());
+  const [changePassword, setChangePassword] = useState(false);
 
   // form
   const [name, setName] = useState(""); const [email, setEmail] = useState("");
@@ -74,12 +66,16 @@ export function SectionUsuarios() {
   const [commission, setCommission] = useState(0); const [phone, setPhone] = useState("");
   const [active, setActive] = useState(true); const [busy, setBusy] = useState(false);
 
+  function genPassword() {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789abcdefghjkmnpqrstuvwxyz!@#$";
+    let p = "";
+    for (let i = 0; i < 10; i++) p += chars[Math.floor(Math.random() * chars.length)];
+    return p;
+  }
+
   const load = async () => {
-    const { data } = await supabase
-      .from("profiles")
-      .select("id,full_name,role,specialty,crm,cpf,phone,active,commission_pct")
-      .order("full_name");
-    setRows((data ?? []) as Row[]);
+    const { users } = await listUsers();
+    setRows(users);
   };
 
   const loadSpecialties = async () => {
@@ -93,31 +89,32 @@ export function SectionUsuarios() {
   };
 
   useEffect(() => {
-    load();
+    void load().catch((e) => toast.error((e as Error).message));
     void loadSpecialties();
   }, [profile]);
 
   const openNew = () => {
     setEditing(null); setName(""); setEmail(""); setPassword(genPassword());
     setRole("receptionist"); setSpecialty(""); setCrm(""); setCpf(""); setCommission(0); setPhone("");
-    setActive(true); setTempPwd(null); setPwdContext(null); setResetPwd(genPassword());
+    setActive(true); setTempPwd(null); setPwdContext(null); setResetPwd(genPassword()); setChangePassword(false);
     void loadSpecialties();
     setOpen(true);
   };
   const openEdit = async (r: Row) => {
-    setEditing(r); setName(r.full_name); setEmail(""); setRole(r.role);
+    setEditing(r); setName(r.full_name); setEmail(r.email); setRole(r.role);
     setSpecialty(r.specialty ?? ""); setCrm(r.crm ?? ""); setCpf(r.cpf ? maskCPF(r.cpf) : "");
     setCommission(Number(r.commission_pct ?? 0));
     setPhone(r.phone ?? ""); setActive(r.active); setTempPwd(null); setPwdContext(null);
-    setResetPwd(genPassword());
+    setResetPwd(genPassword()); setChangePassword(false);
     void loadSpecialties();
     setOpen(true);
-    try {
-      const { email: userEmail } = await fetchEmail({ data: { user_id: r.id } });
-      setEmail(userEmail);
-    } catch (e) {
-      setEmail("");
-      toast.error((e as Error).message);
+    if (!r.email) {
+      try {
+        const { email: userEmail } = await fetchEmail({ data: { user_id: r.id } });
+        setEmail(userEmail);
+      } catch (e) {
+        toast.error((e as Error).message);
+      }
     }
   };
 
@@ -130,16 +127,41 @@ export function SectionUsuarios() {
     setBusy(true);
     try {
       if (editing) {
-        if (editing.id === profile?.id && role !== editing.role) throw new Error("Você não pode mudar seu próprio cargo");
-        const { error } = await supabase.from("profiles").update({
-          full_name: name, role, phone, active,
-          specialty: role === "professional" ? specialty : null,
-          crm: role === "professional" ? crm : null,
-          cpf: role === "professional" ? cpf.replace(/\D/g, "") : null,
-          commission_pct: role === "professional" ? commission : 0,
-        }).eq("id", editing.id);
-        if (error) throw error;
-        toast.success("Usuário atualizado"); setOpen(false); load();
+        if (editing.id === profile?.id && role !== editing.role) {
+          throw new Error("Você não pode mudar seu próprio cargo. Peça a outro administrador.");
+        }
+        if (changePassword && (!resetPwd || resetPwd.length < 6)) {
+          throw new Error("A senha deve ter pelo menos 6 caracteres");
+        }
+        const cpfToSave =
+          role === "professional" ? cpf || (editing.cpf ? maskCPF(editing.cpf) : "") : null;
+        const { user: saved } = await update({
+          data: {
+            user_id: editing.id,
+            full_name: name.trim(),
+            role,
+            phone: phone || null,
+            active,
+            specialty: role === "professional" ? specialty : null,
+            crm: role === "professional" ? crm : null,
+            cpf: cpfToSave,
+            commission_pct: commission,
+            password: changePassword ? resetPwd : null,
+          },
+        });
+        setRows((prev) => prev.map((r) => (r.id === saved.id ? saved : r)));
+        if (editing.id === profile?.id) await refresh();
+        clearKeepAliveCache();
+        if (changePassword) {
+          setTempPwd(resetPwd);
+          setPwdContext("reset");
+          setChangePassword(false);
+          toast.success("Usuário e senha atualizados");
+        } else {
+          toast.success("Usuário atualizado");
+          setOpen(false);
+        }
+        await load();
       } else {
         if (!email) { toast.error("E-mail obrigatório"); setBusy(false); return; }
         await create({
@@ -151,34 +173,35 @@ export function SectionUsuarios() {
         });
         setTempPwd(password);
         setPwdContext("created");
-        load();
+        await load();
       }
     } catch (e) { toast.error((e as Error).message); }
     finally { setBusy(false); }
   };
 
-  const applyPasswordReset = async () => {
-    if (!editing) return;
-    if (!resetPwd || resetPwd.length < 6) {
-      toast.error("A senha deve ter pelo menos 6 caracteres");
-      return;
-    }
-    setBusy(true);
+  const toggleActive = async (r: Row) => {
     try {
-      await resetPassword({ data: { user_id: editing.id, password: resetPwd } });
-      setTempPwd(resetPwd);
-      setPwdContext("reset");
-      toast.success("Senha redefinida");
+      const { user: saved } = await update({
+      data: {
+        user_id: r.id,
+        full_name: r.full_name,
+        role: r.role,
+        phone: r.phone,
+        active: !r.active,
+        specialty: r.specialty,
+        crm: r.crm,
+        cpf: r.cpf,
+        commission_pct: Number(r.commission_pct ?? 0),
+      },
+    });
+    setRows((prev) => prev.map((row) => (row.id === saved.id ? saved : row)));
+    if (r.id === profile?.id && !r.active) await refresh();
+    clearKeepAliveCache();
+    await load();
+    toast.success(r.active ? "Desativado" : "Reativado");
     } catch (e) {
       toast.error((e as Error).message);
-    } finally {
-      setBusy(false);
     }
-  };
-
-  const toggleActive = async (r: Row) => {
-    await supabase.from("profiles").update({ active: !r.active }).eq("id", r.id);
-    toast.success(r.active ? "Desativado" : "Reativado"); load();
   };
 
   return (
@@ -187,7 +210,7 @@ export function SectionUsuarios() {
       <Card>
         <Table>
           <TableHeader><TableRow>
-            <TableHead></TableHead><TableHead>Nome</TableHead><TableHead>Cargo</TableHead>
+            <TableHead></TableHead><TableHead>Nome</TableHead><TableHead>E-mail</TableHead><TableHead>Cargo</TableHead>
             <TableHead>Especialidade</TableHead><TableHead>CRM</TableHead>
             <TableHead>Situação</TableHead><TableHead className="text-right">Ações</TableHead>
           </TableRow></TableHeader>
@@ -195,7 +218,13 @@ export function SectionUsuarios() {
             {rows.map((r) => (
               <TableRow key={r.id}>
                 <TableCell><Avatar className="h-8 w-8"><AvatarFallback>{r.full_name.split(" ").slice(0,2).map(s=>s[0]).join("")}</AvatarFallback></Avatar></TableCell>
-                <TableCell className="font-medium">{r.full_name}</TableCell>
+                <TableCell className="font-medium">
+                  {r.full_name}
+                  {r.id === profile?.id ? (
+                    <span className="ml-2 text-[10px] text-muted-foreground">(você)</span>
+                  ) : null}
+                </TableCell>
+                <TableCell className="text-sm text-muted-foreground">{r.email || "—"}</TableCell>
                 <TableCell><Badge variant="outline" className={ROLE_CLASS[r.role]}>{ROLE_LABEL[r.role]}</Badge></TableCell>
                 <TableCell className="text-sm text-muted-foreground">{r.specialty ?? "-"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{r.crm ?? "-"}</TableCell>
@@ -262,14 +291,25 @@ export function SectionUsuarios() {
                 </div>
               ) : (
                 <div className="rounded-md border p-3 space-y-2">
-                  <Label>Redefinir senha</Label>
-                  <div className="flex gap-2">
-                    <Input value={resetPwd} onChange={(e) => setResetPwd(e.target.value)} />
-                    <Button type="button" variant="outline" onClick={() => setResetPwd(genPassword())}><RefreshCw className="h-4 w-4" /></Button>
+                  <div className="flex items-center gap-2">
+                    <Switch checked={changePassword} onCheckedChange={setChangePassword} />
+                    <Label>Alterar senha de acesso</Label>
                   </div>
-                  <Button type="button" variant="secondary" size="sm" onClick={applyPasswordReset} disabled={busy}>
-                    Aplicar nova senha
-                  </Button>
+                  {changePassword ? (
+                    <>
+                      <div className="flex gap-2">
+                        <Input value={resetPwd} onChange={(e) => setResetPwd(e.target.value)} />
+                        <Button type="button" variant="outline" onClick={() => setResetPwd(genPassword())}><RefreshCw className="h-4 w-4" /></Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        A nova senha será aplicada ao clicar em Salvar. Compartilhe com o usuário para entrar em /login.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Ative a opção acima para definir uma nova senha junto com as demais alterações.
+                    </p>
+                  )}
                 </div>
               )}
               <div><Label>Cargo *</Label>
@@ -282,6 +322,11 @@ export function SectionUsuarios() {
                     <SelectItem value="financial">Financeiro</SelectItem>
                   </SelectContent>
                 </Select>
+                {editing?.id === profile?.id ? (
+                  <p className="mt-1 text-xs text-amber-600">
+                    Seu próprio cargo não pode ser alterado aqui — outro admin precisa fazer isso.
+                  </p>
+                ) : null}
               </div>
               {role === "professional" && (
                 <>

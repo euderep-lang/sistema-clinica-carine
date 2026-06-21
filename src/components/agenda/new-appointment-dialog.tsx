@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import {
   resolveAppointmentTypes,
 } from "@/lib/appointment-types";
 import { addOneHour, todayISO } from "@/lib/agenda-utils";
+import { triggerAppointmentFollowUp } from "@/lib/whatsapp-crm.functions";
 import { useAuth } from "@/lib/mock-auth";
 
 type Patient = { id: string; full_name: string; phone: string | null };
@@ -43,6 +45,9 @@ interface NewAppointmentDialogProps {
   defaultDate?: string;
   /** Profissional pré-selecionado ao abrir o formulário. */
   defaultProfessionalId?: string;
+  /** Paciente pré-selecionado (ex.: vindo do CRM). */
+  defaultPatientId?: string;
+  defaultPatientName?: string;
 }
 
 export function NewAppointmentDialog({
@@ -51,8 +56,11 @@ export function NewAppointmentDialog({
   onSaved,
   defaultDate,
   defaultProfessionalId,
+  defaultPatientId,
+  defaultPatientName,
 }: NewAppointmentDialogProps) {
   const { profile } = useAuth();
+  const followUpFn = useServerFn(triggerAppointmentFollowUp);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -112,7 +120,8 @@ export function NewAppointmentDialog({
           .eq("active", true)
           .order("full_name"),
       ]);
-      setPatients((patientsRes.data ?? []) as Patient[]);
+      const loadedPatients = (patientsRes.data ?? []) as Patient[];
+      setPatients(loadedPatients);
       setRooms((roomsRes.data ?? []) as Room[]);
       const profs = (profsRes.data ?? []) as Professional[];
       setProfessionals(profs);
@@ -122,8 +131,14 @@ export function NewAppointmentDialog({
         (profile.role === "professional" ? profile.id : profs[0]?.id ?? "");
       if (initialId) applyProfessional(initialId, profs);
       else setProfessionalId("");
+
+      if (defaultPatientId) {
+        const patient = loadedPatients.find((p) => p.id === defaultPatientId);
+        setForm((f) => ({ ...f, patient_id: defaultPatientId }));
+        setPatientSearch(patient?.full_name ?? defaultPatientName ?? "");
+      }
     })();
-  }, [open, profile, defaultDate, defaultProfessionalId]);
+  }, [open, profile, defaultDate, defaultProfessionalId, defaultPatientId, defaultPatientName]);
 
   useEffect(() => {
     if (!patientPickerOpen) return;
@@ -159,25 +174,38 @@ export function NewAppointmentDialog({
       return;
     }
     setSaving(true);
-    const { error } = await supabase.from("appointments").insert({
-      tenant_id: profile.tenant_id,
-      patient_id: form.patient_id,
-      professional_id: professionalId,
-      room_id: form.room_id === "none" ? null : form.room_id,
-      date: form.date,
-      start_time: form.start_time,
-      end_time: form.end_time || addOneHour(form.start_time),
-      type: form.type || "consultation",
-      specialty: form.specialty || null,
-      notes: form.notes || null,
-      status: "scheduled",
-      created_by: profile.id,
-    });
+    const { data: created, error } = await supabase
+      .from("appointments")
+      .insert({
+        tenant_id: profile.tenant_id,
+        patient_id: form.patient_id,
+        professional_id: professionalId,
+        room_id: form.room_id === "none" ? null : form.room_id,
+        date: form.date,
+        start_time: form.start_time,
+        end_time: form.end_time || addOneHour(form.start_time),
+        type: form.type || "consultation",
+        specialty: form.specialty || null,
+        notes: form.notes || null,
+        status: "scheduled",
+        created_by: profile.id,
+      })
+      .select("id")
+      .single();
     setSaving(false);
     if (error) {
       toast.error(error.message);
       return;
     }
+    const startsAt = new Date(`${form.date}T${form.start_time}:00`);
+    void followUpFn({
+      data: {
+        appointmentId: created.id,
+        patientId: form.patient_id,
+        professionalId,
+        startsAt: startsAt.toISOString(),
+      },
+    }).catch(() => {});
     toast.success("Consulta agendada");
     onOpenChange(false);
     onSaved?.(form.date);

@@ -361,7 +361,7 @@ function ProfessionalPatientPage() {
                       appts.map((a) => (
                         <TableRow key={a.id}>
                           <TableCell>
-                            {new Date(a.date + "T12:00:00").toLocaleDateString("pt-BR")}
+                            {fmtDate(a.date)}
                           </TableCell>
                           <TableCell>{a.start_time?.slice(0, 5)}</TableCell>
                           <TableCell>

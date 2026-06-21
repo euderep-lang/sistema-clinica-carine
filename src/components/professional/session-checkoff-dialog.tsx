@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { todayISO } from "@/lib/locale";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -43,7 +44,7 @@ interface SessionCheckoffDialogProps {
 }
 
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return todayISO();
 }
 
 function nowTime() {

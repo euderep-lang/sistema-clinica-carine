@@ -1,3 +1,4 @@
+import { fmtDateFull } from "@/lib/locale";
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { CalendarDays, ChevronLeft, ChevronRight, Eye, LayoutGrid, List, PlayCircle, Plus } from "lucide-react";
@@ -142,12 +143,7 @@ function ProfessionalAgendaPage() {
   const dateLabel =
     viewMode === "weekly"
       ? formatWeekRange(weekStart)
-      : new Date(`${date}T12:00:00`).toLocaleDateString("pt-BR", {
-          weekday: "long",
-          day: "2-digit",
-          month: "long",
-          year: "numeric",
-        });
+      : fmtDateFull(date);
 
   const summaryScope = viewMode === "weekly" ? "na semana" : "no dia";
 
@@ -344,6 +340,7 @@ function ProfessionalAgendaPage() {
                           <div className="flex flex-wrap justify-center gap-1">
                             <AgendaContactActions
                               phone={a.patients?.phone}
+                              patientId={a.patient_id}
                               patientName={a.patients?.full_name}
                               size="icon"
                             />

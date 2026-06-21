@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight, Plus, Printer } from "lucide-react";
+import { addMonthsISO, formatYMD, fmtMonthYear, parseDateOnly, todayISO } from "@/lib/locale";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -44,21 +45,20 @@ export function AgendaFiltersPanel({
   onNewAppointment: () => void;
   onPrint: () => void;
 }) {
-  const viewDate = new Date(`${date}T12:00:00`);
-  const year = viewDate.getFullYear();
-  const month = viewDate.getMonth();
-  const firstDay = new Date(year, month, 1);
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const startWeekday = firstDay.getDay();
-  const monthLabel = viewDate.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  const viewDate = parseDateOnly(date);
+  const year = viewDate.getUTCFullYear();
+  const month = viewDate.getUTCMonth();
+  const firstDay = new Date(Date.UTC(year, month, 1));
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const startWeekday = firstDay.getUTCDay();
+  const monthLabel = fmtMonthYear(date);
 
   const shiftMonth = (delta: number) => {
-    const d = new Date(year, month + delta, viewDate.getDate());
-    onDateChange(d.toISOString().slice(0, 10));
+    onDateChange(addMonthsISO(date, delta));
   };
 
   const pickDay = (day: number) => {
-    onDateChange(new Date(year, month, day).toISOString().slice(0, 10));
+    onDateChange(formatYMD(year, month, day));
   };
 
   return (
@@ -99,9 +99,9 @@ export function AgendaFiltersPanel({
             ))}
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const day = i + 1;
-              const iso = new Date(year, month, day).toISOString().slice(0, 10);
+              const iso = formatYMD(year, month, day);
               const selected = iso === date;
-              const isToday = iso === new Date().toISOString().slice(0, 10);
+              const isToday = iso === todayISO();
               return (
                 <button
                   key={day}

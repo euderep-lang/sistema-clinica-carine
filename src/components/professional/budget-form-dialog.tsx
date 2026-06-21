@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { todayISO, shiftDateISO } from "@/lib/locale";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -87,7 +88,7 @@ export function BudgetFormDialog({
   const [patientId, setPatientId] = useState("");
   const [patientOpen, setPatientOpen] = useState(false);
   const [patientSearch, setPatientSearch] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(todayISO());
   const [validUntil, setValidUntil] = useState("");
   const [status, setStatus] = useState<(typeof EDITABLE_STATUSES)[number]>("draft");
   const [discountPercent, setDiscountPercent] = useState("0");
@@ -97,12 +98,9 @@ export function BudgetFormDialog({
   const [budgetNumber, setBudgetNumber] = useState<number | null>(null);
 
   const resetForm = () => {
-    const today = new Date();
-    const valid = new Date(today);
-    valid.setDate(valid.getDate() + 15);
     setPatientId("");
-    setDate(today.toISOString().slice(0, 10));
-    setValidUntil(valid.toISOString().slice(0, 10));
+    setDate(todayISO());
+    setValidUntil(shiftDateISO(todayISO(), 15));
     setStatus("draft");
     setDiscountPercent("0");
     setNotes("");

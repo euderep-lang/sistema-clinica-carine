@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { fmtDate } from "@/lib/locale";
 import { useNavigate } from "@tanstack/react-router";
 import { Search, User, Calendar, Stethoscope } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -196,7 +197,7 @@ export function CommandPalette() {
                     return (
                       <button key={`a-${a.id}`} onMouseEnter={() => setActive(i)} onClick={() => go(it)} className={`w-full flex items-center gap-3 px-2 py-2 rounded-md text-left ${i === active ? "bg-accent text-accent-foreground" : ""}`}>
                         <div className="h-9 w-9 rounded-full grid place-items-center bg-blue-100 text-blue-700"><Calendar className="h-4 w-4" /></div>
-                        <div className="flex-1 min-w-0"><div className="text-sm font-medium truncate">{new Date(a.date).toLocaleDateString("pt-BR")} {a.start_time.slice(0, 5)} — {a.patient_name}</div><div className="text-xs text-muted-foreground truncate flex gap-2 items-center">{a.professional_name} <Badge variant="outline" className="text-[10px]">{appointmentStatusLabel(a.status)}</Badge></div></div>
+                        <div className="flex-1 min-w-0"><div className="text-sm font-medium truncate">{fmtDate(a.date)} {a.start_time.slice(0, 5)} — {a.patient_name}</div><div className="text-xs text-muted-foreground truncate flex gap-2 items-center">{a.professional_name} <Badge variant="outline" className="text-[10px]">{appointmentStatusLabel(a.status)}</Badge></div></div>
                       </button>
                     );
                   } else {

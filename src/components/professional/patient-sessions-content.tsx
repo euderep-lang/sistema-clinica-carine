@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { fmtDateFromDate } from "@/lib/locale";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -128,7 +129,7 @@ export function PatientSessionsContent({
                       <p className="font-medium">{row.service_name}</p>
                       <p className="text-xs text-muted-foreground">
                         {fmt(row.unit_price)} ·{" "}
-                        {new Date(row.purchased_at).toLocaleDateString("pt-BR")}
+                        {fmtDateFromDate(new Date(row.purchased_at))}
                       </p>
                     </div>
                     <Badge variant={row.status === "active" ? "default" : "secondary"}>

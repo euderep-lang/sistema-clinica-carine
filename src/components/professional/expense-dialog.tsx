@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { todayISO } from "@/lib/locale";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -47,10 +48,10 @@ export function ExpenseDialog({ open, onOpenChange, expense, onSaved }: ExpenseD
   const [category, setCategory] = useState("");
   const [supplier, setSupplier] = useState("");
   const [amount, setAmount] = useState("");
-  const [dueDate, setDueDate] = useState(new Date().toISOString().slice(0, 10));
+  const [dueDate, setDueDate] = useState(todayISO());
   const [notes, setNotes] = useState("");
   const [markPaid, setMarkPaid] = useState(false);
-  const [paidDate, setPaidDate] = useState(new Date().toISOString().slice(0, 10));
+  const [paidDate, setPaidDate] = useState(todayISO());
   const [paymentMethod, setPaymentMethod] = useState("pix");
 
   useEffect(() => {
@@ -75,17 +76,17 @@ export function ExpenseDialog({ open, onOpenChange, expense, onSaved }: ExpenseD
       setDueDate(expense.due_date);
       setNotes(expense.notes ?? "");
       setMarkPaid(expense.status === "paid");
-      setPaidDate(expense.paid_date ?? new Date().toISOString().slice(0, 10));
+      setPaidDate(expense.paid_date ?? todayISO());
       setPaymentMethod(expense.payment_method ?? "pix");
     } else {
       setDescription("");
       setCategory("");
       setSupplier("");
       setAmount("");
-      setDueDate(new Date().toISOString().slice(0, 10));
+      setDueDate(todayISO());
       setNotes("");
       setMarkPaid(false);
-      setPaidDate(new Date().toISOString().slice(0, 10));
+      setPaidDate(todayISO());
       setPaymentMethod("pix");
     }
   }, [open, expense]);

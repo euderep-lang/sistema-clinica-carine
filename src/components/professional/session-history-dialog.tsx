@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { fmtDateFromDate, fmtTimeFromDate } from "@/lib/locale";
 import { History, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -50,12 +51,12 @@ function formatDate(value: string | null, fallback: string) {
     const [y, m, d] = value.split("-");
     if (y && m && d) return `${d}/${m}/${y}`;
   }
-  return new Date(fallback).toLocaleDateString("pt-BR");
+  return fmtDateFromDate(new Date(fallback));
 }
 
 function formatTime(value: string | null, fallback: string) {
   if (value) return value.slice(0, 5);
-  return new Date(fallback).toLocaleTimeString("pt-BR", {
+  return fmtTimeFromDate(new Date(fallback), {
     hour: "2-digit",
     minute: "2-digit",
   });

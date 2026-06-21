@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { todayISO } from "@/lib/locale";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   AlertCircle,
@@ -48,7 +49,7 @@ function ProfessionalDashboard() {
 
   const load = async () => {
     if (!profile) return;
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = todayISO();
     const firstOfMonth = todayStr.slice(0, 8) + "01";
 
     const { data: ap } = await supabase

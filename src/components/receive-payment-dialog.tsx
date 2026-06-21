@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { todayISO } from "@/lib/locale";
 import { toast } from "sonner";
 import { Printer } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -42,7 +43,7 @@ export function ReceivePaymentDialog({ open, onOpenChange, onSaved, defaultPatie
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("cash");
-  const [paidDate, setPaidDate] = useState(new Date().toISOString().slice(0, 10));
+  const [paidDate, setPaidDate] = useState(todayISO());
   const [notes, setNotes] = useState("");
   const [partial, setPartial] = useState(false);
   const [saving, setSaving] = useState(false);

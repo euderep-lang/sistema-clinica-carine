@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { todayISO } from "@/lib/locale";
 
 const APPOINTMENT_PRIORITY: Record<string, number> = {
   in_progress: 0,
@@ -9,7 +10,7 @@ const APPOINTMENT_PRIORITY: Record<string, number> = {
 };
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return todayISO();
 }
 
 /** Consulta do dia deste paciente com este profissional (exclui cancelada/falta). */

@@ -13,6 +13,7 @@ import { CommissionClosing } from "@/components/admin/commission-closing";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
 import { fmt } from "@/lib/currency";
+import { chartMoneyMargin, chartMoneyYAxisProps, fmtChartMoneyTooltip } from "@/lib/chart-format";
 import {
   buildProfessionalProduction,
   currentYearMonth,
@@ -171,11 +172,11 @@ export function AdminMasterDashboard() {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={260}>
-                  <BarChart data={professionals}>
+                  <BarChart data={professionals} margin={chartMoneyMargin}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" fontSize={11} angle={-12} textAnchor="end" height={56} />
-                    <YAxis fontSize={11} tickFormatter={(v) => fmt(v as number)} />
-                    <Tooltip formatter={(v: number) => fmt(v)} />
+                    <YAxis fontSize={11} {...chartMoneyYAxisProps} />
+                    <Tooltip formatter={(v: number) => fmtChartMoneyTooltip(v)} />
                     <Bar dataKey="production" fill={primary} name="Produção" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>

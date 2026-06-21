@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { todayISO, fmtDateFromDate } from "@/lib/locale";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -95,7 +96,7 @@ export function StandaloneSaleDialog({
   const [patientId, setPatientId] = useState("");
   const [patientOpen, setPatientOpen] = useState(false);
   const [patientSearch, setPatientSearch] = useState("");
-  const [dueDate, setDueDate] = useState(new Date().toISOString().slice(0, 10));
+  const [dueDate, setDueDate] = useState(todayISO());
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<SaleItemForm[]>([emptyItem()]);
   const [paymentMode, setPaymentMode] = useState<"cash" | "installment">("cash");
@@ -106,7 +107,7 @@ export function StandaloneSaleDialog({
 
   const resetForm = () => {
     setPatientId(defaultPatientId ?? "");
-    setDueDate(new Date().toISOString().slice(0, 10));
+    setDueDate(todayISO());
     setNotes("");
     setItems([emptyItem()]);
     setPaymentMode("cash");
@@ -494,7 +495,7 @@ export function StandaloneSaleDialog({
                       >
                         <span>
                           {p.number}/{installments.length} ·{" "}
-                          {new Date(p.dueDate + "T12:00:00").toLocaleDateString("pt-BR")}
+                          {fmtDateFromDate(new Date(p.dueDate + "T12:00:00"))}
                         </span>
                         <span className="font-medium">{fmt(p.amount)}</span>
                       </li>

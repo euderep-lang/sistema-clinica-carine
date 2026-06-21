@@ -124,12 +124,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       const uid = session?.user.id ?? null;
+      if (event === "USER_UPDATED" && uid) {
+        lastUserId = uid;
+        setTimeout(() => { void hydrate(); }, 0);
+        return;
+      }
       // Only re-hydrate when the user identity actually changes — token refreshes
       // and re-emits of SIGNED_IN for the same user would otherwise cause
       // duplicate profile/tenant fetches on every page.
-      if ((event === "SIGNED_IN" || event === "USER_UPDATED") && uid && uid !== lastUserId) {
+      if (event === "SIGNED_IN" && uid && uid !== lastUserId) {
         lastUserId = uid;
-        setTimeout(() => { hydrate(); }, 0);
+        setTimeout(() => { void hydrate(); }, 0);
       }
     });
     return () => {
@@ -138,6 +143,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const userId = profile?.id;
+    if (!userId) return;
+
+    const channel = supabase
+      .channel(`profile-sync:${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${userId}` },
+        () => {
+          void hydrate();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.id]);
 
   const signIn: AuthContextValue["signIn"] = async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({

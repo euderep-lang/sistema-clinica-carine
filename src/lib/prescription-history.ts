@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { fmtDate } from "@/lib/locale";
 import { TYPE_LABEL, type RxType } from "@/lib/medications";
 import { randomUUID } from "@/lib/utils";
 
@@ -8,7 +9,7 @@ export function buildPrescriptionCaption(
   medications: string[],
 ): string {
   const typeLabel = TYPE_LABEL[type] ?? "Receita médica";
-  const dateFmt = new Date(`${date}T12:00:00`).toLocaleDateString("pt-BR");
+  const dateFmt = fmtDate(date);
   const meds = medications
     .map((m) => m.trim())
     .filter(Boolean)

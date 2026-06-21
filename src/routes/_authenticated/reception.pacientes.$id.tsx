@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { fmtDateFromDate, fmtDate } from "@/lib/locale";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Calendar as CalIcon, MessageCircle, Pencil, Upload, Download, Trash2, FileText, Eye, FileDown, Copy, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -13,8 +14,10 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { PatientFormDialog, type PatientFormData } from "@/components/patient-form-dialog";
+import { openCrmInbox } from "@/lib/crm-navigation";
 import { pushRecentPatient } from "@/components/command-palette";
 import { APPOINTMENT_STATUS_LABEL, APPOINTMENT_TYPE_LABEL } from "@/lib/appointment-types";
+import { fmt } from "@/lib/currency";
 import { initials, avatarColor, maskCPF, maskPhone, ageFromBirthDate } from "@/lib/patient-utils";
 
 const PATIENT_TABS = ["dados", "consultas", "prontuarios", "prescricoes", "documentos", "financeiro"] as const;
@@ -164,8 +167,7 @@ function PatientProfile() {
 
   const openWhats = () => {
     if (!patient?.phone) { toast.error("Paciente sem telefone"); return; }
-    const d = patient.phone.replace(/\D/g, "");
-    window.open(`https://wa.me/55${d}`, "_blank");
+    openCrmInbox(navigate, { patientId: id, phone: patient.phone });
   };
 
   if (loading) return <DashboardShell title="Paciente"><div className="text-muted-foreground">Carregando...</div></DashboardShell>;
@@ -209,7 +211,7 @@ function PatientProfile() {
                 <Pencil className="h-4 w-4 mr-2" /> Editar
               </Button>
               <Button onClick={openWhats}>
-                <MessageCircle className="h-4 w-4 mr-2" /> Mensagem
+                <MessageCircle className="h-4 w-4 mr-2" /> CRM WhatsApp
               </Button>
             </div>
           </CardContent>
@@ -341,7 +343,7 @@ function PatientProfile() {
                       <TableBody>
                         {filtered.map((r) => (
                           <TableRow key={r.id}>
-                            <TableCell>{new Date(r.date).toLocaleDateString("pt-BR")}</TableCell>
+                            <TableCell>{fmtDate(r.date)}</TableCell>
                             <TableCell>{r.profiles?.full_name ?? "—"}</TableCell>
                             <TableCell>{r.icd10_code ? <Badge variant="secondary">{r.icd10_code}</Badge> : "—"}</TableCell>
                             <TableCell className="max-w-xs truncate">{r.diagnosis ?? r.chief_complaint ?? "—"}</TableCell>
@@ -397,7 +399,7 @@ function PatientProfile() {
                                 : "bg-blue-100 text-blue-700";
                         return (
                           <TableRow key={r.id}>
-                            <TableCell>{new Date(r.date).toLocaleDateString("pt-BR")}</TableCell>
+                            <TableCell>{fmtDate(r.date)}</TableCell>
                             <TableCell>{r.profiles?.full_name ?? "—"}</TableCell>
                             <TableCell><Badge className={`${tColor} hover:${tColor}`}>{r.type[0].toUpperCase() + r.type.slice(1)}</Badge></TableCell>
                             <TableCell className="text-sm">{list || "—"}</TableCell>
@@ -441,7 +443,7 @@ function PatientProfile() {
                           <div className="text-sm font-medium truncate">{d.name.replace(/^\d+_/, "")}</div>
                           <div className="text-xs text-muted-foreground">
                             {(d.size / 1024).toFixed(1)} KB
-                            {d.created_at && ` · ${new Date(d.created_at).toLocaleDateString("pt-BR")}`}
+                            {d.created_at && ` · ${fmtDateFromDate(new Date(d.created_at))}`}
                           </div>
                           <div className="flex gap-1 mt-2">
                             <Button size="sm" variant="outline" onClick={() => onDownload(d.name)}>
@@ -462,8 +464,8 @@ function PatientProfile() {
 
           <TabsContent value="financeiro">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card><CardHeader><CardTitle className="text-sm font-medium text-muted-foreground">Total gasto</CardTitle></CardHeader><CardContent className="text-2xl font-bold">R$ 0,00</CardContent></Card>
-              <Card><CardHeader><CardTitle className="text-sm font-medium text-muted-foreground">Pendente</CardTitle></CardHeader><CardContent className="text-2xl font-bold">R$ 0,00</CardContent></Card>
+              <Card><CardHeader><CardTitle className="text-sm font-medium text-muted-foreground">Total gasto</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{fmt(0)}</CardContent></Card>
+              <Card><CardHeader><CardTitle className="text-sm font-medium text-muted-foreground">Pendente</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{fmt(0)}</CardContent></Card>
               <Card><CardHeader><CardTitle className="text-sm font-medium text-muted-foreground">Última consulta paga</CardTitle></CardHeader><CardContent className="text-2xl font-bold">—</CardContent></Card>
             </div>
           </TabsContent>
@@ -475,7 +477,7 @@ function PatientProfile() {
       <Sheet open={!!recordOpen} onOpenChange={(v) => !v && setRecordOpen(null)}>
         <SheetContent className="overflow-y-auto sm:max-w-lg">
           <SheetHeader>
-            <SheetTitle>Prontuário · {recordOpen && new Date(recordOpen.date).toLocaleDateString("pt-BR")}</SheetTitle>
+            <SheetTitle>Prontuário · {recordOpen && fmtDate(recordOpen.date)}</SheetTitle>
           </SheetHeader>
           {recordOpen && (
             <div className="mt-4 space-y-3 text-sm">

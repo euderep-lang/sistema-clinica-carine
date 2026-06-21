@@ -1,14 +1,8 @@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { firstDayOfMonthISO, todayISO } from "@/lib/locale";
 
-export function firstDayOfMonth(): string {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
-}
-
-export function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+export { firstDayOfMonthISO as firstDayOfMonth, todayISO };
 
 interface DateRangeFilterProps {
   from: string;

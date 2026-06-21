@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { todayISO, shiftDateISO, firstDayOfMonthISO, addMonthsISO, fmtDateShortWeekday, fmtDate } from "@/lib/locale";
 import { Users, CreditCard, Stethoscope, CalendarRange, BanknoteArrowDown, UserPlus, Download } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
 import { APPOINTMENT_STATUS_LABEL, APPOINTMENT_TYPE_LABEL } from "@/lib/appointment-types";
 import { fmt, PAYMENT_LABEL } from "@/lib/currency";
+import { chartMoneyMargin, chartMoneyYAxisProps, fmtChartMoneyTooltip } from "@/lib/chart-format";
 import { resolveLetterheadProfessionalId } from "@/lib/letterhead";
 import { printWithLetterhead } from "@/lib/letterhead-print";
 import { TableSkeleton, EmptyState } from "@/components/feedback-states";
@@ -25,8 +27,8 @@ const REPORTS = [
 ] as const;
 type ReportId = typeof REPORTS[number]["id"];
 
-function firstDayOfMonth(): string { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10); }
-function today(): string { return new Date().toISOString().slice(0, 10); }
+function firstDayOfMonth(): string { return firstDayOfMonthISO(); }
+function today(): string { return todayISO(); }
 function downloadCSV(name: string, rows: (string | number)[][]) {
   const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -105,11 +107,11 @@ function ProducaoReport() {
         {loading ? <TableSkeleton /> : rows.length === 0 ? <EmptyState icon={Users} title="Sem produção no período" /> : (
           <>
             <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={rows}>
+              <BarChart data={rows} margin={chartMoneyMargin}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" fontSize={11} angle={-15} textAnchor="end" height={60} />
-                <YAxis fontSize={11} tickFormatter={(v) => fmt(v as number)} />
-                <Tooltip formatter={(v: number) => fmt(v)} />
+                <YAxis fontSize={11} {...chartMoneyYAxisProps} />
+                <Tooltip formatter={(v: number) => fmtChartMoneyTooltip(v)} />
                 <Bar dataKey="total" fill={primary} name="Produção" />
               </BarChart>
             </ResponsiveContainer>
@@ -277,7 +279,7 @@ function AgendaReport() {
             <div className="overflow-x-auto max-h-96 overflow-y-auto">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-card text-left text-xs text-muted-foreground uppercase"><tr><th className="p-2">Data</th><th>Hora</th><th>Paciente</th><th>Profissional</th><th>Consultório</th><th>Tipo</th><th>Situação</th></tr></thead>
-                <tbody>{rows.slice(0, 100).map(r => (<tr key={r.id} className="border-t"><td className="p-2">{new Date(r.date).toLocaleDateString("pt-BR")}</td><td>{r.start_time.slice(0, 5)}</td><td>{r.patient}</td><td>{r.professional}</td><td>{r.room}</td><td>{APPOINTMENT_TYPE_LABEL[r.type] ?? r.type}</td><td><Badge variant="outline" style={{ borderColor: STATUS_COLOR[r.status], color: STATUS_COLOR[r.status] }}>{APPOINTMENT_STATUS_LABEL[r.status] ?? r.status}</Badge></td></tr>))}</tbody>
+                <tbody>{rows.slice(0, 100).map(r => (<tr key={r.id} className="border-t"><td className="p-2">{fmtDate(r.date)}</td><td>{r.start_time.slice(0, 5)}</td><td>{r.patient}</td><td>{r.professional}</td><td>{r.room}</td><td>{APPOINTMENT_TYPE_LABEL[r.type] ?? r.type}</td><td><Badge variant="outline" style={{ borderColor: STATUS_COLOR[r.status], color: STATUS_COLOR[r.status] }}>{APPOINTMENT_STATUS_LABEL[r.status] ?? r.status}</Badge></td></tr>))}</tbody>
               </table>
             </div>
             <Button variant="outline" size="sm" onClick={() => downloadCSV("agenda.csv", [["Data","Hora","Paciente","Profissional","Consultorio","Tipo","Situacao"], ...rows.map(r => [r.date, r.start_time, r.patient, r.professional, r.room, APPOINTMENT_TYPE_LABEL[r.type] ?? r.type, APPOINTMENT_STATUS_LABEL[r.status] ?? r.status])])}><Download className="size-4 mr-2" />Exportar planilha</Button>
@@ -291,7 +293,7 @@ function AgendaReport() {
 // 5. Fluxo de Caixa Detalhado
 function FluxoReport() {
   const { profile } = useAuth();
-  const [from, setFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); });
+  const [from, setFrom] = useState(() => shiftDateISO(todayISO(), -30));
   const [to, setTo] = useState(today());
   const [loading, setLoading] = useState(true);
   const [tx, setTx] = useState<{ id: string; date: string; type: "in" | "out"; description: string; party: string; method: string; amount: number }[]>([]);
@@ -345,7 +347,7 @@ function FluxoReport() {
                 const dOut = items.filter(i => i.type === "out").reduce((s, i) => s + i.amount, 0);
                 return (
                   <div key={date}>
-                    <div className="bg-muted px-3 py-1 rounded text-sm font-semibold flex justify-between"><span>{new Date(date).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })}</span><span className="text-xs">Entradas: {fmt(dIn)} · Saídas: {fmt(dOut)} · Saldo: {fmt(dIn - dOut)}</span></div>
+                    <div className="bg-muted px-3 py-1 rounded text-sm font-semibold flex justify-between"><span>{fmtDateShortWeekday(date)}</span><span className="text-xs">Entradas: {fmt(dIn)} · Saídas: {fmt(dOut)} · Saldo: {fmt(dIn - dOut)}</span></div>
                     <table className="w-full text-sm">
                       <tbody>
                         {items.map(t => (
@@ -386,9 +388,8 @@ function PacientesReport() {
       const { data: pts } = await supabase.from("patients").select("id, full_name, created_at, active, how_did_you_find_us");
       const { data: appts } = await supabase.from("appointments").select("id, patient_id, date");
       const { data: bills } = await supabase.from("bills_receivable").select("patient_id, paid_amount, status").eq("status", "paid");
-      const now = new Date();
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const ninetyAgo = new Date(now.getTime() - 90 * 86400000);
+      const monthStart = firstDayOfMonthISO();
+      const ninetyAgo = shiftDateISO(todayISO(), -90);
 
       const ps = (pts ?? []) as { id: string; full_name: string; created_at: string; active: boolean; how_did_you_find_us: string | null }[];
       const as = (appts ?? []) as { patient_id: string; date: string }[];
@@ -400,14 +401,14 @@ function PacientesReport() {
       bs.forEach(b => { billTotal[b.patient_id] = (billTotal[b.patient_id] ?? 0) + Number(b.paid_amount); });
 
       const active = ps.filter(p => p.active).length;
-      const newMonth = ps.filter(p => new Date(p.created_at) >= monthStart).length;
-      const inactive = ps.filter(p => { const last = apLast[p.id]; return !last || new Date(last) < ninetyAgo; }).length;
+      const newMonth = ps.filter(p => p.created_at.slice(0, 10) >= monthStart).length;
+      const inactive = ps.filter(p => { const last = apLast[p.id]; return !last || last < ninetyAgo; }).length;
       const withTwo = Object.values(apCount).filter(c => c >= 2).length;
       const returnRate = active ? (withTwo / active) * 100 : 0;
       setStats({ active, newMonth, inactive, returnRate });
 
       const months: Record<string, number> = {};
-      for (let i = 11; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); months[d.toISOString().slice(0, 7)] = 0; }
+      for (let i = 11; i >= 0; i--) { months[addMonthsISO(firstDayOfMonthISO(), -i).slice(0, 7)] = 0; }
       ps.forEach(p => { const k = p.created_at.slice(0, 7); if (k in months) months[k]++; });
       setByMonth(Object.entries(months).map(([month, count]) => ({ month: month.slice(5), count })));
 
@@ -453,11 +454,11 @@ function PacientesReport() {
       <div className="grid gap-4 md:grid-cols-2">
         <Card><CardHeader><CardTitle className="text-base">Top 10 — Mais consultas</CardTitle></CardHeader>
           <CardContent className="p-0"><table className="w-full text-sm"><thead className="text-left text-xs text-muted-foreground uppercase"><tr><th className="p-2">Paciente</th><th>Consultas</th><th>Última</th></tr></thead>
-            <tbody>{topVisits.map(r => <tr key={r.id} className="border-t"><td className="p-2">{r.name}</td><td>{r.count}</td><td>{r.last ? new Date(r.last).toLocaleDateString("pt-BR") : "—"}</td></tr>)}</tbody></table></CardContent>
+            <tbody>{topVisits.map(r => <tr key={r.id} className="border-t"><td className="p-2">{r.name}</td><td>{r.count}</td><td>{r.last ? fmtDate(r.last) : "—"}</td></tr>)}</tbody></table></CardContent>
         </Card>
         <Card><CardHeader><CardTitle className="text-base">Top 10 — Maior receita</CardTitle></CardHeader>
           <CardContent className="p-0"><table className="w-full text-sm"><thead className="text-left text-xs text-muted-foreground uppercase"><tr><th className="p-2">Paciente</th><th>Total pago</th><th>Última consulta</th></tr></thead>
-            <tbody>{topRevenue.map(r => <tr key={r.id} className="border-t"><td className="p-2">{r.name}</td><td>{fmt(r.total)}</td><td>{r.last ? new Date(r.last).toLocaleDateString("pt-BR") : "—"}</td></tr>)}</tbody></table></CardContent>
+            <tbody>{topRevenue.map(r => <tr key={r.id} className="border-t"><td className="p-2">{r.name}</td><td>{fmt(r.total)}</td><td>{r.last ? fmtDate(r.last) : "—"}</td></tr>)}</tbody></table></CardContent>
         </Card>
       </div>
     </div>

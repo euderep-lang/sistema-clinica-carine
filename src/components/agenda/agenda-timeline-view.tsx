@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { todayISO } from "@/lib/locale";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
@@ -69,7 +70,7 @@ export function AgendaTimelineView({
 }) {
   const slots = buildHourSlots(AGENDA_DAY_START, AGENDA_DAY_END, AGENDA_SLOT_MINUTES);
   const totalMinutes = (AGENDA_DAY_END - AGENDA_DAY_START) * 60;
-  const nowPercent = date === new Date().toISOString().slice(0, 10) ? currentTimePercent() : null;
+  const nowPercent = date === todayISO() ? currentTimePercent() : null;
   const activePro = professionals.find((p) => p.id === activeProfessionalId);
 
   return (
@@ -201,6 +202,7 @@ export function AgendaTimelineView({
                       {onReschedule && <AgendaRescheduleButton row={row} onReschedule={onReschedule} />}
                       <AgendaContactActions
                         phone={row.patients?.phone}
+                        patientId={row.patient_id}
                         patientName={row.patients?.full_name}
                         size="icon"
                       />
