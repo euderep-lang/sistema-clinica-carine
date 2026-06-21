@@ -3,6 +3,7 @@ import "./lib/error-capture";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { handleWhatsAppWebhook } from "./lib/whatsapp-webhook.server";
+import { getWhatsAppWebhookStatus } from "./lib/whatsapp-webhook-status.server";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -44,6 +45,10 @@ export default {
       const { pathname } = new URL(request.url);
       if (pathname === "/api/whatsapp/webhook") {
         return handleWhatsAppWebhook(request);
+      }
+      if (pathname === "/api/whatsapp/webhook-status") {
+        const status = await getWhatsAppWebhookStatus();
+        return Response.json(status, { status: status.ok ? 200 : 503 });
       }
 
       const handler = await getServerEntry();

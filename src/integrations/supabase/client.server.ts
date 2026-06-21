@@ -4,17 +4,17 @@
 // For user-authenticated queries (with RLS), use the auth middleware instead.
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
+import { getSupabaseServerEnv } from '@/lib/supabase-env.server';
 
 function createSupabaseAdminClient() {
-  const SUPABASE_URL = process.env.SUPABASE_URL;
-  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const { url: SUPABASE_URL, serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY } = getSupabaseServerEnv();
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     const missing = [
-      ...(!SUPABASE_URL ? ['SUPABASE_URL'] : []),
+      ...(!SUPABASE_URL ? ['SUPABASE_URL (ou VITE_SUPABASE_URL)'] : []),
       ...(!SUPABASE_SERVICE_ROLE_KEY ? ['SUPABASE_SERVICE_ROLE_KEY'] : []),
     ];
-    const message = `Variável(is) de ambiente do Supabase ausente(s): ${missing.join(', ')}. Configure-as no arquivo .env (veja .env.example).`;
+    const message = `Variável(is) de ambiente do Supabase ausente(s): ${missing.join(', ')}. Configure-as no .env local e na Vercel (Settings → Environment Variables).`;
     console.error(`[Supabase] ${message}`);
     throw new Error(message);
   }

@@ -168,10 +168,15 @@ export async function handleZApiWebhook(request: Request): Promise<Response> {
   }
 
   const tenantId = await resolveTenantId().catch((e) => {
-    console.error("[Z-API webhook] falha ao conectar Supabase (verifique SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY na Vercel):", e);
+    console.error("[Z-API webhook] falha ao conectar Supabase:", e);
     return null;
   });
-  if (!tenantId) return new Response("OK", { status: 200 });
+  if (!tenantId) {
+    console.error(
+      "[Z-API webhook] mensagem descartada — configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY na Vercel. Diagnóstico: /api/whatsapp/webhook-status",
+    );
+    return new Response("OK", { status: 200 });
+  }
 
   try {
     if (/^receivedcallback$/i.test(payload.type ?? "")) {

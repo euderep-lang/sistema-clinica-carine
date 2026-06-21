@@ -32,12 +32,23 @@ export function SectionIntegracoes() {
             </div>
             <p className="text-xs text-muted-foreground min-h-[2.5rem]">{i.desc}</p>
             {i.id === "whatsapp" ? (
-              <p className="text-[11px] text-muted-foreground">
-                Configure <code className="rounded bg-muted px-1">WHATSAPP_PROVIDER=zapi</code>,{" "}
-                <code className="rounded bg-muted px-1">ZAPI_INSTANCE_ID</code> e{" "}
-                <code className="rounded bg-muted px-1">ZAPI_TOKEN</code>. Webhook:{" "}
-                <code className="rounded bg-muted px-1">/api/whatsapp/webhook</code>. Inbox em <strong>CRM WhatsApp</strong>.
-              </p>
+              <div className="space-y-1 text-[11px] text-muted-foreground">
+                <p>
+                  Webhook:{" "}
+                  <code className="rounded bg-muted px-1">https://sistema-clinicos.vercel.app/api/whatsapp/webhook</code>
+                </p>
+                <p>
+                  Na Vercel, configure também (Production):{" "}
+                  <code className="rounded bg-muted px-1">SUPABASE_URL</code>,{" "}
+                  <code className="rounded bg-muted px-1">SUPABASE_SERVICE_ROLE_KEY</code>,{" "}
+                  <code className="rounded bg-muted px-1">WHATSAPP_PROVIDER</code>,{" "}
+                  <code className="rounded bg-muted px-1">ZAPI_*</code>.
+                </p>
+                <p>
+                  Diagnóstico:{" "}
+                  <code className="rounded bg-muted px-1">/api/whatsapp/webhook-status</code>
+                </p>
+              </div>
             ) : (
               <Tooltip>
                 <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled className="w-full">Configurar</Button></span></TooltipTrigger>
