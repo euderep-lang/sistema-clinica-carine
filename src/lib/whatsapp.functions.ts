@@ -12,6 +12,8 @@ import {
   providerSendText,
 } from "@/lib/whatsapp-provider.server";
 import { sendMetaSocialText } from "@/lib/whatsapp-meta.server";
+import { normalizeOutboundMessageBody } from "@/lib/wa-automation-quick-replies.server";
+import { logAuditSafe } from "@/lib/audit.server";
 
 type CrmRole = "admin" | "professional" | "receptionist";
 
@@ -62,6 +64,9 @@ export const sendWaText = createServerFn({ method: "POST" })
       external_user_id?: string | null;
     };
 
+    const text = normalizeOutboundMessageBody(data.text);
+    if (!text) throw new Error("Mensagem vazia");
+
     let replyToWaId: string | undefined;
     if (data.replyToMessageId) {
       const { data: replyMsg } = await supabase
@@ -78,11 +83,11 @@ export const sendWaText = createServerFn({ method: "POST" })
 
     if (channel === "instagram" || channel === "messenger") {
       const recipientId = convRow.external_user_id ?? convRow.contact_phone;
-      const result = await sendMetaSocialText(recipientId, data.text, channel);
+      const result = await sendMetaSocialText(recipientId, text, channel);
       messageId = result.messageId;
     } else {
       const phone = normalizeBrazilPhone(convRow.contact_phone);
-      const result = await providerSendText(phone, data.text, {
+      const result = await providerSendText(phone, text, {
         replyToWaMessageId: replyToWaId,
       });
       messageId = result.messageId;
@@ -95,7 +100,7 @@ export const sendWaText = createServerFn({ method: "POST" })
       wa_message_id: messageId,
       direction: "outbound",
       message_type: "text",
-      body: data.text,
+      body: text,
       status: "sent",
       sent_by: userId,
       reply_to_message_id: data.replyToMessageId ?? null,
@@ -103,7 +108,7 @@ export const sendWaText = createServerFn({ method: "POST" })
 
     const convUpdate: Record<string, unknown> = {
       last_message_at: now,
-      last_message_preview: data.text.slice(0, 120),
+      last_message_preview: text.slice(0, 120),
       updated_at: now,
     };
     if (!convRow.first_response_at) convUpdate.first_response_at = now;
@@ -122,9 +127,22 @@ export const sendWaText = createServerFn({ method: "POST" })
     void onOutboundMessageForFollowUp({
       tenantId: profile.tenant_id,
       conversationId: data.conversationId,
-      text: data.text,
+      text,
       userId,
     }).catch((e) => console.error("[CRM] follow-up outbound error:", e));
+
+    logAuditSafe({
+      tenantId: profile.tenant_id,
+      actorId: userId,
+      category: "whatsapp",
+      action: "whatsapp.message_sent",
+      summary: `Mensagem WhatsApp enviada: ${text.slice(0, 100)}`,
+      entityType: "conversation",
+      entityId: data.conversationId,
+      conversationId: data.conversationId,
+      details: { channel, message_id: messageId, preview: text.slice(0, 200) },
+      source: "ui",
+    });
 
     return { ok: true };
   });
@@ -201,6 +219,19 @@ export const sendWaMedia = createServerFn({ method: "POST" })
         updated_at: now,
       } as never)
       .eq("id", data.conversationId);
+
+    logAuditSafe({
+      tenantId: profile.tenant_id,
+      actorId: userId,
+      category: "whatsapp",
+      action: "whatsapp.message_sent",
+      summary: `Mídia WhatsApp enviada (${data.mediaType}): ${preview}`,
+      entityType: "conversation",
+      entityId: data.conversationId,
+      conversationId: data.conversationId,
+      details: { media_type: data.mediaType, message_id: messageId, filename },
+      source: "ui",
+    });
 
     return { ok: true };
   });
@@ -290,6 +321,8 @@ export const startWaConversation = createServerFn({ method: "POST" })
     const phone = normalizeBrazilPhone(data.phone);
     const now = new Date().toISOString();
     const displayName = data.name ?? phone;
+    const text = normalizeOutboundMessageBody(data.text);
+    if (!text) throw new Error("Mensagem vazia");
 
     const { data: tenantConvs } = await supabaseAdmin
       .from("wa_conversations" as never)
@@ -319,7 +352,7 @@ export const startWaConversation = createServerFn({ method: "POST" })
           contact_name: data.patientId ? displayName : existing.contact_name ?? displayName,
           assigned_to: userId,
           last_message_at: now,
-          last_message_preview: data.text.slice(0, 120),
+          last_message_preview: text.slice(0, 120),
           status: "open",
           updated_at: now,
         } as never)
@@ -336,7 +369,7 @@ export const startWaConversation = createServerFn({ method: "POST" })
           contact_name: displayName,
           assigned_to: userId,
           last_message_at: now,
-          last_message_preview: data.text.slice(0, 120),
+          last_message_preview: text.slice(0, 120),
           status: "open",
           updated_at: now,
         } as never)
@@ -346,7 +379,7 @@ export const startWaConversation = createServerFn({ method: "POST" })
       conversationId = (conv as { id: string }).id;
     }
 
-    const { messageId } = await providerSendText(phone, data.text);
+    const { messageId } = await providerSendText(phone, text);
 
     await supabaseAdmin.from("wa_messages" as never).insert({
       tenant_id: profile.tenant_id,
@@ -354,7 +387,7 @@ export const startWaConversation = createServerFn({ method: "POST" })
       wa_message_id: messageId,
       direction: "outbound",
       message_type: "text",
-      body: data.text,
+      body: text,
       status: "sent",
       sent_by: userId,
     } as never);

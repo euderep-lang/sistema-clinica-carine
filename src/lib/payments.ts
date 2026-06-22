@@ -25,6 +25,7 @@ export interface BillPaymentRow {
 
 export async function loadBillPayments(options?: {
   billId?: string;
+  patientId?: string;
   limit?: number;
 }): Promise<BillPaymentRow[]> {
   let query = supabase
@@ -38,6 +39,9 @@ export async function loadBillPayments(options?: {
 
   if (options?.billId) {
     query = query.eq("bill_receivable_id", options.billId);
+  }
+  if (options?.patientId) {
+    query = query.eq("patient_id", options.patientId);
   }
 
   const { data, error } = await query;
@@ -56,4 +60,36 @@ export async function reverseBillPayment(paymentId: string, reason?: string) {
 
 export function paymentCanReverse(row: BillPaymentRow) {
   return row.status === "active";
+}
+
+export interface BillDiscountRow {
+  id: string;
+  bill_receivable_id: string;
+  amount: number;
+  notes: string | null;
+  applied_date: string;
+  created_at: string;
+  created_by_profile: { full_name: string } | null;
+}
+
+export async function loadBillDiscounts(options?: {
+  billId?: string;
+  limit?: number;
+}): Promise<BillDiscountRow[]> {
+  let query = supabase
+    .from("bill_discounts" as never)
+    .select(
+      "id, bill_receivable_id, amount, notes, applied_date, created_at, created_by_profile:created_by(full_name)",
+    )
+    .order("applied_date", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(options?.limit ?? 50);
+
+  if (options?.billId) {
+    query = query.eq("bill_receivable_id", options.billId);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return (data ?? []) as BillDiscountRow[];
 }

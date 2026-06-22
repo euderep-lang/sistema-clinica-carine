@@ -11,6 +11,7 @@ export interface SaleBillRow {
   id: string;
   description: string;
   amount: number;
+  discount_value?: number;
   paid_amount: number;
   due_date: string;
   paid_date: string | null;
@@ -20,10 +21,15 @@ export interface SaleBillRow {
   notes: string | null;
   budget_id: string | null;
   patient_id: string | null;
+  professional_id?: string | null;
   installment_number: number | null;
   installment_count: number | null;
   consultation_charge_id: string | null;
+  nfse_number?: string | null;
+  nfse_status?: string | null;
+  nfse_issued_at?: string | null;
   patients: { full_name: string } | null;
+  profiles?: { full_name: string } | null;
 }
 
 export interface SaleChargeItem {
@@ -146,6 +152,7 @@ export async function receiveBillPayment(
   method: string,
   paidDate: string,
   notes?: string,
+  discount = 0,
 ) {
   const { data, error } = await supabase.rpc("receive_bill_payment" as never, {
     p_bill_id: billId,
@@ -153,6 +160,7 @@ export async function receiveBillPayment(
     p_method: method,
     p_paid_date: paidDate,
     p_notes: notes ?? null,
+    p_discount: discount > 0 ? discount : 0,
   } as never);
   if (error) throw new Error(error.message);
   return data as { bill_id: string; paid_amount: number; status: string };

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ExternalLink, FileText, Loader2, Reply } from "lucide-react";
+import { CrmAudioPlayer } from "@/components/crm/crm-audio-player";
 import {
   formatMessageTime,
   isDirectMediaUrl,
@@ -16,6 +17,12 @@ interface CrmMessageBubbleProps {
   highlighted?: boolean;
 }
 
+function isAudioPlaceholder(body: string | null | undefined): boolean {
+  if (!body?.trim()) return true;
+  const t = body.trim();
+  return t === "Áudio" || t === "🎤 Áudio" || /^🎤\s*Áudio$/i.test(t);
+}
+
 export function CrmMessageBubble({
   message,
   resolveMediaUrl,
@@ -26,6 +33,11 @@ export function CrmMessageBubble({
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [loadingMedia, setLoadingMedia] = useState(false);
   const [mediaError, setMediaError] = useState(false);
+
+  const isAudio = message.message_type === "audio";
+  const isImage = message.message_type === "image";
+  const isVideo = message.message_type === "video";
+  const showBody = !!message.body && !(isAudio && isAudioPlaceholder(message.body));
 
   const loadMedia = useCallback(async () => {
     if (!message.media_id) return;
@@ -56,28 +68,29 @@ export function CrmMessageBubble({
   return (
     <div
       className={cn(
-        "group relative max-w-[min(88%,26rem)] rounded-lg px-3 py-2 text-[13px] leading-relaxed shadow-sm",
+        "group relative max-w-[min(78%,15rem)] rounded-[10px] text-[12px] leading-snug",
+        isAudio ? "px-2 py-1.5" : "px-2.5 py-1.5",
         message.direction === "outbound"
-          ? "ml-auto rounded-tr-sm bg-[#d9fdd3] text-zinc-900 dark:bg-emerald-900/40 dark:text-emerald-50"
-          : "rounded-tl-sm bg-white text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100",
-        highlighted && "ring-2 ring-amber-400/80 ring-offset-2",
+          ? "ml-auto rounded-tr-[3px] bg-[#d9fdd3] text-zinc-900 dark:bg-emerald-900/40 dark:text-emerald-50"
+          : "rounded-tl-[3px] bg-white text-zinc-900 shadow-[0_1px_0.5px_rgba(0,0,0,0.06)] dark:bg-zinc-800 dark:text-zinc-100",
+        highlighted && "ring-2 ring-amber-400/80 ring-offset-1",
       )}
     >
       {onReply ? (
         <button
           type="button"
-          className="absolute -left-8 top-1 hidden rounded p-1 text-muted-foreground opacity-0 transition group-hover:opacity-100 lg:block"
+          className="absolute -left-7 top-0.5 hidden rounded p-0.5 text-muted-foreground opacity-0 transition group-hover:opacity-100 lg:block"
           onClick={() => onReply(message)}
           title="Responder"
         >
-          <Reply className="size-3.5" />
+          <Reply className="size-3" />
         </button>
       ) : null}
 
       {replyTo ? (
         <div
           className={cn(
-            "mb-1 rounded-lg border-l-4 px-2 py-1 text-xs opacity-90",
+            "mb-1 rounded-md border-l-[3px] px-1.5 py-0.5 text-[10px] leading-tight opacity-90",
             message.direction === "outbound"
               ? "border-emerald-600/30 bg-emerald-900/5"
               : "border-emerald-500/40 bg-muted/40",
@@ -86,51 +99,55 @@ export function CrmMessageBubble({
           <p className="line-clamp-2">{replyTo.body ?? replyTo.message_type}</p>
         </div>
       ) : null}
+
       {message.media_id ? (
-        <div className="mb-1">
+        <div className={cn(showBody ? "mb-1" : "")}>
           {loadingMedia ? (
-            <div className="flex items-center gap-2 py-2 text-xs opacity-80">
-              <Loader2 className="size-3.5 animate-spin" />
-              Carregando mídia…
+            <div className="flex items-center gap-1.5 py-1 text-[10px] opacity-70">
+              <Loader2 className="size-3 animate-spin" />
+              Carregando…
             </div>
           ) : mediaError ? (
-            <button type="button" className="text-xs underline" onClick={() => void loadMedia()}>
-              Falha ao carregar — tentar de novo
+            <button type="button" className="text-[10px] underline" onClick={() => void loadMedia()}>
+              Tentar de novo
             </button>
-          ) : message.message_type === "image" && mediaUrl ? (
-            <button type="button" onClick={openMedia} className="block overflow-hidden rounded-lg">
+          ) : isImage && mediaUrl ? (
+            <button type="button" onClick={openMedia} className="block overflow-hidden rounded-md">
               <img
                 src={mediaUrl}
                 alt={message.media_filename ?? "Imagem"}
-                className="max-h-64 w-full object-cover"
+                className="max-h-48 w-full object-cover"
                 loading="lazy"
               />
             </button>
-          ) : message.message_type === "audio" && mediaUrl ? (
-            <audio controls preload="metadata" className="max-w-full" src={mediaUrl}>
-              <track kind="captions" />
-            </audio>
-          ) : message.message_type === "video" && mediaUrl ? (
-            <video controls preload="metadata" className="max-h-64 w-full rounded-lg" src={mediaUrl}>
+          ) : isAudio && mediaUrl ? (
+            <CrmAudioPlayer src={mediaUrl} outbound={message.direction === "outbound"} />
+          ) : isVideo && mediaUrl ? (
+            <video controls preload="metadata" className="max-h-44 w-full rounded-md" src={mediaUrl}>
               <track kind="captions" />
             </video>
           ) : mediaUrl ? (
             <button
               type="button"
               onClick={openMedia}
-              className="flex items-center gap-2 rounded-md bg-black/10 px-2 py-1.5 text-xs underline"
+              className="flex items-center gap-1.5 rounded-md bg-black/8 px-1.5 py-1 text-[10px] underline dark:bg-white/10"
             >
-              <FileText className="size-3.5 shrink-0" />
-              {message.media_filename ?? "Abrir arquivo"}
-              <ExternalLink className="size-3 shrink-0" />
+              <FileText className="size-3 shrink-0" />
+              <span className="truncate">{message.media_filename ?? "Abrir arquivo"}</span>
+              <ExternalLink className="size-2.5 shrink-0" />
             </button>
           ) : null}
         </div>
       ) : null}
 
-      {message.body ? <p className="whitespace-pre-wrap break-words">{message.body}</p> : null}
+      {showBody ? <p className="whitespace-pre-wrap break-words">{message.body}</p> : null}
 
-      <p className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70">
+      <p
+        className={cn(
+          "flex items-center justify-end gap-0.5 text-[9px] leading-none opacity-60",
+          showBody || !isAudio ? "mt-1" : "mt-0.5",
+        )}
+      >
         <span>
           {formatMessageTime(message.created_at)}
           {message.sender_profile?.full_name ? ` · ${message.sender_profile.full_name}` : ""}

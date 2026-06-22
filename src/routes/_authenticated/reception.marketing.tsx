@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
-import { applyVars, logMessage, age, daysSince, type PatientLite, CHANNEL_BADGE } from "@/lib/messaging";
+import { applyVars, logMessage, age, daysSince, DEFAULT_BIRTHDAY_MESSAGE, type PatientLite, CHANNEL_BADGE } from "@/lib/messaging";
 import { openCrmInbox } from "@/lib/crm-navigation";
 import { toast } from "sonner";
 import { randomUUID } from "@/lib/utils";
@@ -79,16 +79,13 @@ function AniversariantesTab({ tenantId, tenantName, userId }: { tenantId: string
 
   async function sendBirthday(p: PatientLite) {
     if (!p.phone) { toast.error("Sem telefone"); return; }
-    const content = template ? applyVars(template.content, p, tenantName) : `Olá ${p.full_name}, a equipe ${tenantName} deseja um feliz aniversário! 🎉`;
+    const content = template ? applyVars(template.content, p, tenantName) : applyVars(DEFAULT_BIRTHDAY_MESSAGE, p, tenantName);
     openCrmInbox(navigate, { patientId: p.id, phone: p.phone, draft: content });
     try { await logMessage({ tenant_id: tenantId, patient_id: p.id, template_id: template?.id ?? null, channel: "whatsapp", content, sent_by: userId }); setContacted({ ...contacted, [p.id]: true }); }
     catch { toast.error("Falha ao registrar"); }
   }
 
   const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-  const daysInMonth = new Date(new Date().getFullYear(), month + 1, 0).getDate();
-  const dayCounts: Record<number, number> = {};
-  monthPatients.forEach(p => { const d = new Date(p.birth_date!).getDate(); dayCounts[d] = (dayCounts[d] ?? 0) + 1; });
 
   return (
     <div className="space-y-4">
@@ -108,20 +105,6 @@ function AniversariantesTab({ tenantId, tenantName, userId }: { tenantId: string
         <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Já contatados</div><div className="text-2xl font-semibold text-green-600">{totalContacted}</div></CardContent></Card>
         <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Pendentes</div><div className="text-2xl font-semibold text-amber-600">{monthPatients.length - totalContacted}</div></CardContent></Card>
       </div>
-
-      <Card>
-        <CardHeader><CardTitle className="text-base">{monthNames[month]} {new Date().getFullYear()}</CardTitle></CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-7 gap-1 mb-4">
-            {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(d => (
-              <div key={d} className={`aspect-square rounded border text-center text-xs flex flex-col justify-center ${dayCounts[d] ? "bg-primary/10 border-primary" : "bg-muted/30"}`}>
-                <div>{d}</div>
-                {dayCounts[d] && <div className="text-[10px] font-semibold text-primary">{dayCounts[d]}</div>}
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
 
       <Card>
         <CardContent className="p-0">

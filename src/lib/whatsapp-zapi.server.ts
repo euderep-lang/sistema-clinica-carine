@@ -3,6 +3,9 @@
  * Docs: https://developer.z-api.io/
  */
 
+import { isValidContactPhotoUrl } from "@/lib/wa-contact-photo";
+import { normalizeBrazilPhone } from "@/lib/wa-phone";
+
 const ZAPI_BASE = "https://api.z-api.io/instances";
 
 export interface ZApiConfig {
@@ -83,19 +86,76 @@ function fileExtension(filename: string, fallback = "bin") {
   return ext && ext.length <= 6 ? ext : fallback;
 }
 
-export async function getZApiContactPhoto(config: ZApiConfig, phone: string): Promise<string | null> {
+export interface ZApiContactMetadata {
+  name?: string;
+  phone?: string;
+  notify?: string;
+  short?: string;
+  imgUrl?: string;
+  about?: string | null;
+  lid?: string;
+}
+
+function contactLookupKeys(phone: string): string[] {
+  const keys = new Set<string>();
+  const raw = phone.trim();
+  if (raw) keys.add(raw);
+  const normalized = normalizeBrazilPhone(raw);
+  if (normalized) keys.add(normalized);
+  if (/@lid/i.test(raw)) keys.add(raw.replace(/@lid/i, "").trim());
+  return [...keys];
+}
+
+/** Metadados do contato (nome, imgUrl, lid). Mais confiável que get-profile-picture. */
+export async function getZApiContactMetadata(
+  config: ZApiConfig,
+  phone: string,
+): Promise<ZApiContactMetadata | null> {
   try {
-    const json = await zapiRequest<{ link?: string }>(
+    const json = await zapiRequest<ZApiContactMetadata | { error?: string; message?: string; statusCode?: number } | null>(
       config,
-      `/contacts/get-profile-picture?phone=${encodeURIComponent(phone)}`,
+      `/contacts/${encodeURIComponent(phone)}`,
       undefined,
       "GET",
     );
-    const link = json.link?.trim();
-    return link || null;
+    if (!json || typeof json !== "object") return null;
+    if ("error" in json || ("message" in json && !("phone" in json))) return null;
+    return json as ZApiContactMetadata;
   } catch {
     return null;
   }
+}
+
+export async function getZApiContactPhoto(config: ZApiConfig, phone: string): Promise<string | null> {
+  for (const key of contactLookupKeys(phone)) {
+    const meta = await getZApiContactMetadata(config, key);
+    if (isValidContactPhotoUrl(meta?.imgUrl)) return meta!.imgUrl!.trim();
+
+    if (meta?.lid) {
+      const byLid = await getZApiContactMetadata(config, meta.lid);
+      if (isValidContactPhotoUrl(byLid?.imgUrl)) return byLid!.imgUrl!.trim();
+    }
+
+    if (meta?.phone) {
+      const byPhone = await getZApiContactMetadata(config, meta.phone);
+      if (isValidContactPhotoUrl(byPhone?.imgUrl)) return byPhone!.imgUrl!.trim();
+    }
+
+    try {
+      const json = await zapiRequest<{ link?: string | null } | null>(
+        config,
+        `/contacts/get-profile-picture?phone=${encodeURIComponent(key)}`,
+        undefined,
+        "GET",
+      );
+      const link = json && typeof json === "object" ? json.link?.trim() : null;
+      if (isValidContactPhotoUrl(link)) return link!;
+    } catch {
+      // get-profile-picture costuma retornar null quando imgUrl já está no metadata
+    }
+  }
+
+  return null;
 }
 
 export async function sendZApiText(

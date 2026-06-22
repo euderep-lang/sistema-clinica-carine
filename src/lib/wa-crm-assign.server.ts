@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
-/** Primeiro recepcionista ativo do tenant (fila compartilhada da recepção). */
+/** Primeiro recepcionista ativo do tenant; se não houver, admin do tenant (fila compartilhada). */
 export async function getDefaultReceptionAssignee(tenantId: string): Promise<string | null> {
   const { data } = await supabaseAdmin
     .from("profiles")
@@ -11,7 +11,18 @@ export async function getDefaultReceptionAssignee(tenantId: string): Promise<str
     .limit(1)
     .maybeSingle();
 
-  return data?.id ?? null;
+  if (data?.id) return data.id;
+
+  const { data: admin } = await supabaseAdmin
+    .from("profiles")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("role", "admin")
+    .order("full_name")
+    .limit(1)
+    .maybeSingle();
+
+  return admin?.id ?? null;
 }
 
 export async function assignOpenConversationsToReception(

@@ -14,6 +14,42 @@ export function maskPhone(v: string) {
   return d.replace(/(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3").replace(/-$/, "");
 }
 
+export const DEFAULT_PHONE_DDI = "55";
+
+export const PHONE_DDI_OPTIONS = [
+  { value: "55", label: "+55 Brasil" },
+  { value: "1", label: "+1 EUA / Canadá" },
+  { value: "351", label: "+351 Portugal" },
+  { value: "54", label: "+54 Argentina" },
+  { value: "598", label: "+598 Uruguai" },
+  { value: "595", label: "+595 Paraguai" },
+  { value: "56", label: "+56 Chile" },
+  { value: "34", label: "+34 Espanha" },
+  { value: "39", label: "+39 Itália" },
+  { value: "44", label: "+44 Reino Unido" },
+] as const;
+
+export function sanitizeDdi(value: string): string {
+  return value.replace(/\D/g, "").slice(0, 4);
+}
+
+export function formatPhoneWithDdi(phone: string | null | undefined, ddi?: string | null) {
+  if (!phone) return null;
+  const code = sanitizeDdi(ddi || DEFAULT_PHONE_DDI) || DEFAULT_PHONE_DDI;
+  return `+${code} ${maskPhone(phone)}`;
+}
+
+export function buildPatientInternationalPhone(
+  phone: string | null | undefined,
+  ddi?: string | null,
+): string | null {
+  if (!phone?.trim()) return null;
+  const code = sanitizeDdi(ddi || DEFAULT_PHONE_DDI) || DEFAULT_PHONE_DDI;
+  const local = phone.replace(/\D/g, "");
+  if (!local) return null;
+  return `${code}${local}`;
+}
+
 export function maskCEP(v: string) {
   return v.replace(/\D/g, "").slice(0, 8).replace(/(\d{5})(\d)/, "$1-$2");
 }

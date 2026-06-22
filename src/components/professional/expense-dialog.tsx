@@ -26,6 +26,7 @@ import { parseBRLInput } from "@/lib/currency";
 import { loadExpenseCategories } from "@/lib/expense-categories";
 import {
   createProfessionalExpense,
+  createTenantExpense,
   updateProfessionalExpense,
   type ExpenseRow,
 } from "@/lib/expenses";
@@ -117,6 +118,9 @@ export function ExpenseDialog({ open, onOpenChange, expense, onSaved }: ExpenseD
       if (expense) {
         await updateProfessionalExpense(expense.id, payload);
         toast.success("Despesa atualizada");
+      } else if (profile.role === "financial") {
+        await createTenantExpense(tenant.id, payload);
+        toast.success("Despesa criada");
       } else {
         await createProfessionalExpense(tenant.id, profile.id, payload);
         toast.success("Despesa criada");

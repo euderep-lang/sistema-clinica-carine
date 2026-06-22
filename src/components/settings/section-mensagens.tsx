@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, Pencil, Trash2, MessageSquare, Mail, Phone } from "lucide-react";
+import { Plus, Pencil, Trash2, MessageSquare, Mail, Phone, Bot } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,10 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
 import { renderTemplate, SAMPLE_VARS, TEMPLATE_VARS } from "@/lib/settings-helpers";
+import { DEFAULT_BIRTHDAY_MESSAGE } from "@/lib/messaging";
 import { toast } from "sonner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SectionAutomacaoWhatsApp } from "@/components/settings/section-automacao-whatsapp";
 
 type Channel = "whatsapp" | "sms" | "email";
 type Trigger = "appointment_confirmation" | "appointment_reminder" | "post_appointment" | "birthday" | "custom";
@@ -45,7 +48,22 @@ export function SectionMensagens() {
   };
   useEffect(() => { load(); }, []);
 
-  const openNew = () => { setEditing(null); setName(""); setChannel("whatsapp"); setTrigger("custom"); setContent(""); setOpen(true); };
+  const openNew = () => {
+    setEditing(null);
+    setName("");
+    setChannel("whatsapp");
+    setTrigger("custom");
+    setContent("");
+    setOpen(true);
+  };
+  const openNewBirthday = () => {
+    setEditing(null);
+    setName("Aniversário");
+    setChannel("whatsapp");
+    setTrigger("birthday");
+    setContent(DEFAULT_BIRTHDAY_MESSAGE);
+    setOpen(true);
+  };
   const openEdit = (t: Tpl) => { setEditing(t); setName(t.name); setChannel(t.channel); setTrigger(t.trigger); setContent(t.content); setOpen(true); };
 
   const insertVar = (v: string) => {
@@ -79,8 +97,27 @@ export function SectionMensagens() {
   const maxChars = channel === "whatsapp" ? 1024 : channel === "sms" ? 160 : 5000;
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end"><Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Novo Modelo</Button></div>
+    <Tabs defaultValue="automacao" className="space-y-4">
+      <TabsList>
+        <TabsTrigger value="automacao" className="gap-2">
+          <Bot className="size-4" />
+          Automação WhatsApp
+        </TabsTrigger>
+        <TabsTrigger value="modelos" className="gap-2">
+          <MessageSquare className="size-4" />
+          Modelos manuais
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="automacao">
+        <SectionAutomacaoWhatsApp />
+      </TabsContent>
+
+      <TabsContent value="modelos" className="space-y-4">
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button variant="outline" onClick={openNewBirthday}>Modelo de aniversário</Button>
+        <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Novo Modelo</Button>
+      </div>
       <div className="grid md:grid-cols-2 gap-3">
         {items.map((t) => {
           const Icon = CHANNEL_ICONS[t.channel];
@@ -149,6 +186,7 @@ export function SectionMensagens() {
           <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button onClick={save}>Salvar</Button></DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      </TabsContent>
+    </Tabs>
   );
 }

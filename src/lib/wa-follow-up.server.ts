@@ -3,9 +3,19 @@ import { fmtDateFromDate, fmtTimeFromDate } from "@/lib/locale";
 import { renderTemplate } from "@/lib/settings-helpers";
 import { phonesMatch } from "@/lib/wa-phone";
 import { getDefaultReceptionAssignee } from "@/lib/wa-crm-assign.server";
+import { getFollowUpSequencesServer } from "@/lib/wa-tenant-settings.server";
+import {
+  FOLLOW_UP_SEQUENCE_DEFAULTS,
+  type FollowUpMode,
+  type FollowUpStepDef,
+} from "@/lib/wa-follow-up-templates";
 import { insertWaMessage } from "@/lib/whatsapp-crm-storage.server";
+import { logAuditSafe } from "@/lib/audit.server";
 import { isWhatsAppConfigured, providerSendText } from "@/lib/whatsapp-provider.server";
-import { normalizeBrazilPhone } from "@/lib/whatsapp-meta.server";
+import { buildGenderTemplateVars } from "@/lib/wa-template-gender";
+import { normalizeOutboundMessageBody } from "@/lib/wa-automation-quick-replies.server";
+
+export type { FollowUpMode, FollowUpStepDef };
 
 export type FollowUpTrigger =
   | "lead_no_response"
@@ -17,15 +27,6 @@ export type FollowUpTrigger =
   | "objection"
   | "professional_request";
 
-export type FollowUpMode = "auto" | "manual";
-
-export type FollowUpStepDef = {
-  key: string;
-  delayMinutes: number;
-  mode: FollowUpMode;
-  template: string;
-};
-
 export const OBJECTION_TYPES = {
   vou_pensar: "Vou pensar",
   achei_caro: "Achei caro",
@@ -35,203 +36,8 @@ export const OBJECTION_TYPES = {
 
 export type ObjectionType = keyof typeof OBJECTION_TYPES;
 
-export const FOLLOW_UP_SEQUENCES: Record<string, FollowUpStepDef[]> = {
-  lead_no_response: [
-    {
-      key: "lead_no_response_15m",
-      delayMinutes: 15,
-      mode: "auto",
-      template:
-        "Oi, {{primeiro_nome}}, tudo bem? Vi que você entrou em contato com a clínica. Para eu te direcionar melhor: você busca atendimento por emagrecimento, hormônios, menopausa, lipedema ou outro motivo?",
-    },
-    {
-      key: "lead_no_response_4h",
-      delayMinutes: 240,
-      mode: "auto",
-      template:
-        "{{primeiro_nome}}, passando só para não deixar sua mensagem perdida. Me diga qual é sua principal queixa hoje que eu te explico como funciona o atendimento.",
-    },
-    {
-      key: "lead_no_response_24h",
-      delayMinutes: 1440,
-      mode: "auto",
-      template:
-        "Vou encerrar seu atendimento por aqui para não te incomodar, {{primeiro_nome}}. Mas, se ainda quiser entender como funciona a consulta médica, é só me falar aqui.",
-    },
-    {
-      key: "lead_no_response_3d",
-      delayMinutes: 4320,
-      mode: "auto",
-      template:
-        "{{primeiro_nome}}, muitas pacientes procuram a clínica quando já tentaram dieta, treino ou tratamentos isolados e ainda sentem que o corpo não responde. Se esse for seu caso, posso te explicar o caminho da avaliação médica.",
-    },
-    {
-      key: "lead_no_response_7d",
-      delayMinutes: 10080,
-      mode: "auto",
-      template:
-        "Último contato por aqui, {{primeiro_nome}}. Caso ainda queira agendar sua avaliação, me avise — será um prazer ter você aqui com a gente.",
-    },
-  ],
-  lead_price_sent: [
-    {
-      key: "lead_price_sent_30m",
-      delayMinutes: 30,
-      mode: "auto",
-      template:
-        "{{primeiro_nome}}, ficou alguma dúvida sobre o valor ou sobre como funciona a consulta? Posso te explicar de forma simples.",
-    },
-    {
-      key: "lead_price_sent_24h",
-      delayMinutes: 1440,
-      mode: "auto",
-      template:
-        "Só reforçando, {{primeiro_nome}}: a consulta não é apenas uma conversa rápida. A ideia é investigar exames, sintomas, rotina, composição corporal e montar uma conduta individualizada para o seu caso, está bem?",
-    },
-    {
-      key: "lead_price_sent_48h",
-      delayMinutes: 2880,
-      mode: "auto",
-      template:
-        "Oii, {{primeiro_nome}}. Se o que te travou foi o valor, me fala com sinceridade. Às vezes consigo te orientar sobre a melhor forma de iniciar sem você ficar perdida.",
-    },
-    {
-      key: "lead_price_sent_5d",
-      delayMinutes: 7200,
-      mode: "auto",
-      template:
-        "Continuar tentando sozinha pode sair mais caro do que investigar corretamente. Quando quiser dar esse passo com estratégia, me chama por aqui. Muito obrigada, {{primeiro_nome}}.",
-    },
-  ],
-  appointment_booked: [
-    {
-      key: "appointment_booked_now",
-      delayMinutes: 0,
-      mode: "auto",
-      template:
-        "Oi, {{primeiro_nome}}, sua consulta ficou agendada para {{data_consulta}} às {{hora_consulta}}. Para aproveitar melhor, traga seus exames recentes, lista de medicamentos/suplementos e anote suas principais queixas.",
-    },
-    {
-      key: "appointment_reminder_24h",
-      delayMinutes: -1440,
-      mode: "auto",
-      template:
-        "Confirmando sua consulta amanhã às {{hora_consulta}}, {{primeiro_nome}}. Responda \"eu vou\" para manter seu horário reservado.",
-    },
-    {
-      key: "appointment_reminder_3h",
-      delayMinutes: -180,
-      mode: "auto",
-      template:
-        "{{primeiro_nome}}, sua consulta é hoje às {{hora_consulta}}. Chegue com alguns minutos de antecedência e traga seus exames, se tiver. Te vejo lá!",
-    },
-  ],
-  post_consultation: [
-    {
-      key: "post_consultation_24h",
-      delayMinutes: 1440,
-      mode: "auto",
-      template:
-        "Oi, {{primeiro_nome}}. Passando para saber como você ficou após a consulta de ontem com a {{nome_profissional}}. Conseguiu entender bem a conduta e os próximos passos? Se surgiu alguma dúvida inicial, pode me enviar por aqui.",
-    },
-    {
-      key: "post_consultation_7d",
-      delayMinutes: 10080,
-      mode: "auto",
-      template:
-        "Oi, {{primeiro_nome}}. Já se passaram alguns dias desde a consulta. Como você está se sentindo? Alguma dificuldade com alimentação, medicação, suplementação ou rotina?",
-    },
-    {
-      key: "post_consultation_15d",
-      delayMinutes: 21600,
-      mode: "auto",
-      template:
-        "{{primeiro_nome}}, passando para acompanhar sua evolução. O mais importante nessa fase não é perfeição, é aderência. Me diga: de 0 a 10, quanto você está se sentindo? Me conte tudo.",
-    },
-    {
-      key: "post_consultation_30d",
-      delayMinutes: 43200,
-      mode: "auto",
-      template:
-        "Já temos um mês desde a consulta, {{primeiro_nome}}. Esse é um bom momento para ajustar o que não encaixou bem na rotina. Como estão energia, fome, sono, disposição e medidas?",
-    },
-  ],
-  no_show: [
-    {
-      key: "no_show_2h",
-      delayMinutes: 120,
-      mode: "auto",
-      template:
-        "Oi, {{primeiro_nome}}. Vi que você não conseguiu comparecer à consulta de hoje. Aconteceu algum imprevisto?",
-    },
-    {
-      key: "no_show_next_day",
-      delayMinutes: 1440,
-      mode: "manual",
-      template:
-        "{{primeiro_nome}}, posso verificar uma nova possibilidade de horário para você. Quer que eu veja a próxima agenda disponível?",
-    },
-  ],
-  reactivation: [
-    {
-      key: "reactivation_30d",
-      delayMinutes: 43200,
-      mode: "auto",
-      template:
-        "Oi, {{primeiro_nome}}! Faz um tempo que não nos falamos. Como você está? Se quiser retomar seu acompanhamento, estou à disposição.",
-    },
-    {
-      key: "reactivation_60d",
-      delayMinutes: 86400,
-      mode: "auto",
-      template:
-        "{{primeiro_nome}}, passando para saber se ainda faz sentido cuidarmos da sua saúde com estratégia. Posso te ajudar a retomar?",
-    },
-    {
-      key: "reactivation_90d",
-      delayMinutes: 129600,
-      mode: "auto",
-      template:
-        "Último contato por aqui, {{primeiro_nome}}. Quando quiser voltar a cuidar de você com acompanhamento médico, é só me chamar.",
-    },
-  ],
-  objection_vou_pensar: [
-    {
-      key: "objection_vou_pensar",
-      delayMinutes: 0,
-      mode: "manual",
-      template:
-        "Claro. Só não deixa isso virar mais uma coisa que você adia enquanto continua insatisfeita com os mesmos sintomas. Quer que eu te ajude a entender se esse atendimento faz sentido para seu caso?",
-    },
-  ],
-  objection_achei_caro: [
-    {
-      key: "objection_achei_caro",
-      delayMinutes: 0,
-      mode: "manual",
-      template:
-        "Entendo. Só vale comparar com o que está incluso: avaliação médica, investigação por exames, conduta individualizada e acompanhamento. Não é uma consulta genérica.",
-    },
-  ],
-  objection_preciso_agenda: [
-    {
-      key: "objection_preciso_agenda",
-      delayMinutes: 0,
-      mode: "manual",
-      template:
-        "Perfeito. Posso te enviar duas opções de horário e você escolhe a melhor?",
-    },
-  ],
-  objection_medo_hormonio: [
-    {
-      key: "objection_medo_hormonio",
-      delayMinutes: 0,
-      mode: "manual",
-      template:
-        "A consulta não significa sair usando hormônio ou medicação. Primeiro vem avaliação, exames e indicação correta. Conduta sem necessidade não faz sentido.",
-    },
-  ],
-};
+/** Padrões embutidos — use getFollowUpSequencesServer para versão com overrides do tenant. */
+export const FOLLOW_UP_SEQUENCES = FOLLOW_UP_SEQUENCE_DEFAULTS;
 
 export const FOLLOW_UP_TAG_POST_CONSULT = {
   name: "Follow-up Pós-Consulta",
@@ -262,6 +68,7 @@ export function detectPriceInMessage(text: string): boolean {
 
 type TemplateContext = {
   patientName?: string | null;
+  patientGender?: string | null;
   professionalName?: string | null;
   tenantName?: string | null;
   appointmentAt?: Date | null;
@@ -270,6 +77,7 @@ type TemplateContext = {
 export function buildFollowUpVars(ctx: TemplateContext): Record<string, string> {
   const appt = ctx.appointmentAt ?? null;
   return {
+    ...buildGenderTemplateVars(ctx.patientGender),
     primeiro_nome: firstName(ctx.patientName),
     nome_paciente: ctx.patientName?.trim() || "paciente",
     nome_profissional: ctx.professionalName?.trim() || "equipe médica",
@@ -280,7 +88,7 @@ export function buildFollowUpVars(ctx: TemplateContext): Record<string, string> 
 }
 
 export function renderFollowUpMessage(template: string, ctx: TemplateContext): string {
-  return renderTemplate(template, buildFollowUpVars(ctx));
+  return normalizeOutboundMessageBody(renderTemplate(template, buildFollowUpVars(ctx)));
 }
 
 export async function logCrmEvent(input: {
@@ -670,11 +478,16 @@ async function createManualTask(input: {
   dueAt: string;
   createdBy?: string | null;
 }) {
+  const reminderNote = input.description.trim()
+    ? `${input.title}\n\n${input.description.trim()}`
+    : input.title;
+
   const { data: task, error } = await supabaseAdmin
     .from("wa_tasks" as never)
     .insert({
       tenant_id: input.tenantId,
       conversation_id: input.conversationId ?? null,
+      patient_id: input.patientId ?? null,
       title: input.title,
       description: input.description,
       assigned_to: input.assignedTo,
@@ -687,17 +500,17 @@ async function createManualTask(input: {
     .single();
   if (error) throw new Error(error.message);
 
-  if (input.conversationId) {
-    await supabaseAdmin.from("wa_reminders" as never).insert({
-      tenant_id: input.tenantId,
-      conversation_id: input.conversationId,
-      assigned_to: input.assignedTo,
-      remind_at: input.dueAt,
-      note: input.title,
-      created_by: input.createdBy ?? input.assignedTo,
-      task_id: (task as { id: string }).id,
-    } as never);
-  }
+  const { error: reminderErr } = await supabaseAdmin.from("wa_reminders" as never).insert({
+    tenant_id: input.tenantId,
+    conversation_id: input.conversationId ?? null,
+    patient_id: input.patientId ?? null,
+    assigned_to: input.assignedTo,
+    remind_at: input.dueAt,
+    note: reminderNote,
+    created_by: input.createdBy ?? input.assignedTo,
+    task_id: (task as { id: string }).id,
+  } as never);
+  if (reminderErr) throw new Error(reminderErr.message);
 }
 
 export async function scheduleFollowUpRun(input: {
@@ -713,7 +526,7 @@ export async function scheduleFollowUpRun(input: {
   templateContext?: TemplateContext;
   onlyStepKeys?: string[];
 }) {
-  const steps = FOLLOW_UP_SEQUENCES[input.sequenceKey];
+  const steps = (await getFollowUpSequencesServer(input.tenantId))[input.sequenceKey];
   if (!steps?.length) return null;
 
   const base = input.baseTime ?? new Date();
@@ -722,6 +535,36 @@ export async function scheduleFollowUpRun(input: {
     tenantName,
     ...input.templateContext,
   };
+
+  if (!ctx.patientGender && input.patientId) {
+    const { data: patientRow } = await supabaseAdmin
+      .from("patients")
+      .select("gender, full_name")
+      .eq("id", input.patientId)
+      .maybeSingle();
+    if (patientRow) {
+      ctx.patientGender = patientRow.gender;
+      if (!ctx.patientName) ctx.patientName = patientRow.full_name;
+    }
+  } else if (!ctx.patientGender && input.conversationId) {
+    const { data: convRow } = await supabaseAdmin
+      .from("wa_conversations" as never)
+      .select("patient_id")
+      .eq("id", input.conversationId)
+      .maybeSingle();
+    const linkedPatientId = (convRow as { patient_id?: string | null } | null)?.patient_id;
+    if (linkedPatientId) {
+      const { data: patientRow } = await supabaseAdmin
+        .from("patients")
+        .select("gender, full_name")
+        .eq("id", linkedPatientId)
+        .maybeSingle();
+      if (patientRow) {
+        ctx.patientGender = patientRow.gender;
+        if (!ctx.patientName) ctx.patientName = patientRow.full_name;
+      }
+    }
+  }
 
   if (input.conversationId || input.patientId) {
     await cancelActiveFollowUpRuns({
@@ -794,6 +637,7 @@ async function sendAutomatedMessage(
   tenantId: string,
   conversationId: string,
   text: string,
+  meta?: { stepKey?: string; runId?: string; triggerType?: string },
 ): Promise<{ waMessageId: string; messageRowId: string } | null> {
   if (!isWhatsAppConfigured()) return null;
 
@@ -839,10 +683,55 @@ async function sendAutomatedMessage(
     } as never)
     .eq("id", conversationId);
 
+  logAuditSafe({
+    tenantId,
+    category: "whatsapp",
+    action: "whatsapp.message_auto_sent",
+    summary: `Mensagem automática enviada (Z-API): ${text.slice(0, 100)}`,
+    entityType: "conversation",
+    entityId: conversationId,
+    conversationId,
+    details: {
+      wa_message_id: result.messageId,
+      step_key: meta?.stepKey,
+      run_id: meta?.runId,
+      trigger_type: meta?.triggerType,
+      preview: text.slice(0, 200),
+    },
+    source: "automation",
+  });
+
   return {
     waMessageId: result.messageId,
     messageRowId: (msgRow as { id: string } | null)?.id ?? "",
   };
+}
+
+/** Reserva o passo antes de enviar — evita duplicata quando cron, webhook e inbox rodam juntos. */
+async function claimFollowUpSchedule(scheduleId: string): Promise<boolean> {
+  const { data } = await supabaseAdmin
+    .from("wa_follow_up_schedules" as never)
+    .update({ status: "sent", sent_at: new Date().toISOString() } as never)
+    .eq("id", scheduleId)
+    .eq("status", "pending")
+    .select("id")
+    .maybeSingle();
+  return !!data;
+}
+
+async function failFollowUpSchedule(scheduleId: string, errorMessage: string) {
+  await supabaseAdmin
+    .from("wa_follow_up_schedules" as never)
+    .update({ status: "failed", error_message: errorMessage } as never)
+    .eq("id", scheduleId);
+}
+
+async function attachFollowUpMessage(scheduleId: string, waMessageRowId: string | null) {
+  if (!waMessageRowId) return;
+  await supabaseAdmin
+    .from("wa_follow_up_schedules" as never)
+    .update({ wa_message_id: waMessageRowId } as never)
+    .eq("id", scheduleId);
 }
 
 export async function processDueFollowUps(limit = 30): Promise<{ processed: number; sent: number; manual: number; failed: number; skipped: number }> {
@@ -897,6 +786,10 @@ export async function processDueFollowUps(limit = 30): Promise<{ processed: numb
       }
 
       if (row.mode === "manual") {
+        if (!(await claimFollowUpSchedule(row.id))) {
+          skipped++;
+          continue;
+        }
         const assignee = row.assigned_to ?? (await getDefaultReceptionAssignee(row.tenant_id));
         if (assignee) {
           await createManualTask({
@@ -909,10 +802,6 @@ export async function processDueFollowUps(limit = 30): Promise<{ processed: numb
             dueAt: now,
           });
         }
-        await supabaseAdmin
-          .from("wa_follow_up_schedules" as never)
-          .update({ status: "sent", sent_at: now } as never)
-          .eq("id", row.id);
         manual++;
         continue;
       }
@@ -921,28 +810,53 @@ export async function processDueFollowUps(limit = 30): Promise<{ processed: numb
         await supabaseAdmin
           .from("wa_follow_up_schedules" as never)
           .update({ status: "skipped", error_message: "Sem conversa WhatsApp vinculada" } as never)
-          .eq("id", row.id);
+          .eq("id", row.id)
+          .eq("status", "pending");
+        skipped++;
         continue;
       }
 
-      const result = await sendAutomatedMessage(row.tenant_id, row.conversation_id, row.rendered_message);
+      if (!(await claimFollowUpSchedule(row.id))) {
+        skipped++;
+        continue;
+      }
+
+      const result = await sendAutomatedMessage(
+        row.tenant_id,
+        row.conversation_id,
+        row.rendered_message,
+        {
+          stepKey: row.step_key,
+          runId: row.run_id,
+          triggerType: (row as { wa_follow_up_runs?: { trigger_type?: string } }).wa_follow_up_runs?.trigger_type,
+        },
+      );
       if (!result) {
-        await supabaseAdmin
-          .from("wa_follow_up_schedules" as never)
-          .update({ status: "failed", error_message: "WhatsApp não configurado ou indisponível" } as never)
-          .eq("id", row.id);
+        await failFollowUpSchedule(row.id, "WhatsApp não configurado ou indisponível");
         failed++;
         continue;
       }
 
-      await supabaseAdmin
-        .from("wa_follow_up_schedules" as never)
-        .update({
-          status: "sent",
-          sent_at: now,
-          wa_message_id: result.messageRowId || null,
-        } as never)
-        .eq("id", row.id);
+      await attachFollowUpMessage(row.id, result.messageRowId || null);
+
+      if (
+        row.step_key === "appointment_reminder_24h" ||
+        row.step_key === "appointment_booked_now"
+      ) {
+        const confirmationType =
+          row.step_key === "appointment_reminder_24h" ? "d1_reminder" : "booking";
+        if (row.appointment_id) {
+          await supabaseAdmin.from("appointment_confirmations" as never).insert({
+            tenant_id: row.tenant_id,
+            appointment_id: row.appointment_id,
+            patient_id: row.patient_id,
+            channel: "whatsapp",
+            confirmation_type: confirmationType,
+            status: "sent",
+            message_preview: (row.rendered_message ?? "").slice(0, 200),
+          } as never);
+        }
+      }
 
       await logCrmEvent({
         tenantId: row.tenant_id,
@@ -952,12 +866,26 @@ export async function processDueFollowUps(limit = 30): Promise<{ processed: numb
         metadata: { step_key: row.step_key, run_id: row.run_id },
       });
 
+      logAuditSafe({
+        tenantId: row.tenant_id,
+        category: "whatsapp",
+        action: "whatsapp.follow_up_sent",
+        summary: `Follow-up automático enviado: ${row.step_key.replace(/_/g, " ")}`,
+        entityType: "follow_up_schedule",
+        entityId: row.id,
+        patientId: row.patient_id,
+        conversationId: row.conversation_id,
+        details: {
+          step_key: row.step_key,
+          run_id: row.run_id,
+          message_preview: row.rendered_message?.slice(0, 200),
+        },
+        source: "cron",
+      });
+
       sent++;
     } catch (e) {
-      await supabaseAdmin
-        .from("wa_follow_up_schedules" as never)
-        .update({ status: "failed", error_message: (e as Error).message } as never)
-        .eq("id", row.id);
+      await failFollowUpSchedule(row.id, (e as Error).message);
       failed++;
     }
   }
@@ -1091,6 +1019,16 @@ export async function onAppointmentBooked(input: {
 
   const conv = await findConversationForPatient(input.tenantId, input.patientId);
 
+  const { data: existingRun } = await supabaseAdmin
+    .from("wa_follow_up_runs" as never)
+    .select("id")
+    .eq("tenant_id", input.tenantId)
+    .eq("appointment_id", input.appointmentId)
+    .eq("trigger_type", "appointment_booked")
+    .eq("status", "active")
+    .maybeSingle();
+  if (existingRun) return;
+
   await logCrmEvent({
     tenantId: input.tenantId,
     eventType: "appointment_booked",
@@ -1166,6 +1104,34 @@ export async function onAppointmentStatusChange(input: {
         professionalName: professional?.full_name,
       },
     });
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 14);
+    const { data: npsRow } = await supabaseAdmin
+      .from("nps_surveys" as never)
+      .insert({
+        tenant_id: input.tenantId,
+        patient_id: input.patientId,
+        appointment_id: input.appointmentId,
+        professional_id: input.professionalId,
+        expires_at: expiresAt.toISOString(),
+        status: "pending",
+      } as never)
+      .select("token")
+      .single();
+    const npsToken = (npsRow as { token?: string } | null)?.token;
+    if (npsToken && conv?.id) {
+      const baseUrl =
+        process.env.PUBLIC_APP_URL?.replace(/\/$/, "") ??
+        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:8080");
+      const npsLink = `${baseUrl}/nps/${npsToken}`;
+      void sendAutomatedMessage(
+        input.tenantId,
+        conv.id,
+        `Olá${patient?.full_name ? `, ${patient.full_name.split(" ")[0]}` : ""}! Em uma escala de 0 a 10, o quanto você recomendaria nossa clínica? Responda aqui: ${npsLink}`,
+        { triggerType: "post_consultation" },
+      ).catch((e) => console.error("[CRM] NPS link send error:", e));
+    }
 
     await scheduleFollowUpRun({
       tenantId: input.tenantId,
@@ -1332,6 +1298,7 @@ export async function markConversationObjection(input: {
     metadata: { objection_type: input.objectionType },
   });
 
-  const steps = FOLLOW_UP_SEQUENCES[sequenceKey];
+  const sequences = await getFollowUpSequencesServer(input.tenantId);
+  const steps = sequences[sequenceKey];
   return steps?.[0]?.template ?? "";
 }

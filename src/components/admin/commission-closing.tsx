@@ -20,6 +20,7 @@ import {
   periodFromYearMonth,
   type ProfessionalProduction,
 } from "@/lib/commission";
+import { logCommissionAuditEvent, type LogCommissionAuditInput } from "@/lib/commission.functions";
 
 interface ClosingRow {
   id: string;
@@ -169,6 +170,16 @@ export function CommissionClosing({ yearMonth: controlledMonth, onYearMonthChang
     [displayRows],
   );
 
+  const periodLabel = `${String(period?.month).padStart(2, "0")}/${period?.year}`;
+
+  const writeAudit = async (input: LogCommissionAuditInput) => {
+    try {
+      await logCommissionAuditEvent({ data: input });
+    } catch (e) {
+      console.error("[commission audit]", e);
+    }
+  };
+
   const syncPeriod = async () => {
     if (!profile || !period || isClosed) return;
     setBusy(true);
@@ -197,6 +208,16 @@ export function CommissionClosing({ yearMonth: controlledMonth, onYearMonthChang
         onConflict: "tenant_id,professional_id,period_year,period_month",
       });
       if (error) throw error;
+      const totalCommission = rows.reduce((s, r) => s + r.commission_amount, 0);
+      await writeAudit({
+        action: "financial.commission_period_saved",
+        summary: `Período de comissão ${periodLabel} salvo (${rows.length} profissional${rows.length === 1 ? "" : "is"})`,
+        periodYear: period.year,
+        periodMonth: period.month,
+        notes: draftNotes || null,
+        professionalsCount: rows.length,
+        totalCommission,
+      });
       toast.success("Período atualizado com os dados do mês");
       await load();
     } catch (e) {
@@ -222,6 +243,15 @@ export function CommissionClosing({ yearMonth: controlledMonth, onYearMonthChang
         .eq("period_year", period.year)
         .eq("period_month", period.month);
       if (error) throw error;
+      await writeAudit({
+        action: "financial.commission_period_closed",
+        summary: `Mês de comissão ${periodLabel} fechado`,
+        periodYear: period.year,
+        periodMonth: period.month,
+        notes: draftNotes || null,
+        professionalsCount: displayRows.length,
+        totalCommission: totals.commission,
+      });
       toast.success("Mês fechado — comissões bloqueadas para edição automática");
       await load();
     } catch (e) {
@@ -241,6 +271,12 @@ export function CommissionClosing({ yearMonth: controlledMonth, onYearMonthChang
         .eq("period_year", period.year)
         .eq("period_month", period.month);
       if (error) throw error;
+      await writeAudit({
+        action: "financial.commission_period_reopened",
+        summary: `Mês de comissão ${periodLabel} reaberto para ajustes`,
+        periodYear: period.year,
+        periodMonth: period.month,
+      });
       toast.success("Período reaberto para ajustes");
       await load();
     } catch (e) {
@@ -280,6 +316,25 @@ export function CommissionClosing({ yearMonth: controlledMonth, onYearMonthChang
         onConflict: "tenant_id,professional_id,period_year,period_month",
       });
       if (error) throw error;
+      const professionalName =
+        liveStats.find((s) => s.id === professionalId)?.name ??
+        displayRows.find((r) => r.id === professionalId)?.name ??
+        "Profissional";
+      const amount = commissionValue(stat.received, pct);
+      await writeAudit({
+        action: "financial.commission_applied",
+        summary: `Comissão aplicada: ${professionalName} — ${pct}% sobre ${fmt(stat.received)} = ${fmt(amount)} (${periodLabel})`,
+        periodYear: period.year,
+        periodMonth: period.month,
+        professionalId,
+        professionalName,
+        baseCommissionPct: stat.commissionPct,
+        adjustedCommissionPct: pct !== stat.commissionPct ? pct : null,
+        commissionAmount: amount,
+        receivedTotal: stat.received,
+        productionTotal: stat.production,
+        notes: draftNotes || null,
+      });
       toast.success("Comissão ajustada");
       await load();
     } catch (e) {

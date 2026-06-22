@@ -18,7 +18,12 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
 import { fmt, fmtDate, PAYMENT_LABEL } from "@/lib/currency";
-import { loadProfessionalExpenses } from "@/lib/expenses";
+import { loadProfessionalExpenses, loadTenantExpenses } from "@/lib/expenses";
+import { FinancialProfessionalFilter } from "@/components/professional/financial-professional-filter";
+import {
+  applyPaymentProfessionalFilter,
+  type FinancialTabScopeProps,
+} from "@/lib/financial-scope";
 
 interface CashPayment {
   id: string;
@@ -32,7 +37,11 @@ interface CashPayment {
   bills_receivable: { description: string } | null;
 }
 
-export function FinancialCaixaTab() {
+export function FinancialCaixaTab({
+  scope,
+  professionalFilter,
+  onProfessionalFilterChange,
+}: FinancialTabScopeProps) {
   const { profile } = useAuth();
   const [date, setDate] = useState(todayISO());
   const [search, setSearch] = useState("");
@@ -45,27 +54,42 @@ export function FinancialCaixaTab() {
   const load = useCallback(async () => {
     if (!profile) return;
     setLoading(true);
-    const [{ data: payData }, expenseData] = await Promise.all([
-      supabase
-        .from("bill_payments" as never)
-        .select(
-          "id, amount, net_amount, fee_amount, payment_method, paid_date, notes, patients(full_name), bills_receivable(description)",
-        )
-        .eq("professional_id", profile.id)
-        .eq("status", "active")
-        .eq("paid_date", date)
-        .order("created_at", { ascending: false }),
-      loadProfessionalExpenses(profile.id, {
-        from: date,
-        to: date,
-        dateField: "paid_date",
-        status: "paid",
-      }),
-    ]);
-    setPayments((payData ?? []) as CashPayment[]);
-    setExpenses(expenseData);
-    setLoading(false);
-  }, [profile, date]);
+    try {
+      const payQuery = applyPaymentProfessionalFilter(
+        supabase
+          .from("bill_payments" as never)
+          .select(
+            "id, amount, net_amount, fee_amount, payment_method, paid_date, notes, patients(full_name), bills_receivable(description), profiles:professional_id(full_name)",
+          )
+          .eq("status", "active")
+          .eq("paid_date", date)
+          .order("created_at", { ascending: false }),
+        { scope, profileId: profile.id, professionalFilter },
+      );
+      const [{ data: payData, error: payError }, expenseData] = await Promise.all([
+        payQuery,
+        scope === "clinic"
+          ? loadTenantExpenses({
+              from: date,
+              to: date,
+              dateField: "paid_date",
+              status: "paid",
+              professionalFilter,
+            })
+          : loadProfessionalExpenses(profile.id, {
+              from: date,
+              to: date,
+              dateField: "paid_date",
+              status: "paid",
+            }),
+      ]);
+      if (payError) throw new Error(payError.message);
+      setPayments((payData ?? []) as CashPayment[]);
+      setExpenses(expenseData);
+    } finally {
+      setLoading(false);
+    }
+  }, [profile, date, scope, professionalFilter]);
 
   useEffect(() => {
     void load();
@@ -103,6 +127,9 @@ export function FinancialCaixaTab() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end gap-4">
+        {scope === "clinic" && (
+          <FinancialProfessionalFilter value={professionalFilter} onChange={onProfessionalFilterChange} />
+        )}
         <div>
           <Label className="text-xs">Data do caixa</Label>
           <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-44" />
@@ -150,8 +177,8 @@ export function FinancialCaixaTab() {
                 <TableRow>
                   <TableHead>Paciente</TableHead>
                   <TableHead>Descrição</TableHead>
-                  <TableHead>Forma</TableHead>
-                  <TableHead className="text-right">Líquido</TableHead>
+                  <TableHead className="text-center">Forma</TableHead>
+                  <TableHead className="text-center">Líquido</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -174,8 +201,8 @@ export function FinancialCaixaTab() {
                       <TableCell className="max-w-[160px] truncate text-sm">
                         {p.bills_receivable?.description ?? "—"}
                       </TableCell>
-                      <TableCell>{PAYMENT_LABEL[p.payment_method] ?? p.payment_method}</TableCell>
-                      <TableCell className="text-right font-medium">
+                      <TableCell className="text-center">{PAYMENT_LABEL[p.payment_method] ?? p.payment_method}</TableCell>
+                      <TableCell className="text-center font-medium tabular-nums">
                         {fmt(p.net_amount ?? p.amount)}
                       </TableCell>
                     </TableRow>
@@ -196,8 +223,8 @@ export function FinancialCaixaTab() {
                 <TableRow>
                   <TableHead>Descrição</TableHead>
                   <TableHead>Categoria</TableHead>
-                  <TableHead>Forma</TableHead>
-                  <TableHead className="text-right">Valor</TableHead>
+                  <TableHead className="text-center">Forma</TableHead>
+                  <TableHead className="text-center">Valor</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -218,8 +245,8 @@ export function FinancialCaixaTab() {
                     <TableRow key={e.id}>
                       <TableCell>{e.description}</TableCell>
                       <TableCell>{e.category ?? "—"}</TableCell>
-                      <TableCell>{e.payment_method ? PAYMENT_LABEL[e.payment_method] : "—"}</TableCell>
-                      <TableCell className="text-right font-medium">{fmt(e.amount)}</TableCell>
+                      <TableCell className="text-center">{e.payment_method ? PAYMENT_LABEL[e.payment_method] : "—"}</TableCell>
+                      <TableCell className="text-center font-medium tabular-nums">{fmt(e.amount)}</TableCell>
                     </TableRow>
                   ))
                 )}

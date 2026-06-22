@@ -206,10 +206,21 @@ export const TEMPLATE_VARS = [
   "nome_profissional",
   "nome_clinica",
   "link_confirmacao",
+  "muitos_pacientes",
+  "perdido",
+  "insatisfeito",
+  "interessado",
+  "satisfeito",
 ] as const;
 
 export const SAMPLE_VARS: Record<string, string> = {
+  primeiro_nome: "Maria",
   nome_paciente: "Maria Silva",
+  muitos_pacientes: "muitas pacientes",
+  perdido: "perdida",
+  insatisfeito: "insatisfeita",
+  interessado: "interessada",
+  satisfeito: "satisfeita",
   data_consulta: "15/07/2025",
   hora_consulta: "14:30",
   nome_profissional: "Dr. Carlos Silva",

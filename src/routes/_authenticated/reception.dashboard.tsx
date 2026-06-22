@@ -1,12 +1,11 @@
 import { getZonedTimeParts, todayISO, tomorrowISO } from "@/lib/locale";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Cake, CalendarCheck, MessageSquare } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { PageSection } from "@/components/layout/page-section";
 import { StatCard } from "@/components/layout/stat-card";
-import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/reception/dashboard")({
@@ -14,6 +13,7 @@ export const Route = createFileRoute("/_authenticated/reception/dashboard")({
 });
 
 function ReceptionDashboard() {
+  const navigate = useNavigate();
   const [birthdaysToday, setBirthdaysToday] = useState(0);
   const [unconfirmed, setUnconfirmed] = useState(0);
   const [sentToday, setSentToday] = useState(0);
@@ -75,13 +75,9 @@ function ReceptionDashboard() {
             value={birthdaysToday}
             icon={Cake}
             tone="default"
+            onClick={() => navigate({ to: "/reception/marketing" })}
             action={
-              <Link
-                to="/reception/marketing"
-                className="text-xs font-medium text-primary transition-colors duration-200 hover:text-primary/80"
-              >
-                Ver campanhas →
-              </Link>
+              <span className="text-xs font-medium text-primary">Ver campanhas →</span>
             }
           />
           <StatCard
@@ -89,12 +85,9 @@ function ReceptionDashboard() {
             value={unconfirmed}
             icon={CalendarCheck}
             tone={unconfirmed > 0 ? "warning" : "default"}
+            onClick={() => navigate({ to: "/reception/mensagens" })}
             action={
-              <Link to="/reception/mensagens">
-                <Button size="sm" variant="outline">
-                  Enviar lembretes
-                </Button>
-              </Link>
+              <span className="text-xs font-medium text-muted-foreground">Enviar lembretes</span>
             }
           />
           <StatCard
@@ -102,13 +95,9 @@ function ReceptionDashboard() {
             value={sentToday}
             icon={MessageSquare}
             tone="success"
+            onClick={() => navigate({ to: "/reception/mensagens" })}
             action={
-              <Link
-                to="/reception/mensagens"
-                className="text-xs font-medium text-primary transition-colors duration-200 hover:text-primary/80"
-              >
-                Ver histórico →
-              </Link>
+              <span className="text-xs font-medium text-primary">Ver histórico →</span>
             }
           />
         </div>

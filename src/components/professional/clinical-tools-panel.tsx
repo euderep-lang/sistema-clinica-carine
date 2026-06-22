@@ -1,0 +1,259 @@
+import { useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
+import { Brain, Download, FlaskConical, Share2, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  createExamRequest,
+  createPreRegistrationLink,
+  interpretExamText,
+  requestPatientDataExport,
+  shareClinicalRecord,
+  summarizePatientRecord,
+} from "@/lib/platform.functions";
+import { supabase } from "@/integrations/supabase/client";
+
+interface ClinicalToolsPanelProps {
+  patientId: string;
+  patientName: string;
+}
+
+export function ClinicalToolsPanel({ patientId, patientName }: ClinicalToolsPanelProps) {
+  const summaryFn = useServerFn(summarizePatientRecord);
+  const examFn = useServerFn(createExamRequest);
+  const interpretFn = useServerFn(interpretExamText);
+  const exportFn = useServerFn(requestPatientDataExport);
+  const shareFn = useServerFn(shareClinicalRecord);
+  const preRegFn = useServerFn(createPreRegistrationLink);
+
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summary, setSummary] = useState("");
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [examOpen, setExamOpen] = useState(false);
+  const [examList, setExamList] = useState("");
+  const [examIndication, setExamIndication] = useState("");
+  const [interpretOpen, setInterpretOpen] = useState(false);
+  const [interpretText, setInterpretText] = useState("");
+  const [interpretResult, setInterpretResult] = useState("");
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareWithId, setShareWithId] = useState("");
+  const [professionals, setProfessionals] = useState<{ id: string; full_name: string }[]>([]);
+
+  const loadSummary = async () => {
+    setSummaryLoading(true);
+    setSummaryOpen(true);
+    try {
+      const res = await summaryFn({ data: patientId });
+      setSummary((res as { summary: string }).summary);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
+  const submitExam = async () => {
+    const exams = examList.split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
+    if (!exams.length) {
+      toast.error("Informe ao menos um exame.");
+      return;
+    }
+    try {
+      await examFn({
+        data: { patientId, exams, clinicalIndication: examIndication || undefined },
+      });
+      toast.success("Solicitação de exames registrada.");
+      setExamOpen(false);
+      setExamList("");
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
+  const runInterpret = async () => {
+    try {
+      const res = await interpretFn({
+        data: { text: interpretText, patientContext: patientName },
+      });
+      setInterpretResult((res as { interpretation: string }).interpretation);
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
+  const exportData = async () => {
+    try {
+      const data = await exportFn({ data: patientId });
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `paciente-${patientId.slice(0, 8)}-lgpd.json`;
+      a.click();
+      toast.success("Exportação LGPD concluída.");
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
+  const openShare = async () => {
+    const { data } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .eq("role", "professional")
+      .order("full_name");
+    setProfessionals((data ?? []) as { id: string; full_name: string }[]);
+    setShareOpen(true);
+  };
+
+  const submitShare = async () => {
+    if (!shareWithId) return;
+    try {
+      await shareFn({
+        data: { patientId, sharedWithProfessionalId: shareWithId },
+      });
+      toast.success("Prontuário compartilhado.");
+      setShareOpen(false);
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
+  const copyPreRegLink = async () => {
+    try {
+      const res = await preRegFn({ data: { patientId } });
+      const url = `${window.location.origin}${(res as { url: string }).url}`;
+      await navigator.clipboard.writeText(url);
+      toast.success("Link de pré-cadastro copiado.");
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
+  return (
+    <>
+      <Card className="mb-4">
+        <CardHeader className="py-3">
+          <CardTitle className="text-sm font-medium">Ferramentas clínicas</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2 pb-3">
+          <Button size="sm" variant="outline" onClick={() => void loadSummary()}>
+            <Brain className="size-3.5 mr-1.5" />
+            Resumo IA
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setExamOpen(true)}>
+            <FlaskConical className="size-3.5 mr-1.5" />
+            Solicitar exames
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setInterpretOpen(true)}>
+            Interpretar laudo
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => void openShare()}>
+            <Share2 className="size-3.5 mr-1.5" />
+            Compartilhar
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => void exportData()}>
+            <Download className="size-3.5 mr-1.5" />
+            Exportar LGPD
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => void copyPreRegLink()}>
+            Link pré-cadastro
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Dialog open={summaryOpen} onOpenChange={setSummaryOpen}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Resumo do prontuário</DialogTitle>
+          </DialogHeader>
+          {summaryLoading ? (
+            <Loader2 className="size-5 animate-spin mx-auto" />
+          ) : (
+            <p className="text-sm whitespace-pre-wrap">{summary}</p>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={examOpen} onOpenChange={setExamOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Solicitar exames</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Exames (separados por vírgula ou linha)</Label>
+              <Textarea value={examList} onChange={(e) => setExamList(e.target.value)} rows={3} />
+            </div>
+            <div>
+              <Label>Indicação clínica</Label>
+              <Input value={examIndication} onChange={(e) => setExamIndication(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => void submitExam()}>Registrar solicitação</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={interpretOpen} onOpenChange={setInterpretOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Interpretação de exame (IA)</DialogTitle>
+          </DialogHeader>
+          <Textarea
+            placeholder="Cole o texto do laudo…"
+            value={interpretText}
+            onChange={(e) => setInterpretText(e.target.value)}
+            rows={6}
+          />
+          {interpretResult && (
+            <p className="text-sm whitespace-pre-wrap rounded-md border p-3 bg-muted/30">{interpretResult}</p>
+          )}
+          <DialogFooter>
+            <Button onClick={() => void runInterpret()} disabled={!interpretText.trim()}>
+              Interpretar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={shareOpen} onOpenChange={setShareOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Compartilhar prontuário</DialogTitle>
+          </DialogHeader>
+          <Label>Profissional</Label>
+          <select
+            className="w-full rounded-md border px-3 py-2 text-sm"
+            value={shareWithId}
+            onChange={(e) => setShareWithId(e.target.value)}
+          >
+            <option value="">Selecione…</option>
+            {professionals.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.full_name}
+              </option>
+            ))}
+          </select>
+          <DialogFooter>
+            <Button onClick={() => void submitShare()} disabled={!shareWithId}>
+              Compartilhar evoluções
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}

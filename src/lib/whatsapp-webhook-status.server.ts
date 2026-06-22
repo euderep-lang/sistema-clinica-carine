@@ -34,6 +34,11 @@ export async function getWhatsAppWebhookStatus() {
       error: tenantError,
     },
     webhookPath: "/api/whatsapp/webhook",
+    cron: {
+      followUpsPath: "/api/cron/wa-follow-ups",
+      secretConfigured: Boolean(process.env.CRON_SECRET?.trim()),
+      schedule: "*/5 * * * *",
+    },
     hints: [
       !supabase.hasUrl ? "Configure SUPABASE_URL na Vercel (ou VITE_SUPABASE_URL)." : null,
       !supabase.hasServiceRoleKey
@@ -45,6 +50,9 @@ export async function getWhatsAppWebhookStatus() {
       provider !== "zapi" ? "Configure WHATSAPP_PROVIDER=zapi na Vercel." : null,
       !zapi ? "Configure ZAPI_INSTANCE_ID, ZAPI_TOKEN e ZAPI_CLIENT_TOKEN na Vercel." : null,
       supabase.ready && !tenantId && !tenantError ? "Nenhum tenant encontrado no banco." : null,
+      !process.env.CRON_SECRET?.trim()
+        ? "Configure CRON_SECRET na Vercel para o cron de follow-ups automáticos (/api/cron/wa-follow-ups)."
+        : null,
     ].filter(Boolean),
   };
 }

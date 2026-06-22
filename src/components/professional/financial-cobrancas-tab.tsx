@@ -5,6 +5,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  Receipt,
   RotateCcw,
   Trash2,
   TrendingDown,
@@ -61,22 +62,43 @@ import {
   fmt,
   fmtDate,
   isOverdue,
-  PAYMENT_LABEL,
 } from "@/lib/currency";
-import { currentYearMonth, periodFromYearMonth } from "@/lib/commission";
-import { computeCompetencePeriodStats } from "@/lib/financial-competence";
+import { DateRangeFilter, firstDayOfMonth, todayISO } from "@/components/professional/date-range-filter";
+import {
+  computeCompetencePeriodStats,
+  computeTotalOpenBalance,
+  filterBillsForCompetencePeriod,
+  filterPendingMonthBills,
+  filterProductionBills,
+  filterReceivedBills,
+  filterTotalOpenBills,
+  FINANCIAL_SUMMARY_META,
+  financialSummaryDescription,
+  type FinancialSummaryKind,
+} from "@/lib/financial-competence";
+import { FinancialSummaryDialog } from "@/components/professional/financial-summary-dialog";
 import {
   billCanDelete,
   billCanReverse,
   billHasSaleItems,
   billIsEditable,
-  billIsInstallment,
   deleteBill,
   reverseSale,
   type SaleBillRow,
 } from "@/lib/sales";
+import { FinancialProfessionalFilter } from "@/components/professional/financial-professional-filter";
+import {
+  applyReceivableProfessionalFilter,
+  RECEIVABLE_BILL_SELECT,
+  type FinancialTabScopeProps,
+} from "@/lib/financial-scope";
+import { billOpenAmount, emitBillNfse, formatNfseLabel } from "@/lib/nfse";
 
-export function FinancialCobrancasTab() {
+export function FinancialCobrancasTab({
+  scope,
+  professionalFilter,
+  onProfessionalFilterChange,
+}: FinancialTabScopeProps) {
   const { profile } = useAuth();
   const [rows, setRows] = useState<SaleBillRow[]>([]);
   const [status, setStatus] = useState("all");
@@ -91,7 +113,13 @@ export function FinancialCobrancasTab() {
   const [actionLoading, setActionLoading] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyBillId, setHistoryBillId] = useState<string | null>(null);
-  const period = periodFromYearMonth(currentYearMonth());
+  const [summaryKind, setSummaryKind] = useState<FinancialSummaryKind | null>(null);
+  const [periodFrom, setPeriodFrom] = useState(firstDayOfMonth());
+  const [periodTo, setPeriodTo] = useState(todayISO());
+  const period = useMemo(() => {
+    if (!periodFrom || !periodTo || periodFrom > periodTo) return null;
+    return { from: periodFrom, to: periodTo };
+  }, [periodFrom, periodTo]);
 
   const load = useCallback(async () => {
     if (!profile) return;
@@ -102,39 +130,81 @@ export function FinancialCobrancasTab() {
       .eq("id", profile.id)
       .maybeSingle();
     setCommissionPct(Number(prof?.commission_pct ?? 0));
-    let q = supabase
-      .from("bills_receivable")
-      .select(
-        "id, description, amount, paid_amount, due_date, paid_date, competence_date, payment_method, status, notes, budget_id, patient_id, installment_number, installment_count, consultation_charge_id, patients(full_name)",
-      )
-      .or(`professional_id.eq.${profile.id},professional_id.is.null`)
-      .order("due_date", { ascending: false })
-      .limit(200);
-    if (status !== "all") q = q.eq("status", status);
+    let q = applyReceivableProfessionalFilter(
+      supabase
+        .from("bills_receivable")
+        .select(RECEIVABLE_BILL_SELECT)
+        .order("due_date", { ascending: false })
+        .limit(scope === "clinic" ? 500 : 200),
+      { scope, profileId: profile.id, professionalFilter },
+    );
     const { data, error } = await q;
     if (error) toast.error(error.message);
     setRows((data ?? []) as SaleBillRow[]);
     setLoading(false);
-  }, [profile, status]);
+  }, [profile, scope, professionalFilter]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  const periodRows = useMemo(() => {
+    if (!period) return rows;
+    return filterBillsForCompetencePeriod(rows, period) as SaleBillRow[];
+  }, [rows, period]);
+
   const filtered = useMemo(() => {
+    let list = periodRows;
+    if (status !== "all") {
+      list = list.filter((r) => {
+        const eff = isOverdue(r.due_date, r.status) ? "overdue" : r.status;
+        return eff === status;
+      });
+    }
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
+    if (!q) return list;
+    return list.filter(
       (r) =>
         r.description.toLowerCase().includes(q) ||
         (r.patients?.full_name?.toLowerCase().includes(q) ?? false),
     );
-  }, [rows, search]);
+  }, [periodRows, search, status]);
 
   const stats = useMemo(() => {
     if (!period) return { production: 0, received: 0, pending: 0 };
-    return computeCompetencePeriodStats(rows, period);
-  }, [rows, period]);
+    return computeCompetencePeriodStats(periodRows, period);
+  }, [periodRows, period]);
+
+  const totalOpen = useMemo(() => computeTotalOpenBalance(rows), [rows]);
+
+  const summaryBills = useMemo((): SaleBillRow[] => {
+    if (!period || !summaryKind) return [];
+
+    let filtered: SaleBillRow[];
+    switch (summaryKind) {
+      case "production":
+        filtered = filterProductionBills(rows, period) as SaleBillRow[];
+        break;
+      case "received":
+        filtered = filterReceivedBills(rows, period) as SaleBillRow[];
+        break;
+      case "pending":
+        filtered = filterPendingMonthBills(rows, period) as SaleBillRow[];
+        break;
+      case "totalOpen":
+        filtered = filterTotalOpenBills(rows) as SaleBillRow[];
+        break;
+      default:
+        filtered = [];
+    }
+
+    return [...filtered].sort((a, b) => b.due_date.localeCompare(a.due_date));
+  }, [rows, period, summaryKind]);
+
+  const summaryMeta = summaryKind ? FINANCIAL_SUMMARY_META[summaryKind] : null;
+  const summaryDescription = summaryKind
+    ? financialSummaryDescription(summaryKind, period, fmtDate)
+    : "";
 
   const commissionEst = stats.received * (commissionPct / 100);
   const detailBill = useMemo(
@@ -146,7 +216,7 @@ export function FinancialCobrancasTab() {
     if (!reverseTarget) return;
     setActionLoading(true);
     try {
-      await reverseSale(reverseTarget.id, "Estorno pelo profissional");
+      await reverseSale(reverseTarget.id, scope === "clinic" ? "Estorno pela clínica" : "Estorno pelo profissional");
       toast.success(billHasSaleItems(reverseTarget) ? "Venda estornada" : "Cobrança cancelada");
       setReverseTarget(null);
       await load();
@@ -172,6 +242,8 @@ export function FinancialCobrancasTab() {
     }
   };
 
+  const tableColSpan = 9;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap justify-end gap-2">
@@ -184,63 +256,142 @@ export function FinancialCobrancasTab() {
           Nova venda avulsa
         </Button>
       </div>
-      <PageSection title="Resumo do mês">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="Produção" value={fmt(stats.production)} icon={Wallet} />
-          <StatCard label="Recebido" value={fmt(stats.received)} icon={TrendingUp} tone="success" />
-          <StatCard label="Pendente" value={fmt(stats.pending)} icon={TrendingDown} tone="warning" />
-          <StatCard label="Comissão estimada" value={fmt(commissionEst)} sub={`${commissionPct}% sobre recebido`} icon={Wallet} />
-        </div>
-      </PageSection>
-      <div className="flex flex-wrap items-center gap-2">
-        <Input placeholder="Buscar paciente ou descrição…" value={search} onChange={(e) => setSearch(e.target.value)} className="w-64" />
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-muted/20 p-4">
+        <DateRangeFilter
+          from={periodFrom}
+          to={periodTo}
+          onFromChange={setPeriodFrom}
+          onToChange={setPeriodTo}
+        />
+        {scope === "clinic" && (
+          <FinancialProfessionalFilter value={professionalFilter} onChange={onProfessionalFilterChange} />
+        )}
+        <Input
+          placeholder="Buscar paciente ou descrição…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="min-w-[200px] flex-1"
+        />
         <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-44">
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos</SelectItem>
             {Object.entries(BILL_STATUS_LABEL).map(([k, v]) => (
-              <SelectItem key={k} value={k}>{v}</SelectItem>
+              <SelectItem key={k} value={k}>
+                {v}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        {periodFrom > periodTo && (
+          <p className="w-full text-sm text-destructive">A data inicial não pode ser maior que a final.</p>
+        )}
       </div>
+
+      <PageSection
+        title="Resumo do período"
+        description={
+          period
+            ? `${fmtDate(period.from)} – ${fmtDate(period.to)}`
+            : "Selecione um período válido"
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <StatCard
+            label="Produção"
+            value={fmt(stats.production)}
+            sub="Vendas no período"
+            icon={Wallet}
+            onClick={() => period && setSummaryKind("production")}
+          />
+          <StatCard
+            label="Recebido"
+            value={fmt(stats.received)}
+            sub="Entradas no período"
+            icon={TrendingUp}
+            tone="success"
+            onClick={() => period && setSummaryKind("received")}
+          />
+          <StatCard
+            label="Pendente"
+            value={fmt(stats.pending)}
+            sub="Em aberto no período"
+            icon={TrendingDown}
+            tone="warning"
+            onClick={() => period && setSummaryKind("pending")}
+          />
+          <StatCard
+            label={scope === "clinic" ? "Total em aberto (clínica)" : "Total em aberto"}
+            value={fmt(totalOpen)}
+            sub="Todas as faturas em aberto"
+            icon={HandCoins}
+            tone="danger"
+            onClick={() => setSummaryKind("totalOpen")}
+          />
+          {scope === "professional" ? (
+            <StatCard label="Comissão estimada" value={fmt(commissionEst)} sub={`${commissionPct}% sobre recebido`} icon={Wallet} />
+          ) : (
+            <StatCard label="Cobranças" value={String(filtered.length)} sub="No período selecionado" icon={Wallet} />
+          )}
+        </div>
+      </PageSection>
       <Card>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Paciente</TableHead>
-                <TableHead>Descrição</TableHead>
-                <TableHead>Valor</TableHead>
-                <TableHead>Recebido</TableHead>
-                <TableHead>Vencimento</TableHead>
-                <TableHead>Forma</TableHead>
-                <TableHead>Situação</TableHead>
+                <TableHead>Profissional</TableHead>
+                <TableHead className="text-center">NFSe</TableHead>
+                <TableHead className="text-center">Valor Total</TableHead>
+                <TableHead className="text-center">Valor Pago</TableHead>
+                <TableHead className="text-center">Valor em Aberto</TableHead>
+                <TableHead className="text-center">Vencimento</TableHead>
+                <TableHead className="text-center">Situação</TableHead>
                 <TableHead className="w-12" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={8} className="py-10 text-center text-muted-foreground">Carregando…</TableCell></TableRow>
+                <TableRow><TableCell colSpan={tableColSpan} className="py-10 text-center text-muted-foreground">Carregando…</TableCell></TableRow>
               ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="py-10 text-center text-muted-foreground">Nenhuma cobrança encontrada.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={tableColSpan} className="py-10 text-center text-muted-foreground">Nenhuma cobrança encontrada.</TableCell></TableRow>
               ) : (
                 filtered.map((r) => {
                   const eff = isOverdue(r.due_date, r.status) ? "overdue" : r.status;
+                  const openAmount = billOpenAmount(r.amount, r.paid_amount);
+                  const nfseLabel = formatNfseLabel(r);
+                  const hasNfse = Boolean(r.nfse_number);
                   return (
                     <TableRow key={r.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setDetailBillId(r.id)}>
-                      <TableCell>{r.patients?.full_name ?? "—"}</TableCell>
-                      <TableCell>
-                        <div className="text-sm">{r.description}</div>
-                        {billIsInstallment(r) && (
-                          <Badge variant="outline" className="mt-1 text-[10px]">Parcela {r.installment_number}/{r.installment_count}</Badge>
-                        )}
+                      <TableCell className="font-medium">{r.patients?.full_name ?? "—"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{r.profiles?.full_name ?? "—"}</TableCell>
+                      <TableCell className="text-center">
+                        <span
+                          className={
+                            hasNfse
+                              ? "font-mono text-xs text-foreground"
+                              : r.nfse_status === "failed"
+                                ? "text-xs text-destructive"
+                                : "text-xs text-muted-foreground"
+                          }
+                        >
+                          {nfseLabel}
+                        </span>
                       </TableCell>
-                      <TableCell>{fmt(r.amount)}</TableCell>
-                      <TableCell>{fmt(r.paid_amount)}</TableCell>
-                      <TableCell>{fmtDate(r.due_date)}</TableCell>
-                      <TableCell className="text-sm">{r.payment_method ? PAYMENT_LABEL[r.payment_method] : "—"}</TableCell>
-                      <TableCell><Badge className={BILL_STATUS_CLASS[eff]}>{BILL_STATUS_LABEL[eff]}</Badge></TableCell>
+                      <TableCell className="text-center tabular-nums">{fmt(r.amount)}</TableCell>
+                      <TableCell className="text-center tabular-nums">{fmt(r.paid_amount)}</TableCell>
+                      <TableCell className="text-center tabular-nums">
+                        <span className={openAmount > 0 ? "font-medium text-amber-700 dark:text-amber-400" : ""}>
+                          {fmt(openAmount)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-center">{fmtDate(r.due_date)}</TableCell>
+                      <TableCell className="text-center">
+                        <Badge className={BILL_STATUS_CLASS[eff]}>{BILL_STATUS_LABEL[eff]}</Badge>
+                      </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -248,6 +399,13 @@ export function FinancialCobrancasTab() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => setDetailBillId(r.id)}><HandCoins className="mr-2 size-4" />Abrir conta</DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={hasNfse}
+                              onClick={() => void emitBillNfse(r.id)}
+                            >
+                              <Receipt className="mr-2 size-4" />
+                              {hasNfse ? "NFS-e emitida" : "Emitir NFSe"}
+                            </DropdownMenuItem>
                             {billIsEditable(r) && <DropdownMenuItem onClick={() => { setEditBillId(r.id); setSaleOpen(true); }}><Pencil className="mr-2 size-4" />Editar venda</DropdownMenuItem>}
                             {billCanReverse(r) && <DropdownMenuItem onClick={() => setReverseTarget(r)}><RotateCcw className="mr-2 size-4" />Estornar</DropdownMenuItem>}
                             {billCanDelete(r) && (
@@ -267,7 +425,20 @@ export function FinancialCobrancasTab() {
           </Table>
         </CardContent>
       </Card>
-      <StandaloneSaleDialog open={saleOpen} onOpenChange={setSaleOpen} billId={editBillId} onSaved={() => void load()} />
+      <FinancialSummaryDialog
+        open={Boolean(summaryKind)}
+        onOpenChange={(open) => !open && setSummaryKind(null)}
+        kind={summaryKind}
+        title={summaryMeta?.title ?? ""}
+        description={summaryDescription}
+        bills={summaryBills}
+        showProfessional={scope === "clinic"}
+        onBillClick={(billId) => {
+          setSummaryKind(null);
+          setDetailBillId(billId);
+        }}
+      />
+      <StandaloneSaleDialog open={saleOpen} onOpenChange={setSaleOpen} billId={editBillId} scope={scope} onSaved={() => void load()} />
       <BillDetailDialog open={Boolean(detailBillId)} onOpenChange={(open) => !open && setDetailBillId(null)} bill={detailBill} onChanged={() => void load()} />
       <PaymentHistoryDialog open={historyOpen} onOpenChange={setHistoryOpen} billId={historyBillId} onChanged={() => void load()} />
       <AlertDialog open={Boolean(reverseTarget)} onOpenChange={(o) => !o && setReverseTarget(null)}>

@@ -109,7 +109,7 @@ function PatientsList() {
       <div className="space-y-5">
         <PageHeader
           title="Contatos"
-          description="Busque pacientes e acesse ficha, prontuário, financeiro e agenda."
+          description="Busque pacientes e acesse ficha cadastral, financeiro e agenda."
           actions={
             <Button onClick={() => setOpenForm(true)}>
               <Plus className="mr-2 size-4" />

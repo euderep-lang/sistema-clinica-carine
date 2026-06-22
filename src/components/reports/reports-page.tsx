@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { todayISO, shiftDateISO, firstDayOfMonthISO, addMonthsISO, fmtDateShortWeekday, fmtDate } from "@/lib/locale";
-import { Users, CreditCard, Stethoscope, CalendarRange, BanknoteArrowDown, UserPlus, Download } from "lucide-react";
+import { Users, CreditCard, Stethoscope, CalendarRange, BanknoteArrowDown, UserPlus, Download, Star } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import { chartMoneyMargin, chartMoneyYAxisProps, fmtChartMoneyTooltip } from "@/
 import { resolveLetterheadProfessionalId } from "@/lib/letterhead";
 import { printWithLetterhead } from "@/lib/letterhead-print";
 import { TableSkeleton, EmptyState } from "@/components/feedback-states";
+import { FluxoCashFlowReport } from "@/components/reports/fluxo-cash-flow-report";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend, PieChart, Pie, Cell } from "recharts";
 
 const REPORTS = [
@@ -24,6 +25,7 @@ const REPORTS = [
   { id: "agenda", label: "Relatório de Agenda", icon: CalendarRange },
   { id: "fluxo", label: "Fluxo de Caixa Detalhado", icon: BanknoteArrowDown },
   { id: "pacientes", label: "Relatório de Pacientes", icon: UserPlus },
+  { id: "nps", label: "NPS — Satisfação", icon: Star },
 ] as const;
 type ReportId = typeof REPORTS[number]["id"];
 
@@ -55,8 +57,9 @@ export function ReportsPage() {
         {active === "pagamento" && <PagamentoReport />}
         {active === "especialidade" && <EspecialidadeReport />}
         {active === "agenda" && <AgendaReport />}
-        {active === "fluxo" && <FluxoReport />}
+        {active === "fluxo" && <FluxoCashFlowReport />}
         {active === "pacientes" && <PacientesReport />}
+        {active === "nps" && <NpsReport />}
       </div>
     </div>
   );
@@ -290,80 +293,86 @@ function AgendaReport() {
   );
 }
 
-// 5. Fluxo de Caixa Detalhado
-function FluxoReport() {
-  const { profile } = useAuth();
-  const [from, setFrom] = useState(() => shiftDateISO(todayISO(), -30));
+// 6. NPS
+function NpsReport() {
+  const [from, setFrom] = useState(() => shiftDateISO(todayISO(), -90));
   const [to, setTo] = useState(today());
   const [loading, setLoading] = useState(true);
-  const [tx, setTx] = useState<{ id: string; date: string; type: "in" | "out"; description: string; party: string; method: string; amount: number }[]>([]);
+  const [scores, setScores] = useState<number[]>([]);
+  const [rows, setRows] = useState<{ score: number; feedback: string | null; answered_at: string }[]>([]);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const { data: rec } = await supabase.from("bills_receivable").select("id, paid_date, description, payment_method, paid_amount, patients(full_name)").eq("status", "paid").gte("paid_date", from).lte("paid_date", to);
-      const { data: pay } = await supabase.from("bills_payable").select("id, paid_date, description, supplier, payment_method, amount").eq("status", "paid").gte("paid_date", from).lte("paid_date", to);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const ins = (rec ?? []).map((r: any) => ({ id: r.id, date: r.paid_date as string, type: "in" as const, description: r.description, party: r.patients?.full_name ?? "—", method: r.payment_method ?? "—", amount: Number(r.paid_amount) }));
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const outs = (pay ?? []).map((p: any) => ({ id: p.id, date: p.paid_date as string, type: "out" as const, description: p.description, party: p.supplier ?? "—", method: p.payment_method ?? "—", amount: Number(p.amount) }));
-      setTx([...ins, ...outs].sort((a, b) => a.date.localeCompare(b.date)));
+      const { data } = await supabase
+        .from("nps_responses" as never)
+        .select("score, feedback, answered_at")
+        .gte("answered_at", `${from}T00:00:00`)
+        .lte("answered_at", `${to}T23:59:59`)
+        .order("answered_at", { ascending: false });
+      const list = (data ?? []) as { score: number; feedback: string | null; answered_at: string }[];
+      setRows(list);
+      setScores(list.map((r) => r.score));
       setLoading(false);
     })();
   }, [from, to]);
 
-  const grouped = useMemo(() => {
-    const g: Record<string, typeof tx> = {};
-    tx.forEach(t => { (g[t.date] ??= []).push(t); });
-    return Object.entries(g).sort(([a], [b]) => a.localeCompare(b));
-  }, [tx]);
-  const totalIn = tx.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0);
-  const totalOut = tx.filter(t => t.type === "out").reduce((s, t) => s + t.amount, 0);
-
-  function exportPDF() {
-    void printWithLetterhead(resolveLetterheadProfessionalId(profile));
-  }
+  const n = scores.length;
+  const promoters = scores.filter((s) => s >= 9).length;
+  const detractors = scores.filter((s) => s <= 6).length;
+  const nps = n ? Math.round(((promoters - detractors) / n) * 100) : 0;
+  const avg = n ? (scores.reduce((a, b) => a + b, 0) / n).toFixed(1) : "—";
 
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>Fluxo de Caixa Detalhado</CardTitle>
-          <Button variant="outline" size="sm" onClick={exportPDF}><Download className="size-4 mr-2" />Exportar documento</Button>
-        </div>
+        <CardTitle>NPS — Net Promoter Score</CardTitle>
         <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} />
       </CardHeader>
       <CardContent className="space-y-4">
-        {loading ? <TableSkeleton /> : tx.length === 0 ? <EmptyState icon={BanknoteArrowDown} title="Sem movimentações no período" /> : (
+        {loading ? (
+          <TableSkeleton />
+        ) : n === 0 ? (
+          <EmptyState icon={Star} title="Nenhuma resposta NPS no período" />
+        ) : (
           <>
-            <div className="grid gap-3 grid-cols-3">
-              <Card className="border-l-4 border-l-green-500"><CardContent className="p-3"><div className="text-xs text-muted-foreground">Total Entradas</div><div className="text-xl font-semibold text-green-600">{fmt(totalIn)}</div></CardContent></Card>
-              <Card className="border-l-4 border-l-red-500"><CardContent className="p-3"><div className="text-xs text-muted-foreground">Total Saídas</div><div className="text-xl font-semibold text-red-600">{fmt(totalOut)}</div></CardContent></Card>
-              <Card className="border-l-4 border-l-primary"><CardContent className="p-3"><div className="text-xs text-muted-foreground">Saldo</div><div className={`text-xl font-semibold ${totalIn - totalOut >= 0 ? "text-green-600" : "text-red-600"}`}>{fmt(totalIn - totalOut)}</div></CardContent></Card>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg border p-4">
+                <p className="text-xs text-muted-foreground">NPS</p>
+                <p className="text-3xl font-semibold">{nps}</p>
+              </div>
+              <div className="rounded-lg border p-4">
+                <p className="text-xs text-muted-foreground">Média 0–10</p>
+                <p className="text-3xl font-semibold">{avg}</p>
+              </div>
+              <div className="rounded-lg border p-4">
+                <p className="text-xs text-muted-foreground">Respostas</p>
+                <p className="text-3xl font-semibold">{n}</p>
+              </div>
             </div>
-            <div className="space-y-4">
-              {grouped.map(([date, items]) => {
-                const dIn = items.filter(i => i.type === "in").reduce((s, i) => s + i.amount, 0);
-                const dOut = items.filter(i => i.type === "out").reduce((s, i) => s + i.amount, 0);
-                return (
-                  <div key={date}>
-                    <div className="bg-muted px-3 py-1 rounded text-sm font-semibold flex justify-between"><span>{fmtDateShortWeekday(date)}</span><span className="text-xs">Entradas: {fmt(dIn)} · Saídas: {fmt(dOut)} · Saldo: {fmt(dIn - dOut)}</span></div>
-                    <table className="w-full text-sm">
-                      <tbody>
-                        {items.map(t => (
-                          <tr key={t.id} className={`border-t border-l-4 ${t.type === "in" ? "border-l-green-500" : "border-l-red-500"}`}>
-                            <td className="p-2 w-24">{t.type === "in" ? "Entrada" : "Saída"}</td>
-                            <td>{t.description}</td>
-                            <td className="text-muted-foreground">{t.party}</td>
-                            <td className="text-muted-foreground">{PAYMENT_LABEL[t.method] ?? t.method}</td>
-                            <td className={`text-right font-medium ${t.type === "in" ? "text-green-600" : "text-red-600"}`}>{t.type === "in" ? "+" : "−"} {fmt(t.amount)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                );
-              })}
+            <div className="overflow-x-auto max-h-80">
+              <table className="w-full text-sm">
+                <thead className="text-left text-xs text-muted-foreground uppercase">
+                  <tr>
+                    <th className="p-2">Data</th>
+                    <th>Nota</th>
+                    <th>Comentário</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r, i) => (
+                    <tr key={i} className="border-t">
+                      <td className="p-2">{fmtDate(r.answered_at.slice(0, 10))}</td>
+                      <td>
+                        <Badge variant={r.score >= 9 ? "default" : r.score <= 6 ? "destructive" : "secondary"}>
+                          {r.score}
+                        </Badge>
+                      </td>
+                      <td className="text-muted-foreground">{r.feedback ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </>
         )}
@@ -372,7 +381,7 @@ function FluxoReport() {
   );
 }
 
-// 6. Relatório de Pacientes
+// 7. Relatório de Pacientes
 const SOURCE_COLORS = ["#3b82f6","#a855f7","#f59e0b","#22c55e","#ef4444","#14b8a6"];
 function PacientesReport() {
   const [loading, setLoading] = useState(true);

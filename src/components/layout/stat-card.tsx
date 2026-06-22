@@ -18,6 +18,7 @@ interface StatCardProps {
   tone?: StatTone;
   action?: React.ReactNode;
   className?: string;
+  onClick?: () => void;
 }
 
 export function StatCard({
@@ -28,15 +29,31 @@ export function StatCard({
   tone = "default",
   action,
   className,
+  onClick,
 }: StatCardProps) {
   const styles = toneStyles[tone];
+  const clickable = Boolean(onClick);
 
   return (
     <article
       className={cn(
         "flex flex-col gap-3 rounded-lg border bg-card p-4 transition-colors duration-200",
+        clickable && "cursor-pointer hover:border-primary/40 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         className,
       )}
+      onClick={onClick}
+      onKeyDown={
+        clickable
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onClick?.();
+              }
+            }
+          : undefined
+      }
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
     >
       <div className="flex items-start justify-between gap-3">
         <span className="text-[0.8125rem] font-medium text-muted-foreground">{label}</span>

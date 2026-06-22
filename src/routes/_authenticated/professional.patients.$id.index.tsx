@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Pencil, Stethoscope } from "lucide-react";
 import { PatientSessionsContent } from "@/components/professional/patient-sessions-content";
@@ -20,23 +20,19 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
 import { APPOINTMENT_STATUS_LABEL, APPOINTMENT_TYPE_LABEL } from "@/lib/appointment-types";
 import {
-  BILL_STATUS_CLASS,
-  BILL_STATUS_LABEL,
-  fmt,
   fmtDate,
-  PAYMENT_LABEL,
 } from "@/lib/currency";
 import {
   ageFromBirthDate,
   avatarColor,
+  formatPhoneWithDdi,
   initials,
   maskCPF,
-  maskPhone,
 } from "@/lib/patient-utils";
 import type { PatientFormData } from "@/components/patient-form-dialog";
 import { PatientFormDialog } from "@/components/patient-form-dialog";
 
-const PATIENT_TABS = ["dados", "financeiro", "consultas", "sessoes"] as const;
+const PATIENT_TABS = ["dados", "consultas", "sessoes"] as const;
 type PatientTab = (typeof PATIENT_TABS)[number];
 
 export const Route = createFileRoute("/_authenticated/professional/patients/$id/")({
@@ -57,17 +53,6 @@ interface AppointmentRow {
   type: string | null;
 }
 
-interface BillRow {
-  id: string;
-  description: string;
-  amount: number;
-  paid_amount: number;
-  due_date: string;
-  paid_date: string | null;
-  payment_method: string | null;
-  status: string;
-}
-
 function Field({ label, value }: { label: string; value?: string | null }) {
   return (
     <div>
@@ -84,7 +69,6 @@ function ProfessionalPatientPage() {
   const { profile } = useAuth();
   const [patient, setPatient] = useState<PatientFormData | null>(null);
   const [appts, setAppts] = useState<AppointmentRow[]>([]);
-  const [bills, setBills] = useState<BillRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
   const load = async () => {
@@ -105,14 +89,6 @@ function ProfessionalPatientPage() {
       .eq("professional_id", profile.id)
       .order("date", { ascending: false });
     setAppts((apptData ?? []) as AppointmentRow[]);
-
-    const { data: billData } = await supabase
-      .from("bills_receivable")
-      .select("id,description,amount,paid_amount,due_date,paid_date,payment_method,status")
-      .eq("patient_id", id)
-      .or(`professional_id.eq.${profile.id},professional_id.is.null`)
-      .order("due_date", { ascending: false });
-    setBills((billData ?? []) as BillRow[]);
     setLoading(false);
   };
 
@@ -120,13 +96,6 @@ function ProfessionalPatientPage() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, profile]);
-
-  const financialSummary = useMemo(() => {
-    const total = bills.reduce((s, b) => s + Number(b.amount), 0);
-    const paid = bills.reduce((s, b) => s + Number(b.paid_amount), 0);
-    const pending = total - paid;
-    return { total, paid, pending };
-  }, [bills]);
 
   if (loading || !patient) {
     return (
@@ -167,7 +136,7 @@ function ProfessionalPatientPage() {
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
                 {age !== null && <span>{age} anos</span>}
                 {patient.cpf && <span>CPF: {maskCPF(patient.cpf)}</span>}
-                {patient.phone && <span>{maskPhone(patient.phone)}</span>}
+                {patient.phone && <span>{formatPhoneWithDdi(patient.phone, patient.phone_ddi)}</span>}
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -198,7 +167,6 @@ function ProfessionalPatientPage() {
         >
           <TabsList>
             <TabsTrigger value="dados">Cadastro</TabsTrigger>
-            <TabsTrigger value="financeiro">Financeiro</TabsTrigger>
             <TabsTrigger value="consultas">Agendamentos</TabsTrigger>
             <TabsTrigger value="sessoes">Sessões</TabsTrigger>
           </TabsList>
@@ -219,7 +187,7 @@ function ProfessionalPatientPage() {
                 <Field label="Nascimento" value={patient.birth_date} />
                 <Field label="Sexo" value={patient.gender} />
                 <Field label="Como nos conheceu" value={patient.how_did_you_find_us} />
-                <Field label="Telefone" value={patient.phone ? maskPhone(patient.phone) : null} />
+                <Field label="Telefone" value={patient.phone ? formatPhoneWithDdi(patient.phone, patient.phone_ddi) : null} />
                 <Field label="E-mail" value={patient.email} />
                 <Field
                   label="Endereço"
@@ -244,7 +212,10 @@ function ProfessionalPatientPage() {
                   label="Telefone emergência"
                   value={
                     patient.emergency_contact_phone
-                      ? maskPhone(patient.emergency_contact_phone)
+                      ? formatPhoneWithDdi(
+                          patient.emergency_contact_phone,
+                          patient.emergency_contact_phone_ddi,
+                        )
                       : null
                   }
                 />
@@ -253,86 +224,6 @@ function ProfessionalPatientPage() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-
-          <TabsContent value="financeiro">
-            <div className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-3">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Total lançado
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="text-2xl font-bold">
-                    {fmt(financialSummary.total)}
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Recebido
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="text-2xl font-bold text-emerald-600">
-                    {fmt(financialSummary.paid)}
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Pendente
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="text-2xl font-bold text-amber-600">
-                    {fmt(financialSummary.pending)}
-                  </CardContent>
-                </Card>
-              </div>
-              <Card>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Descrição</TableHead>
-                        <TableHead>Vencimento</TableHead>
-                        <TableHead>Valor</TableHead>
-                        <TableHead>Pago</TableHead>
-                        <TableHead>Situação</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {bills.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
-                            Nenhuma cobrança para este paciente
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        bills.map((bill) => (
-                          <TableRow key={bill.id}>
-                            <TableCell className="font-medium">{bill.description}</TableCell>
-                            <TableCell>{fmtDate(bill.due_date)}</TableCell>
-                            <TableCell>{fmt(bill.amount)}</TableCell>
-                            <TableCell>{fmt(bill.paid_amount)}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className={BILL_STATUS_CLASS[bill.status]}>
-                                {BILL_STATUS_LABEL[bill.status] ?? bill.status}
-                              </Badge>
-                              {bill.payment_method && (
-                                <span className="ml-2 text-xs text-muted-foreground">
-                                  {PAYMENT_LABEL[bill.payment_method] ?? bill.payment_method}
-                                </span>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </div>
           </TabsContent>
 
           <TabsContent value="consultas">

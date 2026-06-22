@@ -20,7 +20,7 @@ export interface WaConversation {
   price_sent_at?: string | null;
   pipeline_stage_id?: string | null;
   deal_id?: string | null;
-  patients?: { full_name: string } | null;
+  patients?: { full_name: string; gender?: string | null } | null;
   assigned_profile?: { full_name: string } | null;
 }
 
@@ -203,7 +203,7 @@ export { fmtRelativeTime as formatRelativeTime, fmtMessageTime as formatMessageT
 export function conversationDisplayName(c: {
   contact_name: string | null;
   contact_phone: string;
-  patients?: { full_name: string } | null;
+  patients?: { full_name: string; gender?: string | null } | null;
 }): string {
   return c.patients?.full_name ?? c.contact_name ?? formatPhoneBR(c.contact_phone);
 }

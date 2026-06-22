@@ -84,7 +84,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
-import { guessMediaTypeFromFile, prepareDocumentFileForWhatsApp, prepareImageFileForWhatsApp } from "@/lib/wa-media-prepare";
+import { buildGenderTemplateVars } from "@/lib/wa-template-gender";
+import { normalizeMessageLineBreaks } from "@/lib/wa-automation-quick-replies";
 import { prepareAudioFileForWhatsApp } from "@/lib/wa-audio-prepare";
 import { dedupeConversationsByPhone, phonesMatch } from "@/lib/wa-phone";
 import {
@@ -233,7 +234,7 @@ export function CrmInboxPage() {
     [conversations, selectedId],
   );
 
-  const contactPhotos = useWaContactPhotos(conversations);
+  const contactPhotos = useWaContactPhotos(conversations, selectedId ? [selectedId] : []);
 
   const resolveTagColor = useCallback(
     (tagIds: string[] | undefined) => conversationPrimaryTagColor(tagIds, tags),
@@ -255,7 +256,7 @@ export function CrmInboxPage() {
       supabase
         .from("wa_conversations" as never)
         .select(
-          "id, tenant_id, patient_id, contact_phone, contact_name, channel, external_user_id, assigned_to, status, last_message_at, last_message_preview, unread_count, contact_photo_url, contact_photo_fetched_at, deal_id, patients(full_name), assigned_profile:assigned_to(full_name)",
+          "id, tenant_id, patient_id, contact_phone, contact_name, channel, external_user_id, assigned_to, status, last_message_at, last_message_preview, unread_count, contact_photo_url, contact_photo_fetched_at, deal_id, patients(full_name, gender), assigned_profile:assigned_to(full_name)",
         )
         .order("last_message_at", { ascending: false, nullsFirst: false }),
       supabase
@@ -655,7 +656,7 @@ export function CrmInboxPage() {
   }, [conversations, search, filter, channelFilter, tagFilter, convTagsMap, profile, pendingTransfers]);
 
   const sendText = async () => {
-    const body = text.trim();
+    const body = normalizeMessageLineBreaks(text);
     if (!body || sending) return;
 
     if (composeTarget) {
@@ -689,7 +690,7 @@ export function CrmInboxPage() {
       await sendTextFn({
         data: {
           conversationId: selectedId,
-          text: text.trim(),
+          text: body,
           replyToMessageId: replyTo?.id,
         },
       });
@@ -1037,7 +1038,9 @@ export function CrmInboxPage() {
     const name = composeTarget?.name ?? (selected ? conversationDisplayName(selected) : "");
     if (!name) return undefined;
     const parts = name.trim().split(/\s+/);
+    const gender = selected?.patients?.gender ?? null;
     return {
+      ...buildGenderTemplateVars(gender),
       primeiro_nome: parts[0] ?? name,
       nome_paciente: name,
       nome_clinica: tenant?.name ?? "Clínica",
@@ -1511,7 +1514,7 @@ export function CrmInboxPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="space-y-1.5 pb-2">
+                    <div className="space-y-1 pb-1.5">
                       {messages.map((m) => (
                         <CrmMessageBubble
                           key={m.id}
@@ -1528,8 +1531,8 @@ export function CrmInboxPage() {
                 </ScrollArea>
                 <div className={crmComposerBar}>
                   {replyTo ? (
-                    <div className="mb-2 flex items-center gap-2 rounded-xl border border-border/60 bg-background px-3 py-2 text-xs">
-                      <Reply className="size-3.5 shrink-0 text-emerald-600" />
+                    <div className="mb-1.5 flex items-center gap-1.5 rounded-lg border border-border/60 bg-background px-2 py-1.5 text-[11px]">
+                      <Reply className="size-3 shrink-0 text-emerald-600" />
                       <p className="line-clamp-1 flex-1 text-muted-foreground">{replyTo.body ?? replyTo.message_type}</p>
                       <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setReplyTo(null)}>
                         <X className="size-3.5" />
@@ -1539,9 +1542,9 @@ export function CrmInboxPage() {
                   <CrmQuickReplies
                     disabled={sending || (!selectedId && !composeTarget) || selected?.status === "closed"}
                     templateVars={quickReplyVars}
-                    onSelect={(t) => setText((prev) => (prev ? `${prev}\n${t}` : t))}
+                    onSelect={(t) => setText((prev) => (prev ? `${prev}\n\n${t}` : t))}
                   />
-                  <div className="flex items-end gap-1.5 rounded-2xl border border-border/50 bg-background p-1.5 shadow-sm">
+                  <div className="flex items-center gap-1 rounded-xl border border-border/50 bg-background p-1 shadow-sm">
                     <input
                       ref={fileRef}
                       type="file"
@@ -1575,13 +1578,13 @@ export function CrmInboxPage() {
                         e.target.value = "";
                       }}
                     />
-                    <Button variant="ghost" size="icon" className="size-9 shrink-0 rounded-full" onClick={() => fileRef.current?.click()} disabled={sending || !selectedId || selected?.status === "closed" || !!composeTarget || (selected?.channel ?? "whatsapp") !== "whatsapp"} title="Enviar foto ou PDF">
+                    <Button variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" onClick={() => fileRef.current?.click()} disabled={sending || !selectedId || selected?.status === "closed" || !!composeTarget || (selected?.channel ?? "whatsapp") !== "whatsapp"} title="Enviar foto ou PDF">
                       <Paperclip className="size-4" />
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-9 shrink-0 rounded-full"
+                      className="size-8 shrink-0 rounded-full"
                       onClick={() => videoFileRef.current?.click()}
                       disabled={sending || !selectedId || selected?.status === "closed" || !!composeTarget || (selected?.channel ?? "whatsapp") !== "whatsapp"}
                       title="Enviar vídeo"
@@ -1591,7 +1594,7 @@ export function CrmInboxPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-9 shrink-0 rounded-full"
+                      className="size-8 shrink-0 rounded-full"
                       onClick={() => audioFileRef.current?.click()}
                       disabled={sending || !selectedId || selected?.status === "closed" || !!composeTarget || (selected?.channel ?? "whatsapp") !== "whatsapp"}
                       title="Anexar áudio"
@@ -1602,17 +1605,23 @@ export function CrmInboxPage() {
                       disabled={sending || !selectedId || selected?.status === "closed" || !!composeTarget || (selected?.channel ?? "whatsapp") !== "whatsapp"}
                       onRecorded={(f) => void sendFile(f)}
                     />
-                    <Input
-                      placeholder="Digite uma mensagem…"
+                    <Textarea
+                      placeholder="Digite uma mensagem… (Shift+Enter para nova linha)"
                       value={text}
                       onChange={(e) => setText(e.target.value)}
                       disabled={!composeTarget && selected?.status === "closed"}
-                      onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), void sendText())}
-                      className="min-h-9 flex-1 border-0 bg-transparent shadow-none focus-visible:ring-0"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          void sendText();
+                        }
+                      }}
+                      rows={2}
+                      className="min-h-[2.25rem] max-h-28 flex-1 resize-none border-0 bg-transparent py-1.5 text-[13px] shadow-none focus-visible:ring-0"
                     />
                     <Button
                       size="icon"
-                      className="size-9 shrink-0 rounded-full bg-emerald-600 hover:bg-emerald-700"
+                      className="size-8 shrink-0 rounded-full bg-emerald-600 hover:bg-emerald-700"
                       onClick={() => void sendText()}
                       disabled={sending || !text.trim() || (!composeTarget && selected?.status === "closed")}
                     >

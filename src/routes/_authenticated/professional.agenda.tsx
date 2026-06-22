@@ -12,6 +12,7 @@ import {
   type ProfessionalAgendaAppointment,
 } from "@/components/agenda/professional-agenda-day-view";
 import { ProfessionalAgendaWeekView } from "@/components/agenda/professional-agenda-week-view";
+import { useAppointmentCancelConfirm } from "@/components/agenda/use-appointment-cancel-confirm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -52,6 +53,7 @@ type ViewMode = "weekly" | "daily" | "list";
 function ProfessionalAgendaPage() {
   const { profile } = useAuth();
   const navigate = useNavigate();
+  const { requestStatusChange, cancelConfirmDialog } = useAppointmentCancelConfirm();
   const [viewMode, setViewMode] = useState<ViewMode>("weekly");
   const [date, setDate] = useState(todayISO());
   const [rows, setRows] = useState<ProfessionalAgendaAppointment[]>([]);
@@ -133,9 +135,17 @@ function ProfessionalAgendaPage() {
   };
 
   const handleStatusChange = async (id: string, status: string) => {
-    const ok = await updateStatus(id, status);
-    if (ok) toast.success("Situação atualizada");
-    return ok;
+    const row = rows.find((r) => r.id === id);
+    const result = await requestStatusChange(
+      status,
+      async () => {
+        const ok = await updateStatus(id, status);
+        if (ok) toast.success("Situação atualizada");
+        return ok;
+      },
+      { patientName: row?.patients?.full_name },
+    );
+    return result ?? false;
   };
 
   const shiftPeriod = (days: number) => setDate((d) => shiftDate(d, days));
@@ -397,6 +407,8 @@ function ProfessionalAgendaPage() {
           void load();
         }}
       />
+
+      {cancelConfirmDialog}
     </DashboardShell>
   );
 }

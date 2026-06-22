@@ -42,11 +42,18 @@ import {
   cancelExpense,
   deleteProfessionalExpense,
   loadProfessionalExpenses,
+  loadTenantExpenses,
   markExpensePaid,
   type ExpenseRow,
 } from "@/lib/expenses";
+import { FinancialProfessionalFilter } from "@/components/professional/financial-professional-filter";
+import type { FinancialTabScopeProps } from "@/lib/financial-scope";
 
-export function FinancialDespesasTab() {
+export function FinancialDespesasTab({
+  scope,
+  professionalFilter,
+  onProfessionalFilterChange,
+}: FinancialTabScopeProps) {
   const { profile } = useAuth();
   const [rows, setRows] = useState<ExpenseRow[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -65,7 +72,16 @@ export function FinancialDespesasTab() {
     setLoading(true);
     try {
       const [data, cats] = await Promise.all([
-        loadProfessionalExpenses(profile.id, { status, category, from, to, dateField: "due_date" }),
+        scope === "clinic"
+          ? loadTenantExpenses({
+              status,
+              category,
+              from,
+              to,
+              dateField: "due_date",
+              professionalFilter,
+            })
+          : loadProfessionalExpenses(profile.id, { status, category, from, to, dateField: "due_date" }),
         loadExpenseCategories(),
       ]);
       setRows(data);
@@ -75,7 +91,7 @@ export function FinancialDespesasTab() {
     } finally {
       setLoading(false);
     }
-  }, [profile, status, category, from, to]);
+  }, [profile, status, category, from, to, scope, professionalFilter]);
 
   useEffect(() => {
     void load();
@@ -149,6 +165,9 @@ export function FinancialDespesasTab() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
+          {scope === "clinic" && (
+            <FinancialProfessionalFilter value={professionalFilter} onChange={onProfessionalFilterChange} />
+          )}
           <DateRangeFilter from={from} to={to} onFromChange={setFrom} onToChange={setTo} />
           <Select value={status} onValueChange={setStatus}>
             <SelectTrigger className="w-40">
@@ -198,42 +217,45 @@ export function FinancialDespesasTab() {
             <TableHeader>
               <TableRow>
                 <TableHead>Descrição</TableHead>
+                {scope === "clinic" && <TableHead>Profissional</TableHead>}
                 <TableHead>Categoria</TableHead>
                 <TableHead>Fornecedor</TableHead>
-                <TableHead>Valor</TableHead>
-                <TableHead>Vencimento</TableHead>
-                <TableHead>Forma</TableHead>
-                <TableHead>Situação</TableHead>
+                <TableHead className="text-center">Valor</TableHead>
+                <TableHead className="text-center">Vencimento</TableHead>
+                <TableHead className="text-center">Forma</TableHead>
+                <TableHead className="text-center">Situação</TableHead>
                 <TableHead className="w-12" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={scope === "clinic" ? 9 : 8} className="py-10 text-center text-muted-foreground">
                     Carregando…
                   </TableCell>
                 </TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={scope === "clinic" ? 9 : 8} className="py-10 text-center text-muted-foreground">
                     Nenhuma despesa encontrada.
                   </TableCell>
                 </TableRow>
               ) : (
                 filtered.map((r) => {
                   const eff = isOverdue(r.due_date, r.status) ? "overdue" : r.status;
+                  const profName = (r as ExpenseRow & { profiles?: { full_name: string } | null }).profiles?.full_name;
                   return (
                     <TableRow key={r.id}>
                       <TableCell>{r.description}</TableCell>
+                      {scope === "clinic" && <TableCell>{profName ?? "—"}</TableCell>}
                       <TableCell>{r.category ?? "—"}</TableCell>
                       <TableCell>{r.supplier ?? "—"}</TableCell>
-                      <TableCell>{fmt(r.amount)}</TableCell>
-                      <TableCell>{fmtDate(r.due_date)}</TableCell>
-                      <TableCell>
+                      <TableCell className="text-center tabular-nums">{fmt(r.amount)}</TableCell>
+                      <TableCell className="text-center">{fmtDate(r.due_date)}</TableCell>
+                      <TableCell className="text-center">
                         {r.payment_method ? PAYMENT_LABEL[r.payment_method] : "—"}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-center">
                         <Badge className={BILL_STATUS_CLASS[eff] ?? ""}>
                           {BILL_STATUS_LABEL[eff] ?? r.status}
                         </Badge>

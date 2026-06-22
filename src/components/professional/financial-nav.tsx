@@ -1,18 +1,20 @@
 import {
   BarChart3,
   Landmark,
+  Percent,
   TrendingDown,
   Wallet,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type FinancialTab = "cobrancas" | "caixa" | "despesas" | "relatorios";
+export type FinancialTab = "cobrancas" | "caixa" | "despesas" | "comissao" | "relatorios";
 
 const ITEMS: { id: FinancialTab; label: string; icon: LucideIcon }[] = [
   { id: "cobrancas", label: "Cobranças", icon: Wallet },
   { id: "caixa", label: "Caixa", icon: Landmark },
   { id: "despesas", label: "Despesas", icon: TrendingDown },
+  { id: "comissao", label: "Comissão", icon: Percent },
   { id: "relatorios", label: "Relatórios", icon: BarChart3 },
 ];
 

@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
-import { maskCPF, maskPhone, maskCEP, isValidCPF, ageFromBirthDate, fetchCEP } from "@/lib/patient-utils";
+import { maskCPF, maskPhone, maskCEP, isValidCPF, ageFromBirthDate, fetchCEP, DEFAULT_PHONE_DDI, PHONE_DDI_OPTIONS, sanitizeDdi } from "@/lib/patient-utils";
 
 export interface PatientFormData {
   id?: string;
@@ -20,6 +20,7 @@ export interface PatientFormData {
   birth_date: string;
   gender: string;
   how_did_you_find_us: string;
+  phone_ddi: string;
   phone: string;
   email: string;
   address_zip: string;
@@ -35,17 +36,18 @@ export interface PatientFormData {
   allergies: string;
   notes: string;
   emergency_contact_name: string;
+  emergency_contact_phone_ddi: string;
   emergency_contact_phone: string;
 }
 
 const empty: PatientFormData = {
   full_name: "", cpf: "", rg: "", birth_date: "", gender: "", how_did_you_find_us: "",
-  phone: "", email: "",
+  phone_ddi: DEFAULT_PHONE_DDI, phone: "", email: "",
   address_zip: "", address_street: "", address_number: "", address_complement: "",
   address_neighborhood: "", address_city: "", address_state: "",
   blood_type: "", health_insurance: "", health_insurance_number: "",
   allergies: "", notes: "",
-  emergency_contact_name: "", emergency_contact_phone: "",
+  emergency_contact_name: "", emergency_contact_phone_ddi: DEFAULT_PHONE_DDI, emergency_contact_phone: "",
 };
 
 export function PatientFormDialog({
@@ -67,7 +69,11 @@ export function PatientFormDialog({
 
   useEffect(() => {
     if (open) {
-      setForm({ ...empty, ...(initial ?? {}) } as PatientFormData);
+      const base = { ...empty, ...(initial ?? {}) } as PatientFormData;
+      base.phone_ddi = sanitizeDdi(base.phone_ddi || DEFAULT_PHONE_DDI) || DEFAULT_PHONE_DDI;
+      base.emergency_contact_phone_ddi =
+        sanitizeDdi(base.emergency_contact_phone_ddi || DEFAULT_PHONE_DDI) || DEFAULT_PHONE_DDI;
+      setForm(base);
       setErrors({});
     }
   }, [open, initial]);
@@ -102,6 +108,8 @@ export function PatientFormDialog({
       cpf: form.cpf || null,
       email: form.email || null,
       phone: form.phone || null,
+      phone_ddi: sanitizeDdi(form.phone_ddi) || DEFAULT_PHONE_DDI,
+      emergency_contact_phone_ddi: sanitizeDdi(form.emergency_contact_phone_ddi) || DEFAULT_PHONE_DDI,
     };
     delete (payload as { id?: string }).id;
     let res;
@@ -191,9 +199,30 @@ export function PatientFormDialog({
           <section className="space-y-3">
             <h3 className="text-sm font-semibold text-foreground">Contato</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <Label>Telefone / WhatsApp</Label>
-                <Input value={form.phone} onChange={(e) => set("phone", maskPhone(e.target.value))} placeholder="(00) 00000-0000" />
+              <div className="md:col-span-2 flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="w-full sm:w-40">
+                  <Label>DDI</Label>
+                  <Select value={form.phone_ddi} onValueChange={(v) => set("phone_ddi", v)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="+55" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PHONE_DDI_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex-1">
+                  <Label>Telefone / WhatsApp</Label>
+                  <Input
+                    value={form.phone}
+                    onChange={(e) => set("phone", maskPhone(e.target.value))}
+                    placeholder="(00) 00000-0000"
+                  />
+                </div>
               </div>
               <div>
                 <Label>E-mail</Label>
@@ -273,11 +302,33 @@ export function PatientFormDialog({
                 <Label>Nome</Label>
                 <Input value={form.emergency_contact_name} onChange={(e) => set("emergency_contact_name", e.target.value)} />
               </div>
-              <div>
-                <Label>Telefone</Label>
-                <Input value={form.emergency_contact_phone}
-                  onChange={(e) => set("emergency_contact_phone", maskPhone(e.target.value))}
-                  placeholder="(00) 00000-0000" />
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="w-full sm:w-40">
+                  <Label>DDI</Label>
+                  <Select
+                    value={form.emergency_contact_phone_ddi}
+                    onValueChange={(v) => set("emergency_contact_phone_ddi", v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="+55" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PHONE_DDI_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex-1">
+                  <Label>Telefone</Label>
+                  <Input
+                    value={form.emergency_contact_phone}
+                    onChange={(e) => set("emergency_contact_phone", maskPhone(e.target.value))}
+                    placeholder="(00) 00000-0000"
+                  />
+                </div>
               </div>
             </div>
           </section>

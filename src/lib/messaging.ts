@@ -1,16 +1,19 @@
 import { supabase } from "@/integrations/supabase/client";
 import { fmtDate, fmtDateFromDate, fmtDateTime, fmtDateTimeFromDate } from "@/lib/locale";
 import { renderTemplate } from "@/lib/settings-helpers";
+import { buildGenderTemplateVars } from "@/lib/wa-template-gender";
 
 import { buildCrmInboxSearch, type CrmInboxSearch } from "@/lib/crm-navigation";
 
-export type Channel = "whatsapp" | "sms";
+export const DEFAULT_BIRTHDAY_MESSAGE =
+  "{{primeiro_nome}}, feliz aniversário! 🎂\n\nA equipe da {{nome_clinica}} celebra com você este novo ciclo e deseja saúde, bem-estar e um dia muito especial. Conte sempre com a gente!";
 
 export interface PatientLite {
   id: string;
   full_name: string;
   phone: string | null;
   birth_date?: string | null;
+  gender?: string | null;
 }
 
 export function digitsOnly(phone: string | null | undefined): string {
@@ -24,6 +27,7 @@ export function buildWhatsAppLink(phone: string | null | undefined, content: str
 
 export function buildVars(patient: PatientLite, tenantName: string, extras?: Record<string, string>): Record<string, string> {
   return {
+    ...buildGenderTemplateVars(patient.gender),
     nome_paciente: patient.full_name,
     nome_clinica: tenantName,
     primeiro_nome: patient.full_name.split(" ")[0] ?? patient.full_name,

@@ -39,14 +39,6 @@ const RECEPTION_SHORTCUTS: Shortcut[] = [
     className: "bg-amber-100 text-amber-800 hover:bg-amber-200",
   },
   {
-    key: "prontuario",
-    label: "Prontuário / evolução",
-    icon: Stethoscope,
-    to: "/reception/pacientes/$id",
-    search: { tab: "prontuarios" },
-    className: "bg-red-100 text-red-700 hover:bg-red-200",
-  },
-  {
     key: "sessoes",
     label: "Sessões do paciente",
     icon: CalendarCheck,
@@ -93,14 +85,6 @@ const PROFESSIONAL_SHORTCUTS: Shortcut[] = [
     icon: CalendarCheck,
     action: "sessions",
     className: "bg-violet-100 text-violet-800 hover:bg-violet-200",
-  },
-  {
-    key: "financeiro",
-    label: "Financeiro do paciente",
-    icon: DollarSign,
-    to: "/professional/patients/$id",
-    search: { tab: "financeiro" },
-    className: "bg-sky-100 text-sky-800 hover:bg-sky-200",
   },
   {
     key: "agenda",

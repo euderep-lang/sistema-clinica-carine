@@ -65,7 +65,7 @@ function EnviarTab({ tenantId, tenantName, userId }: { tenantId: string; tenantN
 
   useEffect(() => {
     (async () => {
-      const { data: p } = await supabase.from("patients").select("id, full_name, phone, birth_date").eq("active", true).order("full_name").limit(500);
+      const { data: p } = await supabase.from("patients").select("id, full_name, phone, birth_date, gender").eq("active", true).order("full_name").limit(500);
       setPatients((p ?? []) as PatientLite[]);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: t } = await (supabase as any).from("message_templates").select("id, name, channel, trigger, content, active").eq("active", true).order("name");

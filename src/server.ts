@@ -2,6 +2,7 @@ import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import { handleWaFollowUpsCron } from "./lib/wa-cron.server";
 import { handleWhatsAppWebhook } from "./lib/whatsapp-webhook.server";
 import { getWhatsAppWebhookStatus } from "./lib/whatsapp-webhook-status.server";
 
@@ -49,6 +50,9 @@ export default {
       if (pathname === "/api/whatsapp/webhook-status") {
         const status = await getWhatsAppWebhookStatus();
         return Response.json(status, { status: status.ok ? 200 : 503 });
+      }
+      if (pathname === "/api/cron/wa-follow-ups") {
+        return handleWaFollowUpsCron(request);
       }
 
       const handler = await getServerEntry();

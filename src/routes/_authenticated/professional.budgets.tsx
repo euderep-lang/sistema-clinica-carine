@@ -234,7 +234,7 @@ function ProfessionalBudgetsPage() {
         navigate({
           to: "/professional/patients/$id",
           params: { id: result.patient_id },
-          search: { tab: "financeiro" },
+          search: { tab: "dados" },
         });
       }
     } catch (e) {
@@ -384,11 +384,11 @@ function ProfessionalBudgetsPage() {
                                   navigate({
                                     to: "/professional/patients/$id",
                                     params: { id: r.patient_id! },
-                                    search: { tab: "financeiro" },
+                                    search: { tab: "dados" },
                                   })
                                 }
                               >
-                                Financeiro
+                                Ver paciente
                               </Button>
                             )}
                           </div>

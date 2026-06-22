@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { BusinessHours } from "@/lib/settings-helpers";
+import { mergeFollowUpSequences, WA_FOLLOW_UP_TEMPLATES_KEY, type FollowUpStepDef } from "@/lib/wa-follow-up-templates";
 
 export async function getTenantSettingServer<T = unknown>(tenantId: string, key: string): Promise<T | null> {
   const { data } = await supabaseAdmin
@@ -22,4 +23,12 @@ export async function getBusinessHoursServer(tenantId: string): Promise<Business
 
 export async function getAfterHoursMessageServer(tenantId: string): Promise<string | null> {
   return getTenantSettingServer<string>(tenantId, "wa_after_hours_message");
+}
+
+export async function getFollowUpSequencesServer(tenantId: string): Promise<Record<string, FollowUpStepDef[]>> {
+  const overrides = await getTenantSettingServer<Record<string, Record<string, string>>>(
+    tenantId,
+    WA_FOLLOW_UP_TEMPLATES_KEY,
+  );
+  return mergeFollowUpSequences(overrides);
 }

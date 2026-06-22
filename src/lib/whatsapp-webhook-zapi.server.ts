@@ -1,3 +1,5 @@
+import { processDueFollowUps } from "@/lib/wa-follow-up.server";
+import { isBrazilMobileE164, isWhatsAppLid, normalizeBrazilPhone } from "@/lib/wa-phone";
 import {
   insertWaMessage,
   maybeSendAfterHoursAutoReply,
@@ -7,6 +9,7 @@ import {
   upsertConversation,
 } from "@/lib/whatsapp-crm-storage.server";
 import { getZApiConfig } from "@/lib/whatsapp-zapi.server";
+import { isValidContactPhotoUrl } from "@/lib/wa-contact-photo";
 
 interface ZApiReceivedPayload {
   type?: string;
@@ -17,6 +20,13 @@ interface ZApiReceivedPayload {
   momment?: number;
   senderName?: string;
   chatName?: string;
+  chatLid?: string;
+  senderLid?: string;
+  participantPhone?: string | null;
+  participantLid?: string | null;
+  connectedPhone?: string;
+  senderPhoto?: string;
+  photo?: string;
   isGroup?: boolean;
   isNewsletter?: boolean;
   isStatusReply?: boolean;
@@ -29,6 +39,45 @@ interface ZApiReceivedPayload {
   video?: { videoUrl?: string; mimeType?: string; caption?: string };
   document?: { documentUrl?: string; mimeType?: string; fileName?: string; caption?: string };
   sticker?: { stickerUrl?: string; mimeType?: string };
+}
+
+/** Resolve o contato real — Z-API pode enviar @lid no phone, principalmente em fromMe. */
+function resolveZApiContact(payload: ZApiReceivedPayload): {
+  phone: string;
+  waId: string | null;
+  contactName: string | null;
+} {
+  const waId =
+    payload.chatLid?.trim() ||
+    payload.senderLid?.trim() ||
+    payload.participantLid?.trim() ||
+    (isWhatsAppLid(payload.phone ?? "") ? payload.phone!.trim() : null);
+
+  const contactName = payload.fromMe
+    ? payload.chatName ?? payload.senderName ?? null
+    : payload.senderName ?? payload.chatName ?? null;
+
+  let phone = payload.phone?.trim() ?? "";
+
+  // Mensagem enviada pelo app: o destinatário vem em participantPhone
+  if (payload.fromMe && payload.participantPhone?.trim()) {
+    phone = payload.participantPhone.trim();
+  } else if (!isBrazilMobileE164(normalizeBrazilPhone(phone)) && payload.participantPhone?.trim()) {
+    phone = payload.participantPhone.trim();
+  }
+
+  return { phone, waId, contactName };
+}
+
+/** Foto de perfil do contato (não do número conectado). */
+function photoFromZApi(payload: ZApiReceivedPayload): string | null {
+  const candidates = payload.fromMe
+    ? [payload.photo, payload.senderPhoto]
+    : [payload.senderPhoto, payload.photo];
+  for (const url of candidates) {
+    if (isValidContactPhotoUrl(url)) return url!.trim();
+  }
+  return null;
 }
 
 function previewFromZApi(payload: ZApiReceivedPayload): string {
@@ -95,15 +144,15 @@ function mediaFromZApi(payload: ZApiReceivedPayload): {
   return { messageType: "unknown", body: previewFromZApi(payload) };
 }
 
-/** Ignora status, stories, notificações e listas — não são conversas reais. */
+/** Ignora grupos, newsletters e postagens de status — mas permite resposta em cima de status. */
 function shouldIgnoreZApiMessage(payload: ZApiReceivedPayload): boolean {
   if (payload.isGroup) return true;
   if (payload.isNewsletter) return true;
-  if (payload.isStatusReply) return true;
   if (payload.broadcast) return true;
   if (payload.notification) return true;
   const phone = payload.phone ?? "";
-  if (phone.includes("@broadcast") || phone.includes("status@")) return true;
+  if (phone.includes("@broadcast")) return true;
+  if (!payload.isStatusReply && phone.includes("status@")) return true;
   return false;
 }
 
@@ -113,25 +162,24 @@ async function processZApiReceived(tenantId: string, payload: ZApiReceivedPayloa
     return;
   }
   if (shouldIgnoreZApiMessage(payload)) {
-    console.info("[Z-API webhook] ignorado (status/notificação):", payload.notification ?? payload.phone);
+    console.info("[Z-API webhook] ignorado (grupo/status/notificação):", payload.notification ?? payload.phone);
     return;
   }
 
   const media = mediaFromZApi(payload);
   const preview = previewFromZApi(payload);
   const ts = new Date(payload.momment ?? Date.now());
-  const contactName = payload.fromMe
-    ? null
-    : payload.senderName ?? payload.chatName ?? null;
+  const { phone, waId, contactName } = resolveZApiContact(payload);
   const direction = payload.fromMe ? "outbound" : "inbound";
+  const photoUrl = photoFromZApi(payload);
 
   const conversationId = await upsertConversation(
     tenantId,
-    payload.phone,
+    phone,
     contactName,
     preview,
     ts,
-    { incrementUnread: direction === "inbound" },
+    { incrementUnread: direction === "inbound", waId, rawPhone: payload.phone ?? phone, photoUrl },
   );
 
   const convId = conversationId.id;
@@ -155,7 +203,7 @@ async function processZApiReceived(tenantId: string, payload: ZApiReceivedPayloa
     await maybeSendAfterHoursAutoReply(
       tenantId,
       convId,
-      payload.phone,
+      phone,
       conversationId.lastAfterHoursReplyAt,
     );
   } else {
@@ -200,6 +248,12 @@ export async function handleZApiWebhook(request: Request): Promise<Response> {
   try {
     if (/^receivedcallback$/i.test(payload.type ?? "")) {
       await processZApiReceived(tenantId, payload);
+      // Só dispara follow-ups em mensagem do paciente — evita corrida com eco fromMe do envio automático.
+      if (!payload.fromMe) {
+        void processDueFollowUps(10).catch((e) =>
+          console.error("[Z-API webhook] follow-up process error:", e),
+        );
+      }
     } else if (/^(messagestatuscallback|deliverycallback)$/i.test(payload.type ?? "")) {
       if (payload.messageId && payload.status) {
         await updateMessageStatus(payload.messageId, payload.status);
@@ -207,6 +261,7 @@ export async function handleZApiWebhook(request: Request): Promise<Response> {
     }
   } catch (e) {
     console.error("[Z-API webhook] error:", e);
+    return new Response("Internal Server Error", { status: 500 });
   }
 
   return new Response("OK", { status: 200 });

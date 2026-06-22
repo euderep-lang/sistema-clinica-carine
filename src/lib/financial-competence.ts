@@ -50,6 +50,148 @@ export function buildCompetenceGroups(bills: CompetenceBill[]): Map<string, Comp
   return groups;
 }
 
+export function computeTotalOpenBalance(bills: CompetenceBill[]): number {
+  return bills
+    .filter((bill) => bill.status !== "cancelled")
+    .reduce(
+      (sum, bill) => sum + Math.max(0, Number(bill.amount) - Number(bill.paid_amount)),
+      0,
+    );
+}
+
+function openBalance(bill: CompetenceBill): number {
+  return Math.max(0, Number(bill.amount) - Number(bill.paid_amount));
+}
+
+function appendUniqueBills(target: CompetenceBill[], bills: CompetenceBill[]) {
+  const seen = new Set(target.map((bill) => bill.id));
+  for (const bill of bills) {
+    if (seen.has(bill.id)) continue;
+    seen.add(bill.id);
+    target.push(bill);
+  }
+}
+
+/** Vendas com competência no período (inclui parcelas do mesmo atendimento). */
+export function filterProductionBills(
+  bills: CompetenceBill[],
+  period: { from: string; to: string },
+): CompetenceBill[] {
+  const groups = buildCompetenceGroups(bills);
+  const result: CompetenceBill[] = [];
+  for (const groupBills of groups.values()) {
+    const competenceDate = billCompetenceDate(groupBills[0]);
+    if (inPeriod(competenceDate, period.from, period.to)) {
+      appendUniqueBills(result, groupBills);
+    }
+  }
+  return result;
+}
+
+/** Cobranças com recebimento no período (alinhado ao card Recebido). */
+export function filterReceivedBills(
+  bills: CompetenceBill[],
+  period: { from: string; to: string },
+): CompetenceBill[] {
+  const groups = buildCompetenceGroups(bills);
+  const result: CompetenceBill[] = [];
+
+  for (const groupBills of groups.values()) {
+    const bill = groupBills[0];
+    const competenceDate = billCompetenceDate(bill);
+    const totalPaid = groupBills.reduce((sum, b) => sum + Number(b.paid_amount), 0);
+
+    if (isInstallmentSale(bill)) {
+      if (inPeriod(competenceDate, period.from, period.to) && totalPaid > 0) {
+        appendUniqueBills(
+          result,
+          groupBills.filter((b) => Number(b.paid_amount) > 0),
+        );
+      }
+      continue;
+    }
+
+    const receivedDate = bill.paid_date ?? competenceDate;
+    if (
+      totalPaid > 0 &&
+      inPeriod(receivedDate, period.from, period.to) &&
+      (bill.status === "paid" || bill.status === "partial")
+    ) {
+      appendUniqueBills(result, [bill]);
+    }
+  }
+
+  return result;
+}
+
+/** Saldo em aberto das vendas com competência no período. */
+export function filterPendingMonthBills(
+  bills: CompetenceBill[],
+  period: { from: string; to: string },
+): CompetenceBill[] {
+  const groups = buildCompetenceGroups(bills);
+  const result: CompetenceBill[] = [];
+
+  for (const groupBills of groups.values()) {
+    const competenceDate = billCompetenceDate(groupBills[0]);
+    if (!inPeriod(competenceDate, period.from, period.to)) continue;
+    const withOpen = groupBills.filter((b) => openBalance(b) > 0);
+    if (withOpen.length > 0) appendUniqueBills(result, withOpen);
+  }
+
+  return result;
+}
+
+/** Todas as faturas com saldo em aberto. */
+export function filterTotalOpenBills(bills: CompetenceBill[]): CompetenceBill[] {
+  return bills.filter((bill) => bill.status !== "cancelled" && openBalance(bill) > 0);
+}
+
+export type FinancialSummaryKind = "production" | "received" | "pending" | "totalOpen";
+
+export const FINANCIAL_SUMMARY_META: Record<
+  FinancialSummaryKind,
+  { title: string; description: string }
+> = {
+  production: {
+    title: "Vendas do período",
+    description: "Faturas com competência no período selecionado.",
+  },
+  received: {
+    title: "Recebimentos do período",
+    description: "Valores recebidos no período selecionado.",
+  },
+  pending: {
+    title: "Pendente do período",
+    description: "Saldo em aberto das vendas do período selecionado.",
+  },
+  totalOpen: {
+    title: "Total em aberto",
+    description: "Todas as faturas com saldo pendente.",
+  },
+};
+
+export function financialSummaryDescription(
+  kind: FinancialSummaryKind,
+  period: { from: string; to: string } | null,
+  formatDate: (iso: string) => string,
+): string {
+  if (kind === "totalOpen" || !period) {
+    return FINANCIAL_SUMMARY_META[kind].description;
+  }
+  const range = `${formatDate(period.from)} – ${formatDate(period.to)}`;
+  switch (kind) {
+    case "production":
+      return `Faturas com competência entre ${range}.`;
+    case "received":
+      return `Valores recebidos entre ${range}.`;
+    case "pending":
+      return `Saldo em aberto das vendas com competência entre ${range}.`;
+    default:
+      return FINANCIAL_SUMMARY_META[kind].description;
+  }
+}
+
 export function computeCompetencePeriodStats(
   bills: CompetenceBill[],
   period: { from: string; to: string },

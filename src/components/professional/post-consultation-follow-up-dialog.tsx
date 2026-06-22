@@ -106,9 +106,10 @@ export function PostConsultationFollowUpDialog({
             />
           </div>
           <p className="text-xs text-muted-foreground">
-            Será criado um lembrete para a recepção, a tag{" "}
-            <span className="font-medium text-emerald-800">Follow-up Pós-Consulta</span> no WhatsApp
-            (se houver conversa) e a sequência automática pós-consulta (24h, 7d, 15d, 30d).
+            Será criado um lembrete para a recepção (mesmo sem conversa no WhatsApp), a tag{" "}
+            <span className="font-medium text-emerald-800">Follow-up Pós-Consulta</span> no chat
+            (se existir) e a sequência automática pós-consulta (24h, 7d, 15d, 30d) quando houver
+            conversa.
           </p>
         </div>
 

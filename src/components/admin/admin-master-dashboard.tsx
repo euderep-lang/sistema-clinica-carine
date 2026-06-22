@@ -20,6 +20,10 @@ import {
   periodFromYearMonth,
   todayISO,
 } from "@/lib/commission";
+import {
+  applyCommissionClosingsToProduction,
+  loadCommissionClosingsForRange,
+} from "@/lib/commission-closings-report";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 
 export function AdminMasterDashboard() {
@@ -82,12 +86,30 @@ export function AdminMasterDashboard() {
       const inv = (inventory ?? []) as { current_stock: number; min_stock: number }[];
       setLowStock(inv.filter((i) => Number(i.current_stock) <= Number(i.min_stock)).length);
 
+      const billsByProf = new Map<string, NonNullable<typeof bills>>();
+      for (const bill of bills ?? []) {
+        const pid = (bill as { professional_id: string | null }).professional_id;
+        if (!pid) continue;
+        const list = billsByProf.get(pid) ?? [];
+        list.push(bill);
+        billsByProf.set(pid, list);
+      }
+
+      const closings = await loadCommissionClosingsForRange(supabase, period.from, period.to);
+
+      const production = buildProfessionalProduction(
+        (profs ?? []) as Parameters<typeof buildProfessionalProduction>[0],
+        (bills ?? []) as Parameters<typeof buildProfessionalProduction>[1],
+        (appts ?? []) as Parameters<typeof buildProfessionalProduction>[2],
+        period,
+      );
+
       setProfessionals(
-        buildProfessionalProduction(
-          (profs ?? []) as Parameters<typeof buildProfessionalProduction>[0],
-          (bills ?? []) as Parameters<typeof buildProfessionalProduction>[1],
-          (appts ?? []) as Parameters<typeof buildProfessionalProduction>[2],
+        applyCommissionClosingsToProduction(
+          production,
+          closings,
           period,
+          billsByProf as Parameters<typeof applyCommissionClosingsToProduction>[3],
         ),
       );
       setLoading(false);

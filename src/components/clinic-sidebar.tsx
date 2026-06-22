@@ -8,7 +8,6 @@ import {
   BarChart3,
   Settings,
   ClipboardCheck,
-  CreditCard,
   MessageSquare,
   Megaphone,
   Inbox,
@@ -76,7 +75,6 @@ const NAV: Record<Role, { label: string; items: NavItem[] }[]> = {
         { title: "Agenda", url: "/reception/agenda", icon: Calendar },
         { title: "Pacientes", url: "/reception/pacientes", icon: Users },
         { title: "Check-in", url: "/reception/checkin", icon: ClipboardCheck },
-        { title: "Pagamentos", url: "/reception/payments", icon: CreditCard },
       ],
     },
     {

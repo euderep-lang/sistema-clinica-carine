@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Plus, HandCoins, Download } from "lucide-react";
+import { toast } from "sonner";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -33,8 +34,15 @@ export function Page() {
     if (from) qy = (qy as never as { gte: (a:string,b:string)=>unknown }).gte("due_date", from) as never;
     if (to) qy = (qy as never as { lte: (a:string,b:string)=>unknown }).lte("due_date", to) as never;
     if (q) qy = (qy as never as { ilike: (a:string,b:string)=>unknown }).ilike("description", `%${q}%`) as never;
-    const { data, count } = await (qy as unknown as Promise<{ data: Row[]; count: number | null }>);
-    setRows(data ?? []); setTotal(count ?? 0);
+    const { data, count, error } = await qy;
+    if (error) {
+      toast.error(error.message);
+      setRows([]);
+      setTotal(0);
+      return;
+    }
+    setRows(data ?? []);
+    setTotal(count ?? 0);
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [page, status, from, to, q]);

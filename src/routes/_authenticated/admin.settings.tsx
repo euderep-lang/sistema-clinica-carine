@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Building2, Palette, DoorOpen, Stethoscope, Users, Receipt, MessageSquare, Plug, CreditCard, FolderOpen, type LucideIcon } from "lucide-react";
+import { Building2, Palette, DoorOpen, Stethoscope, Users, Receipt, MessageSquare, Plug, CreditCard, FolderOpen, Shield, type LucideIcon } from "lucide-react";
+import { SectionAuditoria } from "@/components/settings/section-auditoria";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { cn } from "@/lib/utils";
 import { SectionClinica } from "@/components/settings/section-clinica";
@@ -16,7 +17,7 @@ import { SectionDespesas } from "@/components/settings/section-despesas";
 
 export const Route = createFileRoute("/_authenticated/admin/settings")({ component: Page });
 
-type SectionId = "clinica" | "aparencia" | "consultorios" | "especialidades" | "usuarios" | "servicos" | "pagamentos" | "despesas" | "mensagens" | "integracoes";
+type SectionId = "clinica" | "aparencia" | "consultorios" | "especialidades" | "usuarios" | "servicos" | "pagamentos" | "despesas" | "mensagens" | "integracoes" | "auditoria";
 
 const SECTIONS: { id: SectionId; label: string; icon: LucideIcon }[] = [
   { id: "clinica", label: "Clínica", icon: Building2 },
@@ -27,8 +28,9 @@ const SECTIONS: { id: SectionId; label: string; icon: LucideIcon }[] = [
   { id: "servicos", label: "Serviços", icon: Receipt },
   { id: "pagamentos", label: "Pagamentos", icon: CreditCard },
   { id: "despesas", label: "Despesas", icon: FolderOpen },
-  { id: "mensagens", label: "Modelos de Mensagem", icon: MessageSquare },
+  { id: "mensagens", label: "Mensagens WhatsApp", icon: MessageSquare },
   { id: "integracoes", label: "Integrações", icon: Plug },
+  { id: "auditoria", label: "Auditoria", icon: Shield },
 ];
 
 function Page() {
@@ -56,6 +58,7 @@ function Page() {
           {active === "despesas" && <SectionDespesas />}
           {active === "mensagens" && <SectionMensagens />}
           {active === "integracoes" && <SectionIntegracoes />}
+          {active === "auditoria" && <SectionAuditoria />}
         </div>
       </div>
     </DashboardShell>

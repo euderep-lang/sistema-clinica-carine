@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { logAuditSafe } from "@/lib/audit.server";
 import { isValidCPF } from "@/lib/patient-utils";
 
 export interface CreateUserInput {
@@ -148,6 +149,18 @@ export const createTenantUser = createServerFn({ method: "POST" })
       throw new Error(pErr.message);
     }
 
+    logAuditSafe({
+      tenantId: caller.tenant_id,
+      actorId: userId,
+      category: "auth",
+      action: "auth.user_created",
+      summary: `Usuário criado: ${data.full_name} (${data.role})`,
+      entityType: "user",
+      entityId: created.user.id,
+      details: { email: data.email.trim().toLowerCase(), role: data.role },
+      source: "ui",
+    });
+
     return { id: created.user.id };
   });
 
@@ -239,6 +252,22 @@ export const updateTenantUser = createServerFn({ method: "POST" })
 
     const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(data.user_id);
 
+    logAuditSafe({
+      tenantId: caller.tenant_id,
+      actorId: userId,
+      category: "auth",
+      action: "auth.user_updated",
+      summary: `Usuário atualizado: ${data.full_name} (${data.role})`,
+      entityType: "user",
+      entityId: data.user_id,
+      details: {
+        role: data.role,
+        active: data.active ?? true,
+        password_changed: Boolean(data.password?.trim()),
+      },
+      source: "ui",
+    });
+
     return {
       user: {
         ...updated,
@@ -265,6 +294,18 @@ export const resetTenantUserPassword = createServerFn({ method: "POST" })
       password: data.password,
     });
     if (error) throw new Error(error.message);
+
+    logAuditSafe({
+      tenantId: caller.tenant_id,
+      actorId: userId,
+      category: "auth",
+      action: "auth.password_reset",
+      summary: "Senha de usuário redefinida pelo administrador",
+      entityType: "user",
+      entityId: data.user_id,
+      source: "ui",
+    });
+
     return { ok: true };
   });
 
@@ -277,10 +318,27 @@ export const deleteTenantUser = createServerFn({ method: "POST" })
     if (!caller || caller.role !== "admin") throw new Error("Sem permissão");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: target } = await supabaseAdmin.from("profiles").select("tenant_id").eq("id", data.user_id).maybeSingle();
+    const { data: target } = await supabaseAdmin
+      .from("profiles")
+      .select("tenant_id, full_name, role")
+      .eq("id", data.user_id)
+      .maybeSingle();
     if (!target || target.tenant_id !== caller.tenant_id) throw new Error("Usuário não pertence à sua clínica");
 
     const { error } = await supabaseAdmin.auth.admin.deleteUser(data.user_id);
     if (error) throw new Error(error.message);
+
+    logAuditSafe({
+      tenantId: caller.tenant_id,
+      actorId: userId,
+      category: "auth",
+      action: "auth.user_deleted",
+      summary: `Usuário excluído: ${(target as { full_name: string }).full_name}`,
+      entityType: "user",
+      entityId: data.user_id,
+      details: { role: (target as { role: string }).role },
+      source: "ui",
+    });
+
     return { ok: true };
   });

@@ -1,16 +1,19 @@
 import { fmtDateLong } from "@/lib/locale";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Building2, CalendarDays, LayoutGrid, List, Plus, Search } from "lucide-react";
+import { Building2, CalendarDays, LayoutGrid, List, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { AgendaRescheduleButton } from "@/components/agenda/agenda-appointment-actions";
 import { AgendaContactActions } from "@/components/agenda/agenda-contact-actions";
 import { AgendaFiltersPanel } from "@/components/agenda/agenda-filters-panel";
+import { AgendaSummaryCards } from "@/components/agenda/agenda-summary-cards";
 import { AgendaRescheduleDialog } from "@/components/agenda/agenda-reschedule-dialog";
 import { AgendaRoomsOverview } from "@/components/agenda/agenda-rooms-overview";
 import { AgendaTimelineView, type AgendaRow } from "@/components/agenda/agenda-timeline-view";
+import { useAppointmentCancelConfirm } from "@/components/agenda/use-appointment-cancel-confirm";
+import { PatientSearchField } from "@/components/patient-search-field";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,7 +48,6 @@ export const Route = createFileRoute("/_authenticated/reception/agenda")({
   component: AgendaPage,
 });
 
-type Patient = { id: string; full_name: string; phone: string | null };
 type Professional = { id: string; full_name: string; specialty: string | null; appointment_types: string[] | null };
 type Room = { id: string; name: string; color: string | null };
 type Appointment = {
@@ -77,6 +79,7 @@ function AgendaPage() {
   const { profile } = useAuth();
   const followUpFn = useServerFn(triggerAppointmentFollowUp);
   const statusFollowUpFn = useServerFn(triggerAppointmentStatusFollowUp);
+  const { requestStatusChange, cancelConfirmDialog } = useAppointmentCancelConfirm();
   const [viewMode, setViewMode] = useState<"timeline" | "rooms" | "list">("timeline");
   const [date, setDate] = useState(todayISO());
   const [timeFrom, setTimeFrom] = useState("08:00");
@@ -85,7 +88,6 @@ function AgendaPage() {
   const [filterRoom, setFilterRoom] = useState("all");
   const [showCancelled, setShowCancelled] = useState(false);
   const [rows, setRows] = useState<Appointment[]>([]);
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,9 +95,7 @@ function AgendaPage() {
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [rescheduleRow, setRescheduleRow] = useState<AgendaRow | null>(null);
   const [saving, setSaving] = useState(false);
-  const [patientSearch, setPatientSearch] = useState("");
-  const [patientPickerOpen, setPatientPickerOpen] = useState(false);
-  const patientPickerRef = useRef<HTMLDivElement>(null);
+  const [patientLabel, setPatientLabel] = useState("");
   const [form, setForm] = useState({
     patient_id: "",
     professional_id: "",
@@ -125,12 +125,10 @@ function AgendaPage() {
   useEffect(() => {
     if (!profile) return;
     (async () => {
-      const [patientsRes, professionalsRes, roomsRes] = await Promise.all([
-        supabase.from("patients").select("id,full_name,phone").eq("tenant_id", profile.tenant_id).eq("active", true).order("full_name"),
+      const [professionalsRes, roomsRes] = await Promise.all([
         supabase.from("profiles").select("id,full_name,specialty,appointment_types").eq("tenant_id", profile.tenant_id).eq("role", "professional").eq("active", true).order("full_name"),
         supabase.from("rooms").select("id,name,color").eq("tenant_id", profile.tenant_id).eq("active", true).order("name"),
       ]);
-      setPatients((patientsRes.data ?? []) as Patient[]);
       setProfessionals((professionalsRes.data ?? []) as Professional[]);
       setRooms((roomsRes.data ?? []) as Room[]);
     })();
@@ -166,25 +164,6 @@ function AgendaPage() {
     });
   }, [rows, showCancelled, filterProfessional, timeFrom, timeTo]);
 
-  const filteredPatients = useMemo(() => {
-    const q = patientSearch.trim().toLowerCase();
-    if (!q) return [];
-    return patients
-      .filter((p) => p.full_name.toLowerCase().includes(q) || (p.phone ?? "").replace(/\D/g, "").includes(q.replace(/\D/g, "")))
-      .slice(0, 25);
-  }, [patients, patientSearch]);
-
-  useEffect(() => {
-    if (!patientPickerOpen) return;
-    const onPointerDown = (event: MouseEvent) => {
-      if (!patientPickerRef.current?.contains(event.target as Node)) {
-        setPatientPickerOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [patientPickerOpen]);
-
   const availableAppointmentTypes = useMemo(() => {
     const professional = professionals.find((p) => p.id === form.professional_id);
     const allowed = resolveAppointmentTypes(professional?.appointment_types);
@@ -192,16 +171,9 @@ function AgendaPage() {
   }, [professionals, form.professional_id]);
 
   const statsRows = viewMode === "rooms" ? filteredRowsForRooms : filteredRows;
-  const totals = useMemo(() => ({
-    all: statsRows.length,
-    confirmed: statsRows.filter((r) => r.status === "confirmed").length,
-    completed: statsRows.filter((r) => r.status === "completed").length,
-    pending: statsRows.filter((r) => r.status === "scheduled").length,
-  }), [statsRows]);
 
   const openNew = () => {
-    setPatientSearch("");
-    setPatientPickerOpen(false);
+    setPatientLabel("");
     setForm((f) => ({ ...f, patient_id: "", date, end_time: addOneHour(f.start_time) }));
     setOpen(true);
   };
@@ -280,6 +252,10 @@ function AgendaPage() {
     }
   };
 
+  const handleStatusChange = (id: string, status: string, patientName?: string | null) => {
+    void requestStatusChange(status, () => updateStatus(id, status), { patientName });
+  };
+
   const handlePrint = () => {
     const profId = filterProfessional !== "all" ? filterProfessional : null;
     void printWithLetterhead(profId);
@@ -334,12 +310,7 @@ function AgendaPage() {
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-4 print:hidden">
-          <SummaryCard label="Total" value={totals.all} />
-          <SummaryCard label="Pendentes" value={totals.pending} />
-          <SummaryCard label="Confirmados" value={totals.confirmed} />
-          <SummaryCard label="Concluídos" value={totals.completed} />
-        </div>
+        <AgendaSummaryCards rows={statsRows} />
 
         <div className="flex flex-col gap-4 lg:flex-row-reverse">
           <div className="print:hidden">{filtersPanel}</div>
@@ -365,26 +336,26 @@ function AgendaPage() {
                 onReschedule={openReschedule}
               />
             ) : (
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-3">
-                  <CardTitle className="flex items-center gap-2 text-base capitalize">
+              <Card className="w-full">
+                <CardHeader className="flex flex-row items-center justify-center gap-3 text-center sm:justify-between sm:text-left">
+                  <CardTitle className="flex items-center justify-center gap-2 text-base capitalize sm:justify-start">
                     <CalendarDays className="size-4" />
                     {fmtDateLong(date)}
                   </CardTitle>
                   <Badge variant="outline">{filteredRows.length} horários</Badge>
                 </CardHeader>
-                <CardContent className="p-0 overflow-x-auto">
+                <CardContent className="overflow-x-auto p-0">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Horário</TableHead>
-                        <TableHead>Paciente</TableHead>
-                        <TableHead>Contato</TableHead>
-                        <TableHead>Profissional</TableHead>
-                        <TableHead>Consultório</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead>Situação</TableHead>
-                        <TableHead className="text-right">Ação</TableHead>
+                        <TableHead className="text-center">Horário</TableHead>
+                        <TableHead className="text-center">Paciente</TableHead>
+                        <TableHead className="text-center">Contato</TableHead>
+                        <TableHead className="text-center">Profissional</TableHead>
+                        <TableHead className="text-center">Consultório</TableHead>
+                        <TableHead className="text-center">Tipo</TableHead>
+                        <TableHead className="text-center">Situação</TableHead>
+                        <TableHead className="text-center">Ação</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -393,20 +364,24 @@ function AgendaPage() {
                       ) : filteredRows.length === 0 ? (
                         <TableRow><TableCell colSpan={8} className="py-10 text-center text-muted-foreground">Nenhum agendamento para os filtros selecionados.</TableCell></TableRow>
                       ) : filteredRows.map((row) => (
-                        <TableRow key={row.id}>
+                        <TableRow key={row.id} className="[&>td]:text-center">
                           <TableCell className="whitespace-nowrap font-medium">
                             {formatTimeInterval(row.start_time, row.end_time)}
                           </TableCell>
                           <TableCell>
-                            {row.patient_id ? (
-                              <Link to="/reception/pacientes/$id" params={{ id: row.patient_id }} className="font-medium hover:underline">
-                                {row.patients?.full_name ?? "Paciente"}
-                              </Link>
-                            ) : "—"}
-                            {row.patients?.phone && <div className="text-xs text-muted-foreground">{row.patients.phone}</div>}
+                            <div className="flex flex-col items-center">
+                              {row.patient_id ? (
+                                <Link to="/reception/pacientes/$id" params={{ id: row.patient_id }} className="font-medium hover:underline">
+                                  {row.patients?.full_name ?? "Paciente"}
+                                </Link>
+                              ) : "—"}
+                              {row.patients?.phone && <div className="text-xs text-muted-foreground">{row.patients.phone}</div>}
+                            </div>
                           </TableCell>
                           <TableCell>
-                            <AgendaContactActions phone={row.patients?.phone} patientId={row.patient_id} patientName={row.patients?.full_name} size="icon" />
+                            <div className="flex justify-center">
+                              <AgendaContactActions phone={row.patients?.phone} patientId={row.patient_id} patientName={row.patients?.full_name} size="icon" />
+                            </div>
                           </TableCell>
                           <TableCell>{row.profiles?.full_name ?? "—"}</TableCell>
                           <TableCell>{row.rooms?.name ?? "—"}</TableCell>
@@ -416,10 +391,10 @@ function AgendaPage() {
                               {APPOINTMENT_STATUS_LABEL[row.status] ?? row.status}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-2">
+                          <TableCell>
+                            <div className="flex flex-wrap items-center justify-center gap-2">
                               <AgendaRescheduleButton row={row} onReschedule={openReschedule} size="sm" />
-                              <Select value={row.status} onValueChange={(value) => updateStatus(row.id, value)}>
+                              <Select value={row.status} onValueChange={(value) => handleStatusChange(row.id, value, row.patients?.full_name)}>
                                 <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                   {Object.entries(APPOINTMENT_STATUS_LABEL).map(([value, label]) => (
@@ -444,57 +419,22 @@ function AgendaPage() {
         open={open}
         onOpenChange={(value) => {
           setOpen(value);
-          if (!value) {
-            setPatientSearch("");
-            setPatientPickerOpen(false);
-          }
+          if (!value) setPatientLabel("");
         }}
       >
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Novo agendamento</DialogTitle></DialogHeader>
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="md:col-span-2 space-y-2" ref={patientPickerRef}>
-              <Label>Paciente</Label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={patientSearch}
-                  onChange={(e) => {
-                    setPatientSearch(e.target.value);
-                    setPatientPickerOpen(true);
-                    setForm((f) => ({ ...f, patient_id: "" }));
-                  }}
-                  onFocus={() => setPatientPickerOpen(true)}
-                  placeholder="Digite o nome ou telefone do paciente"
-                  className="pl-9"
-                  autoComplete="off"
-                />
-                {patientPickerOpen && patientSearch.trim() && (
-                  <div className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-md border bg-popover shadow-md">
-                    {filteredPatients.length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">Nenhum paciente encontrado</div>
-                    ) : (
-                      filteredPatients.map((patient) => (
-                        <button
-                          key={patient.id}
-                          type="button"
-                          className="flex w-full flex-col px-3 py-2 text-left text-sm hover:bg-muted focus:bg-muted focus:outline-none"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => {
-                            setForm((f) => ({ ...f, patient_id: patient.id }));
-                            setPatientSearch(patient.full_name);
-                            setPatientPickerOpen(false);
-                          }}
-                        >
-                          <span className="font-medium">{patient.full_name}</span>
-                          {patient.phone && <span className="text-xs text-muted-foreground">{patient.phone}</span>}
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+            <PatientSearchField
+              className="md:col-span-2"
+              value={patientLabel}
+              patientId={form.patient_id}
+              onChange={(id, name) => {
+                setForm((f) => ({ ...f, patient_id: id }));
+                setPatientLabel(name);
+              }}
+              onClear={() => setForm((f) => ({ ...f, patient_id: "" }))}
+            />
             <div>
               <Label>Profissional</Label>
               <Select value={form.professional_id} onValueChange={(value) => {
@@ -571,12 +511,8 @@ function AgendaPage() {
         rooms={rooms}
         onSaved={handleRescheduled}
       />
-    </DashboardShell>
-  );
-}
 
-function SummaryCard({ label, value }: { label: string; value: number }) {
-  return (
-    <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">{label}</div><div className="text-2xl font-semibold">{value}</div></CardContent></Card>
+      {cancelConfirmDialog}
+    </DashboardShell>
   );
 }

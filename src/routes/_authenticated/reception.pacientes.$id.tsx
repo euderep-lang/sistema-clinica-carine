@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { fmtDateFromDate, fmtDate } from "@/lib/locale";
+import { fmtDateFromDate } from "@/lib/locale";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Calendar as CalIcon, MessageCircle, Pencil, Upload, Download, Trash2, FileText, Eye, FileDown, Copy, Plus } from "lucide-react";
+import { Calendar as CalIcon, MessageCircle, Pencil, Upload, Download, Trash2, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { Button } from "@/components/ui/button";
@@ -9,18 +9,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { PatientFormDialog, type PatientFormData } from "@/components/patient-form-dialog";
 import { openCrmInbox } from "@/lib/crm-navigation";
 import { pushRecentPatient } from "@/components/command-palette";
 import { APPOINTMENT_STATUS_LABEL, APPOINTMENT_TYPE_LABEL } from "@/lib/appointment-types";
-import { fmt } from "@/lib/currency";
-import { initials, avatarColor, maskCPF, maskPhone, ageFromBirthDate } from "@/lib/patient-utils";
+import { PatientFinancialTab } from "@/components/patient-financial-tab";
+import { initials, avatarColor, maskCPF, formatPhoneWithDdi, ageFromBirthDate } from "@/lib/patient-utils";
 
-const PATIENT_TABS = ["dados", "consultas", "prontuarios", "prescricoes", "documentos", "financeiro"] as const;
+const PATIENT_TABS = ["dados", "consultas", "documentos", "financeiro"] as const;
 type PatientTab = (typeof PATIENT_TABS)[number];
 
 export const Route = createFileRoute("/_authenticated/reception/pacientes/$id")({
@@ -48,32 +45,6 @@ interface AppointmentRow {
 
 interface DocFile { name: string; size: number; created_at: string; }
 
-interface MedicalRecordRow {
-  id: string;
-  date: string;
-  professional_id: string | null;
-  chief_complaint: string | null;
-  history: string | null;
-  physical_exam: string | null;
-  diagnosis: string | null;
-  icd10_code: string | null;
-  icd10_description: string | null;
-  conduct: string | null;
-  notes: string | null;
-  profiles: { full_name: string; specialty: string | null } | null;
-}
-
-interface PrescriptionRow {
-  id: string;
-  date: string;
-  type: string;
-  status: string;
-  pdf_url: string | null;
-  professional_id: string | null;
-  profiles: { full_name: string; specialty: string | null } | null;
-  prescription_items: { medication: string; position: number }[];
-}
-
 function Field({ label, value }: { label: string; value?: string | null }) {
   return (
     <div>
@@ -92,12 +63,6 @@ function PatientProfile() {
   const [appts, setAppts] = useState<AppointmentRow[]>([]);
   const [docs, setDocs] = useState<DocFile[]>([]);
   const [editOpen, setEditOpen] = useState(false);
-  const [records, setRecords] = useState<MedicalRecordRow[]>([]);
-  const [recordOpen, setRecordOpen] = useState<MedicalRecordRow | null>(null);
-  const [prescriptions, setPrescriptions] = useState<PrescriptionRow[]>([]);
-  const [filterProf, setFilterProf] = useState<string>("all");
-  const [filterFrom, setFilterFrom] = useState("");
-  const [filterTo, setFilterTo] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -116,20 +81,6 @@ function PatientProfile() {
       .eq("patient_id", id)
       .order("date", { ascending: false });
     setAppts((aps ?? []) as AppointmentRow[]);
-
-    const { data: mrs } = await supabase
-      .from("medical_records")
-      .select("id, date, professional_id, chief_complaint, history, physical_exam, diagnosis, icd10_code, icd10_description, conduct, notes, profiles:professional_id(full_name, specialty)")
-      .eq("patient_id", id)
-      .order("date", { ascending: false });
-    setRecords((mrs ?? []) as unknown as MedicalRecordRow[]);
-
-    const { data: rxs } = await supabase
-      .from("prescriptions" as never)
-      .select("id, date, type, status, pdf_url, professional_id, profiles:professional_id(full_name, specialty), prescription_items(medication, position)")
-      .eq("patient_id", id)
-      .order("date", { ascending: false }) as never;
-    setPrescriptions(((rxs ?? []) as unknown) as PrescriptionRow[]);
 
     const { data: files } = await supabase.storage.from("patient-documents").list(id, { limit: 100, sortBy: { column: "created_at", order: "desc" } });
     setDocs(((files ?? []) as { name: string; metadata?: { size?: number }; created_at?: string }[])
@@ -199,7 +150,7 @@ function PatientProfile() {
               <div className="text-sm text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
                 {age !== null && <span>{age} anos</span>}
                 {patient.cpf && <span>CPF: {maskCPF(patient.cpf)}</span>}
-                {patient.phone && <span>{maskPhone(patient.phone)}</span>}
+                {patient.phone && <span>{formatPhoneWithDdi(patient.phone, patient.phone_ddi)}</span>}
                 {patient.email && <span>{patient.email}</span>}
               </div>
             </div>
@@ -226,8 +177,6 @@ function PatientProfile() {
           <TabsList>
             <TabsTrigger value="dados">Dados Pessoais</TabsTrigger>
             <TabsTrigger value="consultas">Consultas</TabsTrigger>
-            <TabsTrigger value="prontuarios">Prontuários</TabsTrigger>
-            <TabsTrigger value="prescricoes">Prescrições</TabsTrigger>
             <TabsTrigger value="documentos">Documentos</TabsTrigger>
             <TabsTrigger value="financeiro">Financeiro</TabsTrigger>
           </TabsList>
@@ -247,7 +196,7 @@ function PatientProfile() {
                 <Field label="Nascimento" value={patient.birth_date} />
                 <Field label="Sexo" value={patient.gender} />
                 <Field label="Como nos conheceu" value={patient.how_did_you_find_us} />
-                <Field label="Telefone" value={patient.phone ? maskPhone(patient.phone) : null} />
+                <Field label="Telefone" value={patient.phone ? formatPhoneWithDdi(patient.phone, patient.phone_ddi) : null} />
                 <Field label="E-mail" value={patient.email} />
                 <Field label="Endereço" value={[patient.address_street, patient.address_number, patient.address_neighborhood, patient.address_city, patient.address_state].filter(Boolean).join(", ")} />
                 <Field label="CEP" value={patient.address_zip} />
@@ -256,7 +205,7 @@ function PatientProfile() {
                 <Field label="Carteirinha" value={patient.health_insurance_number} />
                 <Field label="Alergias" value={patient.allergies} />
                 <Field label="Contato emergência" value={patient.emergency_contact_name} />
-                <Field label="Telefone emergência" value={patient.emergency_contact_phone ? maskPhone(patient.emergency_contact_phone) : null} />
+                <Field label="Telefone emergência" value={patient.emergency_contact_phone ? formatPhoneWithDdi(patient.emergency_contact_phone, patient.emergency_contact_phone_ddi) : null} />
                 <div className="md:col-span-2">
                   <Field label="Observações" value={patient.notes} />
                 </div>
@@ -295,129 +244,6 @@ function PatientProfile() {
                       ))}
                   </TableBody>
                 </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="prontuarios">
-            <Card>
-              <CardHeader className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base">Prontuários</CardTitle>
-                </div>
-                <div className="flex flex-col md:flex-row gap-2">
-                  <Select value={filterProf} onValueChange={setFilterProf}>
-                    <SelectTrigger className="w-full md:w-60"><SelectValue placeholder="Profissional" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos profissionais</SelectItem>
-                      {Array.from(new Map(records.filter((r) => r.profiles).map((r) => [r.professional_id!, r.profiles!.full_name])).entries())
-                        .map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <Input type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} className="md:w-40" />
-                  <Input type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)} className="md:w-40" />
-                </div>
-              </CardHeader>
-              <CardContent className="p-0">
-                {(() => {
-                  const filtered = records.filter((r) => {
-                    if (filterProf !== "all" && r.professional_id !== filterProf) return false;
-                    if (filterFrom && r.date < filterFrom) return false;
-                    if (filterTo && r.date > filterTo) return false;
-                    return true;
-                  });
-                  if (records.length === 0) {
-                    return <div className="py-12 text-center text-muted-foreground">Nenhum prontuário registrado para este paciente</div>;
-                  }
-                  return (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Data</TableHead>
-                          <TableHead>Profissional</TableHead>
-                          <TableHead>CID</TableHead>
-                          <TableHead>Diagnóstico</TableHead>
-                          <TableHead className="text-right">Ações</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filtered.map((r) => (
-                          <TableRow key={r.id}>
-                            <TableCell>{fmtDate(r.date)}</TableCell>
-                            <TableCell>{r.profiles?.full_name ?? "—"}</TableCell>
-                            <TableCell>{r.icd10_code ? <Badge variant="secondary">{r.icd10_code}</Badge> : "—"}</TableCell>
-                            <TableCell className="max-w-xs truncate">{r.diagnosis ?? r.chief_complaint ?? "—"}</TableCell>
-                            <TableCell className="text-right">
-                              <Button size="sm" variant="ghost" onClick={() => setRecordOpen(r)}>
-                                <Eye className="h-4 w-4 mr-1" /> Ver detalhes
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  );
-                })()}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="prescricoes">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-base">Prescrições</CardTitle>
-                <Button size="sm" onClick={() => navigate({ to: "/professional/prescriptions/new", search: { patient_id: id } as never })}>
-                  <Plus className="h-4 w-4 mr-2" /> Nova Receita
-                </Button>
-              </CardHeader>
-              <CardContent>
-                {prescriptions.length === 0 ? (
-                  <div className="py-12 text-center text-muted-foreground">Nenhuma receita emitida para este paciente</div>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Data</TableHead>
-                        <TableHead>Profissional</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead>Medicamentos</TableHead>
-                        <TableHead>Situação</TableHead>
-                        <TableHead className="text-right">Ações</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {prescriptions.map((r) => {
-                        const meds = [...r.prescription_items].sort((a, b) => a.position - b.position);
-                        const list = meds.slice(0, 2).map((m) => m.medication).join(", ") + (meds.length > 2 ? "..." : "");
-                        const tColor =
-                          r.type === "controlada"
-                            ? "bg-red-100 text-red-700"
-                            : r.type === "especial_2vias"
-                              ? "bg-sky-100 text-sky-800"
-                              : r.type === "especial"
-                                ? "bg-orange-100 text-orange-700"
-                                : "bg-blue-100 text-blue-700";
-                        return (
-                          <TableRow key={r.id}>
-                            <TableCell>{fmtDate(r.date)}</TableCell>
-                            <TableCell>{r.profiles?.full_name ?? "—"}</TableCell>
-                            <TableCell><Badge className={`${tColor} hover:${tColor}`}>{r.type[0].toUpperCase() + r.type.slice(1)}</Badge></TableCell>
-                            <TableCell className="text-sm">{list || "—"}</TableCell>
-                            <TableCell>{r.status === "finalized" ? <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Finalizada</Badge> : <Badge variant="secondary">Rascunho</Badge>}</TableCell>
-                            <TableCell className="text-right">
-                              <Button size="sm" variant="ghost" disabled={!r.pdf_url} onClick={async () => {
-                                if (!r.pdf_url) return;
-                                const { data } = await supabase.storage.from("prescriptions").createSignedUrl(r.pdf_url, 60);
-                                if (data) window.open(data.signedUrl, "_blank");
-                              }}><FileDown className="h-4 w-4" /></Button>
-                              <Button size="sm" variant="ghost" onClick={() => navigate({ to: "/professional/prescriptions/new", search: { duplicate: r.id } as never })}><Copy className="h-4 w-4" /></Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -463,38 +289,12 @@ function PatientProfile() {
           </TabsContent>
 
           <TabsContent value="financeiro">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card><CardHeader><CardTitle className="text-sm font-medium text-muted-foreground">Total gasto</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{fmt(0)}</CardContent></Card>
-              <Card><CardHeader><CardTitle className="text-sm font-medium text-muted-foreground">Pendente</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{fmt(0)}</CardContent></Card>
-              <Card><CardHeader><CardTitle className="text-sm font-medium text-muted-foreground">Última consulta paga</CardTitle></CardHeader><CardContent className="text-2xl font-bold">—</CardContent></Card>
-            </div>
+            <PatientFinancialTab patientId={id} />
           </TabsContent>
         </Tabs>
       </div>
 
       <PatientFormDialog open={editOpen} onOpenChange={setEditOpen} initial={patient} onSaved={() => load()} />
-
-      <Sheet open={!!recordOpen} onOpenChange={(v) => !v && setRecordOpen(null)}>
-        <SheetContent className="overflow-y-auto sm:max-w-lg">
-          <SheetHeader>
-            <SheetTitle>Prontuário · {recordOpen && fmtDate(recordOpen.date)}</SheetTitle>
-          </SheetHeader>
-          {recordOpen && (
-            <div className="mt-4 space-y-3 text-sm">
-              <div><span className="text-muted-foreground">Profissional: </span>{recordOpen.profiles?.full_name ?? "—"}{recordOpen.profiles?.specialty ? ` · ${recordOpen.profiles.specialty}` : ""}</div>
-              {recordOpen.icd10_code && (
-                <div><Badge variant="secondary">{recordOpen.icd10_code} - {recordOpen.icd10_description}</Badge></div>
-              )}
-              <Field label="Queixa principal" value={recordOpen.chief_complaint} />
-              <Field label="História" value={recordOpen.history} />
-              <Field label="Exame físico" value={recordOpen.physical_exam} />
-              <Field label="Diagnóstico" value={recordOpen.diagnosis} />
-              <Field label="Conduta" value={recordOpen.conduct} />
-              <Field label="Observações" value={recordOpen.notes} />
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
     </DashboardShell>
   );
 }

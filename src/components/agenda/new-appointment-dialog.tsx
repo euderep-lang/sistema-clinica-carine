@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,8 +27,8 @@ import {
 import { addOneHour, todayISO } from "@/lib/agenda-utils";
 import { triggerAppointmentFollowUp } from "@/lib/whatsapp-crm.functions";
 import { useAuth } from "@/lib/mock-auth";
+import { PatientSearchField } from "@/components/patient-search-field";
 
-type Patient = { id: string; full_name: string; phone: string | null };
 type Room = { id: string; name: string };
 type Professional = {
   id: string;
@@ -61,15 +60,12 @@ export function NewAppointmentDialog({
 }: NewAppointmentDialogProps) {
   const { profile } = useAuth();
   const followUpFn = useServerFn(triggerAppointmentFollowUp);
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [professionalId, setProfessionalId] = useState("");
   const [appointmentTypes, setAppointmentTypes] = useState<string[] | null>(null);
-  const [patientSearch, setPatientSearch] = useState("");
-  const [patientPickerOpen, setPatientPickerOpen] = useState(false);
+  const [patientLabel, setPatientLabel] = useState("");
   const [saving, setSaving] = useState(false);
-  const patientPickerRef = useRef<HTMLDivElement>(null);
   const [form, setForm] = useState({
     patient_id: "",
     room_id: "none",
@@ -95,23 +91,17 @@ export function NewAppointmentDialog({
 
   useEffect(() => {
     if (!open || !profile) return;
-    setPatientSearch("");
-    setPatientPickerOpen(false);
+    setPatientLabel(defaultPatientName ?? "");
     setForm((f) => ({
       ...f,
-      patient_id: "",
+      patient_id: defaultPatientId ?? "",
       date: defaultDate ?? todayISO(),
       end_time: addOneHour(f.start_time),
       specialty: "",
     }));
 
     (async () => {
-      const [patientsRes, roomsRes, profsRes] = await Promise.all([
-        supabase
-          .from("patients")
-          .select("id, full_name, phone")
-          .eq("active", true)
-          .order("full_name"),
+      const [roomsRes, profsRes] = await Promise.all([
         supabase.from("rooms").select("id, name").order("name"),
         supabase
           .from("profiles")
@@ -120,8 +110,6 @@ export function NewAppointmentDialog({
           .eq("active", true)
           .order("full_name"),
       ]);
-      const loadedPatients = (patientsRes.data ?? []) as Patient[];
-      setPatients(loadedPatients);
       setRooms((roomsRes.data ?? []) as Room[]);
       const profs = (profsRes.data ?? []) as Professional[];
       setProfessionals(profs);
@@ -131,37 +119,8 @@ export function NewAppointmentDialog({
         (profile.role === "professional" ? profile.id : profs[0]?.id ?? "");
       if (initialId) applyProfessional(initialId, profs);
       else setProfessionalId("");
-
-      if (defaultPatientId) {
-        const patient = loadedPatients.find((p) => p.id === defaultPatientId);
-        setForm((f) => ({ ...f, patient_id: defaultPatientId }));
-        setPatientSearch(patient?.full_name ?? defaultPatientName ?? "");
-      }
     })();
   }, [open, profile, defaultDate, defaultProfessionalId, defaultPatientId, defaultPatientName]);
-
-  useEffect(() => {
-    if (!patientPickerOpen) return;
-    const onPointerDown = (event: MouseEvent) => {
-      if (!patientPickerRef.current?.contains(event.target as Node)) {
-        setPatientPickerOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [patientPickerOpen]);
-
-  const filteredPatients = useMemo(() => {
-    const q = patientSearch.trim().toLowerCase();
-    if (!q) return [];
-    return patients
-      .filter(
-        (p) =>
-          p.full_name.toLowerCase().includes(q) ||
-          (p.phone ?? "").replace(/\D/g, "").includes(q.replace(/\D/g, "")),
-      )
-      .slice(0, 25);
-  }, [patients, patientSearch]);
 
   const availableAppointmentTypes = useMemo(() => {
     const allowed = resolveAppointmentTypes(appointmentTypes);
@@ -216,10 +175,7 @@ export function NewAppointmentDialog({
       open={open}
       onOpenChange={(value) => {
         onOpenChange(value);
-        if (!value) {
-          setPatientSearch("");
-          setPatientPickerOpen(false);
-        }
+        if (!value) setPatientLabel("");
       }}
     >
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
@@ -227,52 +183,16 @@ export function NewAppointmentDialog({
           <DialogTitle>Novo agendamento</DialogTitle>
         </DialogHeader>
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2 md:col-span-2" ref={patientPickerRef}>
-            <Label>Paciente</Label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={patientSearch}
-                onChange={(e) => {
-                  setPatientSearch(e.target.value);
-                  setPatientPickerOpen(true);
-                  setForm((f) => ({ ...f, patient_id: "" }));
-                }}
-                onFocus={() => setPatientPickerOpen(true)}
-                placeholder="Digite o nome ou telefone do paciente"
-                className="pl-9"
-                autoComplete="off"
-              />
-              {patientPickerOpen && patientSearch.trim() && (
-                <div className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-md border bg-popover shadow-md">
-                  {filteredPatients.length === 0 ? (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">
-                      Nenhum paciente encontrado
-                    </div>
-                  ) : (
-                    filteredPatients.map((patient) => (
-                      <button
-                        key={patient.id}
-                        type="button"
-                        className="flex w-full flex-col px-3 py-2 text-left text-sm hover:bg-muted focus:bg-muted focus:outline-none"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          setForm((f) => ({ ...f, patient_id: patient.id }));
-                          setPatientSearch(patient.full_name);
-                          setPatientPickerOpen(false);
-                        }}
-                      >
-                        <span className="font-medium">{patient.full_name}</span>
-                        {patient.phone && (
-                          <span className="text-xs text-muted-foreground">{patient.phone}</span>
-                        )}
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+          <PatientSearchField
+            className="md:col-span-2"
+            value={patientLabel}
+            patientId={form.patient_id}
+            onChange={(id, name) => {
+              setForm((f) => ({ ...f, patient_id: id }));
+              setPatientLabel(name);
+            }}
+            onClear={() => setForm((f) => ({ ...f, patient_id: "" }))}
+          />
           <div>
             <Label>Profissional</Label>
             <Select

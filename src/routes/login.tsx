@@ -1,4 +1,4 @@
-import { createFileRoute, Navigate, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { Activity, Loader2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
@@ -114,13 +114,12 @@ function LoginPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <Label htmlFor="password">Senha</Label>
-                <button
-                  type="button"
+                <Link
+                  to="/forgot-password"
                   className="cursor-pointer text-xs font-medium text-primary transition-colors duration-200 hover:text-primary/80"
-                  onClick={() => toast.info("Em breve: redefinição de senha por e-mail.")}
                 >
                   Esqueci minha senha
-                </button>
+                </Link>
               </div>
               <Input
                 id="password"

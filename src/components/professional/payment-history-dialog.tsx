@@ -48,6 +48,7 @@ interface PaymentHistoryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   billId?: string | null;
+  patientId?: string | null;
   onChanged?: () => void;
 }
 
@@ -55,6 +56,7 @@ export function PaymentHistoryDialog({
   open,
   onOpenChange,
   billId,
+  patientId,
   onChanged,
 }: PaymentHistoryDialogProps) {
   const [rows, setRows] = useState<BillPaymentRow[]>([]);
@@ -67,7 +69,11 @@ export function PaymentHistoryDialog({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await loadBillPayments({ billId: billId ?? undefined, limit: 200 });
+      const data = await loadBillPayments({
+        billId: billId ?? undefined,
+        patientId: patientId ?? undefined,
+        limit: 200,
+      });
       setRows(data);
     } catch (e) {
       toast.error((e as Error).message);
@@ -75,7 +81,7 @@ export function PaymentHistoryDialog({
     } finally {
       setLoading(false);
     }
-  }, [billId]);
+  }, [billId, patientId]);
 
   useEffect(() => {
     if (!open) return;

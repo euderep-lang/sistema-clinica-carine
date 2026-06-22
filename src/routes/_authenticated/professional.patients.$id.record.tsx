@@ -49,6 +49,7 @@ import {
   findPatientAppointmentToday,
 } from "@/lib/patient-appointment";
 import { cn } from "@/lib/utils";
+import { ClinicalToolsPanel } from "@/components/professional/clinical-tools-panel";
 
 export const Route = createFileRoute("/_authenticated/professional/patients/$id/record")({
   component: RecordPage,
@@ -435,6 +436,7 @@ function RecordPage() {
 
   return (
     <DashboardShell title={`Prontuário · ${displayName}`} fullWidth>
+      <ClinicalToolsPanel patientId={id} patientName={patient.full_name} />
       <div className="flex h-[calc(100dvh-4.5rem)] min-h-[36rem] flex-col gap-2">
         <div className="flex shrink-0 items-center justify-between gap-3">
           <div className="flex items-center gap-1.5 text-sm">

@@ -9,15 +9,20 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as PreCadastroTokenRouteImport } from './routes/pre-cadastro.$token'
+import { Route as NpsTokenRouteImport } from './routes/nps.$token'
 import { Route as ProfessionalSafeidCallbackRouteImport } from './routes/professional.safeid.callback'
 import { Route as AuthenticatedReceptionPaymentsRouteImport } from './routes/_authenticated/reception.payments'
 import { Route as AuthenticatedReceptionPacientesRouteImport } from './routes/_authenticated/reception.pacientes'
 import { Route as AuthenticatedReceptionMensagensRouteImport } from './routes/_authenticated/reception.mensagens'
 import { Route as AuthenticatedReceptionMarketingRouteImport } from './routes/_authenticated/reception.marketing'
 import { Route as AuthenticatedReceptionDashboardRouteImport } from './routes/_authenticated/reception.dashboard'
+import { Route as AuthenticatedReceptionCheckinRouteImport } from './routes/_authenticated/reception.checkin'
 import { Route as AuthenticatedReceptionAgendaRouteImport } from './routes/_authenticated/reception.agenda'
 import { Route as AuthenticatedProfessionalSettingsRouteImport } from './routes/_authenticated/professional.settings'
 import { Route as AuthenticatedProfessionalSessionsRouteImport } from './routes/_authenticated/professional.sessions'
@@ -32,7 +37,9 @@ import { Route as AuthenticatedProfessionalBudgetsRouteImport } from './routes/_
 import { Route as AuthenticatedProfessionalAgendaRouteImport } from './routes/_authenticated/professional.agenda'
 import { Route as AuthenticatedFinancialRelatoriosRouteImport } from './routes/_authenticated/financial.relatorios'
 import { Route as AuthenticatedFinancialReceivablesRouteImport } from './routes/_authenticated/financial.receivables'
+import { Route as AuthenticatedFinancialPayablesRouteImport } from './routes/_authenticated/financial.payables'
 import { Route as AuthenticatedFinancialInventoryRouteImport } from './routes/_authenticated/financial.inventory'
+import { Route as AuthenticatedFinancialFluxoRouteImport } from './routes/_authenticated/financial.fluxo'
 import { Route as AuthenticatedFinancialDashboardRouteImport } from './routes/_authenticated/financial.dashboard'
 import { Route as AuthenticatedCrmPipelineRouteImport } from './routes/_authenticated/crm.pipeline'
 import { Route as AuthenticatedCrmInboxRouteImport } from './routes/_authenticated/crm.inbox'
@@ -55,9 +62,19 @@ import { Route as AuthenticatedProfessionalPatientsIdRecordRouteImport } from '.
 import { Route as AuthenticatedProfessionalPatientsIdNewEvolutionRouteImport } from './routes/_authenticated/professional.patients.$id.new-evolution'
 import { Route as AuthenticatedFinancialInventoryItemsIdRouteImport } from './routes/_authenticated/financial.inventory.items.$id'
 
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
@@ -67,6 +84,16 @@ const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PreCadastroTokenRoute = PreCadastroTokenRouteImport.update({
+  id: '/pre-cadastro/$token',
+  path: '/pre-cadastro/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NpsTokenRoute = NpsTokenRouteImport.update({
+  id: '/nps/$token',
+  path: '/nps/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProfessionalSafeidCallbackRoute =
@@ -103,6 +130,12 @@ const AuthenticatedReceptionDashboardRoute =
   AuthenticatedReceptionDashboardRouteImport.update({
     id: '/reception/dashboard',
     path: '/reception/dashboard',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedReceptionCheckinRoute =
+  AuthenticatedReceptionCheckinRouteImport.update({
+    id: '/reception/checkin',
+    path: '/reception/checkin',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedReceptionAgendaRoute =
@@ -189,10 +222,22 @@ const AuthenticatedFinancialReceivablesRoute =
     path: '/financial/receivables',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedFinancialPayablesRoute =
+  AuthenticatedFinancialPayablesRouteImport.update({
+    id: '/financial/payables',
+    path: '/financial/payables',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedFinancialInventoryRoute =
   AuthenticatedFinancialInventoryRouteImport.update({
     id: '/financial/inventory',
     path: '/financial/inventory',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedFinancialFluxoRoute =
+  AuthenticatedFinancialFluxoRouteImport.update({
+    id: '/financial/fluxo',
+    path: '/financial/fluxo',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedFinancialDashboardRoute =
@@ -323,7 +368,11 @@ const AuthenticatedFinancialInventoryItemsIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
+  '/reset-password': typeof ResetPasswordRoute
+  '/nps/$token': typeof NpsTokenRoute
+  '/pre-cadastro/$token': typeof PreCadastroTokenRoute
   '/admin/dashboard': typeof AuthenticatedAdminDashboardRoute
   '/admin/relatorios': typeof AuthenticatedAdminRelatoriosRoute
   '/admin/services': typeof AuthenticatedAdminServicesRoute
@@ -332,7 +381,9 @@ export interface FileRoutesByFullPath {
   '/crm/inbox': typeof AuthenticatedCrmInboxRoute
   '/crm/pipeline': typeof AuthenticatedCrmPipelineRoute
   '/financial/dashboard': typeof AuthenticatedFinancialDashboardRoute
+  '/financial/fluxo': typeof AuthenticatedFinancialFluxoRoute
   '/financial/inventory': typeof AuthenticatedFinancialInventoryRouteWithChildren
+  '/financial/payables': typeof AuthenticatedFinancialPayablesRoute
   '/financial/receivables': typeof AuthenticatedFinancialReceivablesRoute
   '/financial/relatorios': typeof AuthenticatedFinancialRelatoriosRoute
   '/professional/agenda': typeof AuthenticatedProfessionalAgendaRoute
@@ -347,6 +398,7 @@ export interface FileRoutesByFullPath {
   '/professional/sessions': typeof AuthenticatedProfessionalSessionsRoute
   '/professional/settings': typeof AuthenticatedProfessionalSettingsRoute
   '/reception/agenda': typeof AuthenticatedReceptionAgendaRoute
+  '/reception/checkin': typeof AuthenticatedReceptionCheckinRoute
   '/reception/dashboard': typeof AuthenticatedReceptionDashboardRoute
   '/reception/marketing': typeof AuthenticatedReceptionMarketingRoute
   '/reception/mensagens': typeof AuthenticatedReceptionMensagensRoute
@@ -369,7 +421,11 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
+  '/reset-password': typeof ResetPasswordRoute
+  '/nps/$token': typeof NpsTokenRoute
+  '/pre-cadastro/$token': typeof PreCadastroTokenRoute
   '/admin/dashboard': typeof AuthenticatedAdminDashboardRoute
   '/admin/relatorios': typeof AuthenticatedAdminRelatoriosRoute
   '/admin/services': typeof AuthenticatedAdminServicesRoute
@@ -378,6 +434,8 @@ export interface FileRoutesByTo {
   '/crm/inbox': typeof AuthenticatedCrmInboxRoute
   '/crm/pipeline': typeof AuthenticatedCrmPipelineRoute
   '/financial/dashboard': typeof AuthenticatedFinancialDashboardRoute
+  '/financial/fluxo': typeof AuthenticatedFinancialFluxoRoute
+  '/financial/payables': typeof AuthenticatedFinancialPayablesRoute
   '/financial/receivables': typeof AuthenticatedFinancialReceivablesRoute
   '/financial/relatorios': typeof AuthenticatedFinancialRelatoriosRoute
   '/professional/agenda': typeof AuthenticatedProfessionalAgendaRoute
@@ -390,6 +448,7 @@ export interface FileRoutesByTo {
   '/professional/sessions': typeof AuthenticatedProfessionalSessionsRoute
   '/professional/settings': typeof AuthenticatedProfessionalSettingsRoute
   '/reception/agenda': typeof AuthenticatedReceptionAgendaRoute
+  '/reception/checkin': typeof AuthenticatedReceptionCheckinRoute
   '/reception/dashboard': typeof AuthenticatedReceptionDashboardRoute
   '/reception/marketing': typeof AuthenticatedReceptionMarketingRoute
   '/reception/mensagens': typeof AuthenticatedReceptionMensagensRoute
@@ -412,7 +471,11 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
+  '/reset-password': typeof ResetPasswordRoute
+  '/nps/$token': typeof NpsTokenRoute
+  '/pre-cadastro/$token': typeof PreCadastroTokenRoute
   '/_authenticated/admin/dashboard': typeof AuthenticatedAdminDashboardRoute
   '/_authenticated/admin/relatorios': typeof AuthenticatedAdminRelatoriosRoute
   '/_authenticated/admin/services': typeof AuthenticatedAdminServicesRoute
@@ -421,7 +484,9 @@ export interface FileRoutesById {
   '/_authenticated/crm/inbox': typeof AuthenticatedCrmInboxRoute
   '/_authenticated/crm/pipeline': typeof AuthenticatedCrmPipelineRoute
   '/_authenticated/financial/dashboard': typeof AuthenticatedFinancialDashboardRoute
+  '/_authenticated/financial/fluxo': typeof AuthenticatedFinancialFluxoRoute
   '/_authenticated/financial/inventory': typeof AuthenticatedFinancialInventoryRouteWithChildren
+  '/_authenticated/financial/payables': typeof AuthenticatedFinancialPayablesRoute
   '/_authenticated/financial/receivables': typeof AuthenticatedFinancialReceivablesRoute
   '/_authenticated/financial/relatorios': typeof AuthenticatedFinancialRelatoriosRoute
   '/_authenticated/professional/agenda': typeof AuthenticatedProfessionalAgendaRoute
@@ -436,6 +501,7 @@ export interface FileRoutesById {
   '/_authenticated/professional/sessions': typeof AuthenticatedProfessionalSessionsRoute
   '/_authenticated/professional/settings': typeof AuthenticatedProfessionalSettingsRoute
   '/_authenticated/reception/agenda': typeof AuthenticatedReceptionAgendaRoute
+  '/_authenticated/reception/checkin': typeof AuthenticatedReceptionCheckinRoute
   '/_authenticated/reception/dashboard': typeof AuthenticatedReceptionDashboardRoute
   '/_authenticated/reception/marketing': typeof AuthenticatedReceptionMarketingRoute
   '/_authenticated/reception/mensagens': typeof AuthenticatedReceptionMensagensRoute
@@ -460,7 +526,11 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/forgot-password'
     | '/login'
+    | '/reset-password'
+    | '/nps/$token'
+    | '/pre-cadastro/$token'
     | '/admin/dashboard'
     | '/admin/relatorios'
     | '/admin/services'
@@ -469,7 +539,9 @@ export interface FileRouteTypes {
     | '/crm/inbox'
     | '/crm/pipeline'
     | '/financial/dashboard'
+    | '/financial/fluxo'
     | '/financial/inventory'
+    | '/financial/payables'
     | '/financial/receivables'
     | '/financial/relatorios'
     | '/professional/agenda'
@@ -484,6 +556,7 @@ export interface FileRouteTypes {
     | '/professional/sessions'
     | '/professional/settings'
     | '/reception/agenda'
+    | '/reception/checkin'
     | '/reception/dashboard'
     | '/reception/marketing'
     | '/reception/mensagens'
@@ -506,7 +579,11 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/forgot-password'
     | '/login'
+    | '/reset-password'
+    | '/nps/$token'
+    | '/pre-cadastro/$token'
     | '/admin/dashboard'
     | '/admin/relatorios'
     | '/admin/services'
@@ -515,6 +592,8 @@ export interface FileRouteTypes {
     | '/crm/inbox'
     | '/crm/pipeline'
     | '/financial/dashboard'
+    | '/financial/fluxo'
+    | '/financial/payables'
     | '/financial/receivables'
     | '/financial/relatorios'
     | '/professional/agenda'
@@ -527,6 +606,7 @@ export interface FileRouteTypes {
     | '/professional/sessions'
     | '/professional/settings'
     | '/reception/agenda'
+    | '/reception/checkin'
     | '/reception/dashboard'
     | '/reception/marketing'
     | '/reception/mensagens'
@@ -548,7 +628,11 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_authenticated'
+    | '/forgot-password'
     | '/login'
+    | '/reset-password'
+    | '/nps/$token'
+    | '/pre-cadastro/$token'
     | '/_authenticated/admin/dashboard'
     | '/_authenticated/admin/relatorios'
     | '/_authenticated/admin/services'
@@ -557,7 +641,9 @@ export interface FileRouteTypes {
     | '/_authenticated/crm/inbox'
     | '/_authenticated/crm/pipeline'
     | '/_authenticated/financial/dashboard'
+    | '/_authenticated/financial/fluxo'
     | '/_authenticated/financial/inventory'
+    | '/_authenticated/financial/payables'
     | '/_authenticated/financial/receivables'
     | '/_authenticated/financial/relatorios'
     | '/_authenticated/professional/agenda'
@@ -572,6 +658,7 @@ export interface FileRouteTypes {
     | '/_authenticated/professional/sessions'
     | '/_authenticated/professional/settings'
     | '/_authenticated/reception/agenda'
+    | '/_authenticated/reception/checkin'
     | '/_authenticated/reception/dashboard'
     | '/_authenticated/reception/marketing'
     | '/_authenticated/reception/mensagens'
@@ -596,17 +683,35 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
+  NpsTokenRoute: typeof NpsTokenRoute
+  PreCadastroTokenRoute: typeof PreCadastroTokenRoute
   ProfessionalSafeidCallbackRoute: typeof ProfessionalSafeidCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/forgot-password': {
+      id: '/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof ForgotPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -621,6 +726,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pre-cadastro/$token': {
+      id: '/pre-cadastro/$token'
+      path: '/pre-cadastro/$token'
+      fullPath: '/pre-cadastro/$token'
+      preLoaderRoute: typeof PreCadastroTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/nps/$token': {
+      id: '/nps/$token'
+      path: '/nps/$token'
+      fullPath: '/nps/$token'
+      preLoaderRoute: typeof NpsTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/professional/safeid/callback': {
@@ -663,6 +782,13 @@ declare module '@tanstack/react-router' {
       path: '/reception/dashboard'
       fullPath: '/reception/dashboard'
       preLoaderRoute: typeof AuthenticatedReceptionDashboardRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/reception/checkin': {
+      id: '/_authenticated/reception/checkin'
+      path: '/reception/checkin'
+      fullPath: '/reception/checkin'
+      preLoaderRoute: typeof AuthenticatedReceptionCheckinRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/reception/agenda': {
@@ -763,11 +889,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedFinancialReceivablesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/financial/payables': {
+      id: '/_authenticated/financial/payables'
+      path: '/financial/payables'
+      fullPath: '/financial/payables'
+      preLoaderRoute: typeof AuthenticatedFinancialPayablesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/financial/inventory': {
       id: '/_authenticated/financial/inventory'
       path: '/financial/inventory'
       fullPath: '/financial/inventory'
       preLoaderRoute: typeof AuthenticatedFinancialInventoryRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/financial/fluxo': {
+      id: '/_authenticated/financial/fluxo'
+      path: '/financial/fluxo'
+      fullPath: '/financial/fluxo'
+      preLoaderRoute: typeof AuthenticatedFinancialFluxoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/financial/dashboard': {
@@ -1028,7 +1168,9 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedCrmInboxRoute: typeof AuthenticatedCrmInboxRoute
   AuthenticatedCrmPipelineRoute: typeof AuthenticatedCrmPipelineRoute
   AuthenticatedFinancialDashboardRoute: typeof AuthenticatedFinancialDashboardRoute
+  AuthenticatedFinancialFluxoRoute: typeof AuthenticatedFinancialFluxoRoute
   AuthenticatedFinancialInventoryRoute: typeof AuthenticatedFinancialInventoryRouteWithChildren
+  AuthenticatedFinancialPayablesRoute: typeof AuthenticatedFinancialPayablesRoute
   AuthenticatedFinancialReceivablesRoute: typeof AuthenticatedFinancialReceivablesRoute
   AuthenticatedFinancialRelatoriosRoute: typeof AuthenticatedFinancialRelatoriosRoute
   AuthenticatedProfessionalAgendaRoute: typeof AuthenticatedProfessionalAgendaRoute
@@ -1043,6 +1185,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedProfessionalSessionsRoute: typeof AuthenticatedProfessionalSessionsRoute
   AuthenticatedProfessionalSettingsRoute: typeof AuthenticatedProfessionalSettingsRoute
   AuthenticatedReceptionAgendaRoute: typeof AuthenticatedReceptionAgendaRoute
+  AuthenticatedReceptionCheckinRoute: typeof AuthenticatedReceptionCheckinRoute
   AuthenticatedReceptionDashboardRoute: typeof AuthenticatedReceptionDashboardRoute
   AuthenticatedReceptionMarketingRoute: typeof AuthenticatedReceptionMarketingRoute
   AuthenticatedReceptionMensagensRoute: typeof AuthenticatedReceptionMensagensRoute
@@ -1059,8 +1202,10 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCrmInboxRoute: AuthenticatedCrmInboxRoute,
   AuthenticatedCrmPipelineRoute: AuthenticatedCrmPipelineRoute,
   AuthenticatedFinancialDashboardRoute: AuthenticatedFinancialDashboardRoute,
+  AuthenticatedFinancialFluxoRoute: AuthenticatedFinancialFluxoRoute,
   AuthenticatedFinancialInventoryRoute:
     AuthenticatedFinancialInventoryRouteWithChildren,
+  AuthenticatedFinancialPayablesRoute: AuthenticatedFinancialPayablesRoute,
   AuthenticatedFinancialReceivablesRoute:
     AuthenticatedFinancialReceivablesRoute,
   AuthenticatedFinancialRelatoriosRoute: AuthenticatedFinancialRelatoriosRoute,
@@ -1085,6 +1230,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedProfessionalSettingsRoute:
     AuthenticatedProfessionalSettingsRoute,
   AuthenticatedReceptionAgendaRoute: AuthenticatedReceptionAgendaRoute,
+  AuthenticatedReceptionCheckinRoute: AuthenticatedReceptionCheckinRoute,
   AuthenticatedReceptionDashboardRoute: AuthenticatedReceptionDashboardRoute,
   AuthenticatedReceptionMarketingRoute: AuthenticatedReceptionMarketingRoute,
   AuthenticatedReceptionMensagensRoute: AuthenticatedReceptionMensagensRoute,
@@ -1099,7 +1245,11 @@ const AuthenticatedRouteRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
+  NpsTokenRoute: NpsTokenRoute,
+  PreCadastroTokenRoute: PreCadastroTokenRoute,
   ProfessionalSafeidCallbackRoute: ProfessionalSafeidCallbackRoute,
 }
 export const routeTree = rootRouteImport

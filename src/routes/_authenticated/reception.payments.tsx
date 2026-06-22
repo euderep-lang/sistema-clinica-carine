@@ -1,6 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Page } from "./financial.receivables";
+import { createFileRoute, Navigate } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_authenticated/reception/payments")({
-  component: Page,
+  component: ReceptionPaymentsRedirect,
 });
+
+function ReceptionPaymentsRedirect() {
+  return <Navigate to="/reception/pacientes" replace />;
+}

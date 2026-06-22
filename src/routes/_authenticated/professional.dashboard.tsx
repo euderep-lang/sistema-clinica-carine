@@ -3,6 +3,7 @@ import { todayISO } from "@/lib/locale";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   AlertCircle,
+  Ban,
   Calendar as CalIcon,
   CheckCircle2,
   Clock,
@@ -20,6 +21,12 @@ import { StatCard } from "@/components/layout/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { APPOINTMENT_STATUS_LABEL } from "@/lib/appointment-types";
 import { useAuth } from "@/lib/mock-auth";
@@ -46,6 +53,7 @@ function ProfessionalDashboard() {
   const [pendingRecords, setPendingRecords] = useState(0);
   const [nextAppt, setNextAppt] = useState<TodayAppt | null>(null);
   const [newApptOpen, setNewApptOpen] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState<"today" | "cancelled" | null>(null);
 
   const load = async () => {
     if (!profile) return;
@@ -101,13 +109,22 @@ function ProfessionalDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile]);
 
-  const { upcoming, attended } = useMemo(() => {
-    const done = new Set(["completed", "cancelled", "no_show"]);
+  const { upcoming, attended, cancelled } = useMemo(() => {
+    const done = new Set(["completed", "no_show"]);
     return {
-      upcoming: today.filter((a) => !done.has(a.status ?? "")),
+      upcoming: today.filter((a) => !done.has(a.status ?? "") && a.status !== "cancelled"),
       attended: today.filter((a) => a.status === "completed"),
+      cancelled: today.filter((a) => a.status === "cancelled"),
     };
   }, [today]);
+
+  const activeTodayCount = today.filter((a) => a.status !== "cancelled").length;
+
+  const todayCountSub = useMemo(() => {
+    if (cancelled.length === 0) return undefined;
+    if (activeTodayCount === 0) return `${cancelled.length} cancelada(s)`;
+    return `${activeTodayCount} ativa(s) · ${cancelled.length} cancelada(s)`;
+  }, [activeTodayCount, cancelled.length]);
 
   const firstName = profile?.full_name?.split(" ")[0] ?? "Profissional";
 
@@ -129,7 +146,13 @@ function ProfessionalDashboard() {
 
       <PageSection title="Indicadores do dia">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="Consultas hoje" value={today.length} icon={CalIcon} />
+          <StatCard
+            label="Consultas hoje"
+            value={today.length}
+            icon={CalIcon}
+            sub={todayCountSub}
+            onClick={() => setSummaryOpen("today")}
+          />
           <StatCard
             label="Próxima consulta"
             value={nextAppt ? nextAppt.start_time.slice(0, 5) : "—"}
@@ -159,7 +182,7 @@ function ProfessionalDashboard() {
           </Button>
         }
       >
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
           <AgendaGroup
             title="A ser atendidos"
             count={upcoming.length}
@@ -175,8 +198,43 @@ function ProfessionalDashboard() {
             navigate={navigate}
             attended
           />
+          {cancelled.length > 0 && (
+            <AgendaGroup
+              title="Canceladas"
+              count={cancelled.length}
+              emptyMessage="Nenhuma consulta cancelada hoje"
+              appointments={cancelled}
+              navigate={navigate}
+              cancelled
+            />
+          )}
         </div>
       </PageSection>
+
+      <Dialog open={summaryOpen !== null} onOpenChange={(v) => !v && setSummaryOpen(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {summaryOpen === "cancelled" ? "Consultas canceladas hoje" : "Consultas de hoje"}
+            </DialogTitle>
+          </DialogHeader>
+          <ul className="space-y-2 text-sm">
+            {(summaryOpen === "cancelled" ? cancelled : today).map((a) => (
+              <li key={a.id} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
+                <span>
+                  {a.start_time.slice(0, 5)} — {a.patients?.full_name ?? "Paciente"}
+                </span>
+                <Badge
+                  variant="outline"
+                  className={a.status === "cancelled" ? "border-destructive/40 text-destructive" : undefined}
+                >
+                  {APPOINTMENT_STATUS_LABEL[a.status ?? ""] ?? a.status}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        </DialogContent>
+      </Dialog>
 
       <NewAppointmentDialog
         open={newApptOpen}
@@ -195,6 +253,7 @@ function AgendaGroup({
   appointments,
   navigate,
   attended = false,
+  cancelled = false,
 }: {
   title: string;
   count: number;
@@ -202,24 +261,29 @@ function AgendaGroup({
   appointments: TodayAppt[];
   navigate: ReturnType<typeof useNavigate>;
   attended?: boolean;
+  cancelled?: boolean;
 }) {
-  const Icon = attended ? CheckCircle2 : Clock;
+  const Icon = cancelled ? Ban : attended ? CheckCircle2 : Clock;
 
   return (
     <Card
       className={cn(
         "overflow-hidden ring-1 ring-inset",
-        attended
-          ? "border-emerald-200/70 bg-emerald-50/30 ring-emerald-100"
-          : "border-sky-200/70 bg-sky-50/40 ring-sky-100",
+        cancelled
+          ? "border-destructive/30 bg-destructive/5 ring-destructive/20"
+          : attended
+            ? "border-emerald-200/70 bg-emerald-50/30 ring-emerald-100"
+            : "border-sky-200/70 bg-sky-50/40 ring-sky-100",
       )}
     >
       <CardHeader
         className={cn(
           "border-b pb-4",
-          attended
-            ? "border-emerald-200/60 bg-emerald-50/80"
-            : "border-sky-200/60 bg-sky-50/80",
+          cancelled
+            ? "border-destructive/20 bg-destructive/5"
+            : attended
+              ? "border-emerald-200/60 bg-emerald-50/80"
+              : "border-sky-200/60 bg-sky-50/80",
         )}
       >
         <CardTitle className="flex items-center justify-between text-base font-medium">
@@ -227,20 +291,32 @@ function AgendaGroup({
             <span
               className={cn(
                 "grid size-7 place-items-center rounded-full",
-                attended ? "bg-emerald-100 text-emerald-700" : "bg-sky-100 text-sky-700",
+                cancelled
+                  ? "bg-destructive/10 text-destructive"
+                  : attended
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-sky-100 text-sky-700",
               )}
             >
               <Icon className="size-4" />
             </span>
-            <span className={attended ? "text-emerald-900" : "text-sky-900"}>{title}</span>
+            <span
+              className={
+                cancelled ? "text-destructive" : attended ? "text-emerald-900" : "text-sky-900"
+              }
+            >
+              {title}
+            </span>
           </span>
           <Badge
             variant="secondary"
             className={cn(
               "font-mono tabular-nums",
-              attended
-                ? "border-emerald-200 bg-emerald-100 text-emerald-800"
-                : "border-sky-200 bg-sky-100 text-sky-800",
+              cancelled
+                ? "border-destructive/30 bg-destructive/10 text-destructive"
+                : attended
+                  ? "border-emerald-200 bg-emerald-100 text-emerald-800"
+                  : "border-sky-200 bg-sky-100 text-sky-800",
             )}
           >
             {count}
@@ -252,7 +328,11 @@ function AgendaGroup({
           <p
             className={cn(
               "py-10 text-center text-sm",
-              attended ? "text-emerald-700/70" : "text-sky-700/70",
+              cancelled
+                ? "text-destructive/70"
+                : attended
+                  ? "text-emerald-700/70"
+                  : "text-sky-700/70",
             )}
           >
             {emptyMessage}
@@ -261,7 +341,11 @@ function AgendaGroup({
           <ul
             className={cn(
               "divide-y",
-              attended ? "divide-emerald-200/50" : "divide-sky-200/50",
+              cancelled
+                ? "divide-destructive/20"
+                : attended
+                  ? "divide-emerald-200/50"
+                  : "divide-sky-200/50",
             )}
           >
             {appointments.map((a) => (
@@ -269,7 +353,11 @@ function AgendaGroup({
                 key={a.id}
                 className={cn(
                   "flex flex-wrap items-center gap-3 px-4 py-3 transition-colors duration-200 sm:px-5",
-                  attended ? "hover:bg-emerald-50/80" : "hover:bg-sky-50/80",
+                  cancelled
+                    ? "opacity-75 line-through"
+                    : attended
+                      ? "hover:bg-emerald-50/80"
+                      : "hover:bg-sky-50/80",
                 )}
               >
                 <time className="w-14 shrink-0 font-mono text-sm tabular-nums text-muted-foreground">
@@ -285,16 +373,18 @@ function AgendaGroup({
                   variant="outline"
                   className={cn(
                     "shrink-0",
-                    attended
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                      : a.status === "in_progress"
-                        ? "border-blue-200 bg-blue-50 text-blue-800"
-                        : "border-sky-200 bg-white/70 text-sky-800",
+                    cancelled || a.status === "cancelled"
+                      ? "border-destructive/40 bg-destructive/10 text-destructive"
+                      : attended
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                        : a.status === "in_progress"
+                          ? "border-blue-200 bg-blue-50 text-blue-800"
+                          : "border-sky-200 bg-white/70 text-sky-800",
                   )}
                 >
                   {APPOINTMENT_STATUS_LABEL[a.status ?? ""] ?? a.status}
                 </Badge>
-                {a.patient_id && a.status === "in_progress" && (
+                {!cancelled && a.patient_id && a.status === "in_progress" && (
                   <Button
                     size="sm"
                     onClick={() =>
@@ -308,7 +398,7 @@ function AgendaGroup({
                     Iniciar
                   </Button>
                 )}
-                {a.patient_id && attended && (
+                {!cancelled && a.patient_id && attended && (
                   <Button
                     size="sm"
                     variant="outline"
@@ -323,7 +413,7 @@ function AgendaGroup({
                     Prontuário
                   </Button>
                 )}
-                {a.patient_id && !attended && a.status !== "in_progress" && (
+                {!cancelled && a.patient_id && !attended && a.status !== "in_progress" && (
                   <Button
                     size="sm"
                     variant="ghost"

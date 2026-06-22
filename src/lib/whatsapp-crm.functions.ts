@@ -6,7 +6,9 @@ import { phonesMatch } from "@/lib/wa-phone";
 import { getZApiChats, getZApiConfig } from "@/lib/whatsapp-zapi.server";
 import { normalizeBrazilPhone } from "@/lib/whatsapp-meta.server";
 import { logWaAudit } from "@/lib/wa-audit.server";
-import { isContactPhotoCacheFresh } from "@/lib/wa-contact-photo";
+import { normalizeMessageLineBreaks } from "@/lib/wa-automation-quick-replies";
+import { syncAutomationQuickReplies } from "@/lib/wa-automation-quick-replies.server";
+import { isContactPhotoCacheFresh, isValidContactPhotoUrl } from "@/lib/wa-contact-photo";
 import {
   cancelFollowUpsOnConversationClose,
   markConversationObjection,
@@ -219,6 +221,8 @@ export const getWaQuickReplies = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const profile = await requireCrmAccess(context.supabase, context.userId);
+    await syncAutomationQuickReplies(profile.tenant_id);
+
     const { data: crmReplies } = await context.supabase
       .from("wa_quick_replies" as never)
       .select("id, name, content, category, shortcut, sort_order")
@@ -287,7 +291,7 @@ export const upsertWaQuickReply = createServerFn({ method: "POST" })
     const row = {
       tenant_id: profile.tenant_id,
       name: data.name.trim(),
-      content: data.content.trim(),
+      content: normalizeMessageLineBreaks(data.content),
       category: data.category?.trim() || "geral",
       shortcut: data.shortcut?.trim() || null,
       active: true,
@@ -526,7 +530,7 @@ export const fetchWaContactPhoto = createServerFn({ method: "POST" })
 
     const { data: conv, error } = await context.supabase
       .from("wa_conversations" as never)
-      .select("contact_phone, contact_photo_url, contact_photo_fetched_at")
+      .select("contact_phone, contact_wa_id, contact_photo_url, contact_photo_fetched_at")
       .eq("id", data.conversationId)
       .maybeSingle();
 
@@ -534,18 +538,28 @@ export const fetchWaContactPhoto = createServerFn({ method: "POST" })
 
     const row = conv as {
       contact_phone: string;
+      contact_wa_id: string | null;
       contact_photo_url: string | null;
       contact_photo_fetched_at: string | null;
     };
 
-    if (row.contact_photo_url && isContactPhotoCacheFresh(row.contact_photo_fetched_at)) {
+    if (isValidContactPhotoUrl(row.contact_photo_url) && isContactPhotoCacheFresh(row.contact_photo_fetched_at)) {
       return { url: row.contact_photo_url };
     }
 
     if (!isWhatsAppConfigured()) return { url: null as string | null };
 
-    const phone = normalizeBrazilPhone(row.contact_phone);
-    const url = await providerGetContactPhoto(phone);
+    const lookupKeys = [
+      normalizeBrazilPhone(row.contact_phone),
+      row.contact_phone?.trim(),
+      row.contact_wa_id?.trim(),
+    ].filter((k): k is string => !!k);
+
+    let url: string | null = null;
+    for (const key of lookupKeys) {
+      url = await providerGetContactPhoto(key);
+      if (url) break;
+    }
     const now = new Date().toISOString();
 
     await context.supabase
@@ -1144,62 +1158,19 @@ export const markWaObjection = createServerFn({ method: "POST" })
     return { suggestedMessage };
   });
 
-const FOLLOW_UP_QUICK_REPLIES = [
-  { name: "Lead 15min", category: "lead_sem_resposta", shortcut: "/lead15", content: "Oi, {{primeiro_nome}}, tudo bem? Vi que você entrou em contato com a clínica. Para eu te direcionar melhor: você busca atendimento por emagrecimento, hormônios, menopausa, lipedema ou outro motivo?" },
-  { name: "Lead 4h", category: "lead_sem_resposta", shortcut: "/lead4h", content: "{{primeiro_nome}}, passando só para não deixar sua mensagem perdida. Me diga qual é sua principal queixa hoje que eu te explico como funciona o atendimento." },
-  { name: "Lead 24h", category: "lead_sem_resposta", shortcut: "/lead24h", content: "Vou encerrar seu atendimento por aqui para não te incomodar, {{primeiro_nome}}. Mas, se ainda quiser entender como funciona a consulta médica, é só me falar aqui." },
-  { name: "Lead 3 dias", category: "lead_sem_resposta", shortcut: "/lead3d", content: "{{primeiro_nome}}, muitas pacientes procuram a clínica quando já tentaram dieta, treino ou tratamentos isolados e ainda sentem que o corpo não responde. Se esse for seu caso, posso te explicar o caminho da avaliação médica." },
-  { name: "Lead 7 dias", category: "lead_sem_resposta", shortcut: "/lead7d", content: "Último contato por aqui, {{primeiro_nome}}. Caso ainda queira agendar sua avaliação, me avise — será um prazer ter você aqui com a gente." },
-  { name: "Valor 30min", category: "lead_valor", shortcut: "/valor30", content: "{{primeiro_nome}}, ficou alguma dúvida sobre o valor ou sobre como funciona a consulta? Posso te explicar de forma simples." },
-  { name: "Valor 24h", category: "lead_valor", shortcut: "/valor24h", content: "Só reforçando, {{primeiro_nome}}: a consulta não é apenas uma conversa rápida. A ideia é investigar exames, sintomas, rotina, composição corporal e montar uma conduta individualizada para o seu caso, está bem?" },
-  { name: "Valor 48h", category: "lead_valor", shortcut: "/valor48h", content: "Oii, {{primeiro_nome}}. Se o que te travou foi o valor, me fala com sinceridade. Às vezes consigo te orientar sobre a melhor forma de iniciar sem você ficar perdida." },
-  { name: "Valor 5 dias", category: "lead_valor", shortcut: "/valor5d", content: "Continuar tentando sozinha pode sair mais caro do que investigar corretamente. Quando quiser dar esse passo com estratégia, me chama por aqui. Muito obrigada, {{primeiro_nome}}." },
-  { name: "Agendamento", category: "agendamento", shortcut: "/agendou", content: "Oi, {{primeiro_nome}}, sua consulta ficou agendada para {{data_consulta}} às {{hora_consulta}}. Para aproveitar melhor, traga seus exames recentes, lista de medicamentos/suplementos e anote suas principais queixas." },
-  { name: "Confirma 24h", category: "agendamento", shortcut: "/conf24h", content: "Confirmando sua consulta amanhã às {{hora_consulta}}, {{primeiro_nome}}. Responda \"eu vou\" para manter seu horário reservado." },
-  { name: "Confirma 3h", category: "agendamento", shortcut: "/conf3h", content: "{{primeiro_nome}}, sua consulta é hoje às {{hora_consulta}}. Chegue com alguns minutos de antecedência e traga seus exames, se tiver. Te vejo lá!" },
-  { name: "Pós-consulta 24h", category: "pos_consulta", shortcut: "/pos24h", content: "Oi, {{primeiro_nome}}. Passando para saber como você ficou após a consulta de ontem com a {{nome_profissional}}. Conseguiu entender bem a conduta e os próximos passos? Se surgiu alguma dúvida inicial, pode me enviar por aqui." },
-  { name: "Pós-consulta 7d", category: "pos_consulta", shortcut: "/pos7d", content: "Oi, {{primeiro_nome}}. Já se passaram alguns dias desde a consulta. Como você está se sentindo? Alguma dificuldade com alimentação, medicação, suplementação ou rotina?" },
-  { name: "Pós-consulta 15d", category: "pos_consulta", shortcut: "/pos15d", content: "{{primeiro_nome}}, passando para acompanhar sua evolução. O mais importante nessa fase não é perfeição, é aderência. Me diga: de 0 a 10, quanto você está se sentindo? Me conte tudo." },
-  { name: "Pós-consulta 30d", category: "pos_consulta", shortcut: "/pos30d", content: "Já temos um mês desde a consulta, {{primeiro_nome}}. Esse é um bom momento para ajustar o que não encaixou bem na rotina. Como estão energia, fome, sono, disposição e medidas?" },
-  { name: "Falta 2h", category: "falta", shortcut: "/falta2h", content: "Oi, {{primeiro_nome}}. Vi que você não conseguiu comparecer à consulta de hoje. Aconteceu algum imprevisto?" },
-  { name: "Falta remarcar", category: "falta", shortcut: "/faltarem", content: "{{primeiro_nome}}, posso verificar uma nova possibilidade de horário para você. Quer que eu veja a próxima agenda disponível?" },
-  { name: "Obj. vou pensar", category: "objecao", shortcut: "/objpensa", content: "Claro. Só não deixa isso virar mais uma coisa que você adia enquanto continua insatisfeita com os mesmos sintomas. Quer que eu te ajude a entender se esse atendimento faz sentido para seu caso?" },
-  { name: "Obj. caro", category: "objecao", shortcut: "/objcaro", content: "Entendo. Só vale comparar com o que está incluso: avaliação médica, investigação por exames, conduta individualizada e acompanhamento. Não é uma consulta genérica." },
-  { name: "Obj. agenda", category: "objecao", shortcut: "/objagenda", content: "Perfeito. Posso te enviar duas opções de horário e você escolhe a melhor?" },
-  { name: "Obj. hormônio", category: "objecao", shortcut: "/objmedo", content: "A consulta não significa sair usando hormônio ou medicação. Primeiro vem avaliação, exames e indicação correta. Conduta sem necessidade não faz sentido." },
-  { name: "Reativação 30d", category: "reativacao", shortcut: "/reat30", content: "Oi, {{primeiro_nome}}! Faz um tempo que não nos falamos. Como você está? Se quiser retomar seu acompanhamento, estou à disposição." },
-  { name: "Reativação 60d", category: "reativacao", shortcut: "/reat60", content: "{{primeiro_nome}}, passando para saber se ainda faz sentido cuidarmos da sua saúde com estratégia. Posso te ajudar a retomar?" },
-  { name: "Reativação 90d", category: "reativacao", shortcut: "/reat90", content: "Último contato por aqui, {{primeiro_nome}}. Quando quiser voltar a cuidar de você com acompanhamento médico, é só me chamar." },
-];
+export const syncAutomationQuickRepliesFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const profile = await requireCrmAccess(context.supabase, context.userId);
+    return await syncAutomationQuickReplies(profile.tenant_id);
+  });
 
 export const seedFollowUpQuickReplies = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const profile = await requireCrmAccess(context.supabase, context.userId);
-    let inserted = 0;
-
-    for (const [i, r] of FOLLOW_UP_QUICK_REPLIES.entries()) {
-      const { data: existing } = await context.supabase
-        .from("wa_quick_replies" as never)
-        .select("id")
-        .eq("tenant_id", profile.tenant_id)
-        .eq("shortcut", r.shortcut)
-        .maybeSingle();
-      if (existing) continue;
-
-      const { error } = await context.supabase.from("wa_quick_replies" as never).insert({
-        tenant_id: profile.tenant_id,
-        name: r.name,
-        content: r.content,
-        category: r.category,
-        shortcut: r.shortcut,
-        sort_order: 100 + i,
-        active: true,
-      } as never);
-      if (!error) inserted++;
-    }
-
-    return { inserted };
+    const result = await syncAutomationQuickReplies(profile.tenant_id);
+    return { inserted: result.updated };
   });
 
 export const getCrmAnalytics = createServerFn({ method: "GET" })

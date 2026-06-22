@@ -1038,6 +1038,7 @@ export type Database = {
           email: string | null
           emergency_contact_name: string | null
           emergency_contact_phone: string | null
+          emergency_contact_phone_ddi: string | null
           full_name: string
           gender: string | null
           health_insurance: string | null
@@ -1046,6 +1047,7 @@ export type Database = {
           id: string
           notes: string | null
           phone: string | null
+          phone_ddi: string | null
           record_number: number | null
           rg: string | null
           tenant_id: string | null
@@ -1067,6 +1069,7 @@ export type Database = {
           email?: string | null
           emergency_contact_name?: string | null
           emergency_contact_phone?: string | null
+          emergency_contact_phone_ddi?: string | null
           full_name: string
           gender?: string | null
           health_insurance?: string | null
@@ -1075,6 +1078,7 @@ export type Database = {
           id?: string
           notes?: string | null
           phone?: string | null
+          phone_ddi?: string | null
           record_number?: number | null
           rg?: string | null
           tenant_id?: string | null
@@ -1096,6 +1100,7 @@ export type Database = {
           email?: string | null
           emergency_contact_name?: string | null
           emergency_contact_phone?: string | null
+          emergency_contact_phone_ddi?: string | null
           full_name?: string
           gender?: string | null
           health_insurance?: string | null
@@ -1104,6 +1109,7 @@ export type Database = {
           id?: string
           notes?: string | null
           phone?: string | null
+          phone_ddi?: string | null
           record_number?: number | null
           rg?: string | null
           tenant_id?: string | null

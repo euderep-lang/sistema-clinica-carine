@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { UserRound } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { fetchWaContactPhoto } from "@/lib/whatsapp-crm.functions";
-import { isContactPhotoCacheFresh } from "@/lib/wa-contact-photo";
+import { isContactPhotoCacheFresh, isValidContactPhotoUrl } from "@/lib/wa-contact-photo";
 import { cn } from "@/lib/utils";
 
 type PhotoSlice = {
@@ -13,7 +13,7 @@ type PhotoSlice = {
 };
 
 /** Busca e cacheia fotos de perfil WhatsApp (Z-API) para a lista de conversas. */
-export function useWaContactPhotos(conversations: PhotoSlice[]) {
+export function useWaContactPhotos(conversations: PhotoSlice[], priorityIds: string[] = []) {
   const photoFn = useServerFn(fetchWaContactPhoto);
   const photoFnRef = useRef(photoFn);
   photoFnRef.current = photoFn;
@@ -24,12 +24,11 @@ export function useWaContactPhotos(conversations: PhotoSlice[]) {
   useEffect(() => {
     const seeded: Record<string, string | null> = {};
     for (const c of conversations) {
-      if (
-        c.contact_photo_url &&
-        isContactPhotoCacheFresh(c.contact_photo_fetched_at)
-      ) {
-        seeded[c.id] = c.contact_photo_url;
-        fetchedRef.current.add(c.id);
+      if (isValidContactPhotoUrl(c.contact_photo_url)) {
+        seeded[c.id] = c.contact_photo_url!;
+        if (isContactPhotoCacheFresh(c.contact_photo_fetched_at)) {
+          fetchedRef.current.add(c.id);
+        }
       }
     }
     if (Object.keys(seeded).length > 0) {
@@ -40,9 +39,11 @@ export function useWaContactPhotos(conversations: PhotoSlice[]) {
   useEffect(() => {
     let cancelled = false;
 
-    const pending = conversations
-      .filter((c) => !fetchedRef.current.has(c.id))
-      .slice(0, 10);
+    const priority = new Set(priorityIds);
+    const pending = [
+      ...conversations.filter((c) => priority.has(c.id) && !fetchedRef.current.has(c.id)),
+      ...conversations.filter((c) => !priority.has(c.id) && !fetchedRef.current.has(c.id)),
+    ].slice(0, 30);
 
     if (!pending.length) return;
 
@@ -66,7 +67,7 @@ export function useWaContactPhotos(conversations: PhotoSlice[]) {
     return () => {
       cancelled = true;
     };
-  }, [conversations]);
+  }, [conversations, priorityIds]);
 
   return photos;
 }

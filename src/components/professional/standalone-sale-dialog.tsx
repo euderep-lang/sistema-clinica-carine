@@ -78,6 +78,7 @@ interface StandaloneSaleDialogProps {
   onOpenChange: (open: boolean) => void;
   billId?: string | null;
   defaultPatientId?: string;
+  scope?: "professional" | "clinic";
   onSaved: () => void;
 }
 
@@ -86,6 +87,7 @@ export function StandaloneSaleDialog({
   onOpenChange,
   billId,
   defaultPatientId,
+  scope = "professional",
   onSaved,
 }: StandaloneSaleDialogProps) {
   const { profile } = useAuth();
@@ -120,21 +122,29 @@ export function StandaloneSaleDialog({
 
     (async () => {
       setLoading(true);
-      const [{ data: pts }, { data: svcs }] = await Promise.all([
+      const [{ data: pts }, svcQuery] = await Promise.all([
         supabase
           .from("patients")
           .select("id, full_name, cpf")
           .eq("tenant_id", profile.tenant_id)
           .eq("active", true)
           .order("full_name"),
-        supabase
-          .from("services")
-          .select("id, name, default_price, session_count")
-          .eq("tenant_id", profile.tenant_id)
-          .eq("active", true)
-          .or(`professional_id.eq.${profile.id},professional_id.is.null`)
-          .order("name"),
+        scope === "clinic"
+          ? supabase
+              .from("services")
+              .select("id, name, default_price, session_count")
+              .eq("tenant_id", profile.tenant_id)
+              .eq("active", true)
+              .order("name")
+          : supabase
+              .from("services")
+              .select("id, name, default_price, session_count")
+              .eq("tenant_id", profile.tenant_id)
+              .eq("active", true)
+              .or(`professional_id.eq.${profile.id},professional_id.is.null`)
+              .order("name"),
       ]);
+      const { data: svcs } = await svcQuery;
       setPatients((pts ?? []) as Patient[]);
       setServices((svcs ?? []) as Service[]);
 
@@ -174,7 +184,7 @@ export function StandaloneSaleDialog({
       }
       setLoading(false);
     })();
-  }, [open, profile, billId, defaultPatientId, onOpenChange]);
+  }, [open, profile, billId, defaultPatientId, onOpenChange, scope]);
 
   const filteredPatients = useMemo(() => {
     const q = patientSearch.trim().toLowerCase();

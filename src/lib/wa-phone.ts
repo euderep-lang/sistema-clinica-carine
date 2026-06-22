@@ -1,25 +1,65 @@
 /** Normalização e comparação de telefones BR para o CRM WhatsApp. */
 
+const BR_MOBILE_E164 = /^55[1-9]\d9\d{8}$/;
+
 export function digitsOnly(phone: string): string {
   return phone.replace(/@.+$/i, "").replace(/\D/g, "");
+}
+
+export function isWhatsAppLid(input: string): boolean {
+  return /@lid/i.test(input);
+}
+
+/** Identificador interno do WhatsApp (não é telefone BR). */
+export function isLikelyWaLidKey(input: string): boolean {
+  if (isWhatsAppLid(input)) return true;
+  const d = digitsOnly(input);
+  if (!d || isBrazilMobileE164(d)) return false;
+  return d.length >= 14;
+}
+
+/** Celular BR válido em E.164 (55 + DDD + 9 dígitos). */
+export function isBrazilMobileE164(input: string): boolean {
+  const d = digitsOnly(input);
+  return BR_MOBILE_E164.test(d);
+}
+
+/** Extrai um celular BR embutido em strings longas (ex.: LID numérico da Z-API). */
+export function extractBrazilMobileFromLong(digits: string): string | null {
+  const matches = digits.match(/55[1-9]\d9\d{8}/g);
+  if (!matches?.length) return null;
+  return matches[matches.length - 1] ?? null;
 }
 
 /** Últimos 11 dígitos (DDD + número) — identifica o mesmo celular em formatos diferentes. */
 export function phoneTail11(phone: string): string {
   const normalized = normalizeBrazilPhone(phone);
   if (normalized) return normalized.slice(-11);
-  return digitsOnly(phone).slice(-11);
+  const d = digitsOnly(phone);
+  if (isBrazilMobileE164(d)) return d.slice(-11);
+  return d.slice(-11);
 }
 
 /**
  * E.164 Brasil: 55 + DDD + número.
  * Insere o 9º dígito em celulares antigos (8 dígitos locais).
+ * Ignora @lid e números inválidos (comuns em webhooks Z-API).
  */
 export function normalizeBrazilPhone(input: string): string {
+  if (!input?.trim() || isWhatsAppLid(input)) return "";
+
   let d = digitsOnly(input);
-  if (!d) return d;
+  if (!d) return "";
   if (d.startsWith("0")) d = d.slice(1);
   if (!d.startsWith("55")) d = `55${d}`;
+
+  if (d.length > 13) {
+    const embedded = extractBrazilMobileFromLong(d);
+    if (embedded) return embedded;
+    return "";
+  }
+
+  if (d.length === 13 && isBrazilMobileE164(d)) return d;
 
   // 55 + DDD(2) + 8 dígitos locais (celular legado sem o 9º dígito)
   if (d.length === 12) {
@@ -30,7 +70,7 @@ export function normalizeBrazilPhone(input: string): string {
     }
   }
 
-  return d;
+  return isBrazilMobileE164(d) ? d : "";
 }
 
 export function phonesMatch(a: string, b: string): boolean {

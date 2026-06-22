@@ -17,7 +17,9 @@ export function useWaReminderNotifications() {
       const now = new Date().toISOString();
       const { data } = await supabase
         .from("wa_reminders" as never)
-        .select("id, note, remind_at, conversation_id, wa_conversations(contact_name, contact_phone, patients(full_name))")
+        .select(
+          "id, note, remind_at, conversation_id, patient_id, wa_conversations(contact_name, contact_phone, patients(full_name)), patients(full_name)",
+        )
         .eq("assigned_to", profile.id)
         .eq("completed", false)
         .lte("remind_at", now)
@@ -27,13 +29,15 @@ export function useWaReminderNotifications() {
       for (const row of (data ?? []) as {
         id: string;
         note: string | null;
-        conversation_id: string;
+        conversation_id: string | null;
+        patient_id: string | null;
         wa_conversations: WaConversation | null;
+        patients: { full_name: string } | null;
       }[]) {
         const conv = row.wa_conversations;
         const name = conv
           ? conversationDisplayName(conv)
-          : "Conversa";
+          : row.patients?.full_name ?? "Paciente";
         playWaNotificationSound();
         vibrateWaNotification();
         toast.message(`Lembrete CRM · ${name}`, {
