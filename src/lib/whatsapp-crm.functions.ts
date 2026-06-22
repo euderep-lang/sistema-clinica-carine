@@ -1302,7 +1302,7 @@ export const triggerAppointmentFollowUp = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const profile = await requireCrmAccess(context.supabase, context.userId);
-    await onAppointmentBooked({
+    const result = await onAppointmentBooked({
       tenantId: profile.tenant_id,
       appointmentId: data.appointmentId,
       patientId: data.patientId,
@@ -1310,7 +1310,7 @@ export const triggerAppointmentFollowUp = createServerFn({ method: "POST" })
       startsAt: new Date(data.startsAt),
       createdBy: context.userId,
     });
-    return { ok: true };
+    return { ok: true, ...result };
   });
 
 export const triggerAppointmentStatusFollowUp = createServerFn({ method: "POST" })

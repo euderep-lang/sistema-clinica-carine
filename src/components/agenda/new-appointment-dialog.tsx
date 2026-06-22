@@ -173,14 +173,25 @@ export function NewAppointmentDialog({
       return;
     }
     const startsAt = new Date(`${form.date}T${form.start_time}:00`);
-    void followUpFn({
-      data: {
-        appointmentId: created.id,
-        patientId: form.patient_id,
-        professionalId,
-        startsAt: startsAt.toISOString(),
-      },
-    }).catch(() => {});
+    try {
+      const notify = await followUpFn({
+        data: {
+          appointmentId: created.id,
+          patientId: form.patient_id,
+          professionalId,
+          startsAt: startsAt.toISOString(),
+        },
+      });
+      if (!notify.conversationId) {
+        toast.warning(
+          "Consulta salva, mas o paciente não tem telefone válido para WhatsApp. Cadastre o celular no prontuário.",
+        );
+      }
+    } catch (e) {
+      toast.warning(
+        `Consulta salva. A confirmação por WhatsApp será reenviada automaticamente em instantes.${e instanceof Error && e.message ? ` (${e.message})` : ""}`,
+      );
+    }
     toast.success("Consulta agendada");
     onOpenChange(false);
     onSaved?.(form.date);

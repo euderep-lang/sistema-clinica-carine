@@ -308,7 +308,8 @@ BEGIN
       'appointment', NEW.id, NEW.patient_id, NULL,
       jsonb_build_object(
         'date', NEW.date,
-        'time', NEW.time,
+        'start_time', NEW.start_time,
+        'end_time', NEW.end_time,
         'status', NEW.status,
         'professional_id', NEW.professional_id
       ),

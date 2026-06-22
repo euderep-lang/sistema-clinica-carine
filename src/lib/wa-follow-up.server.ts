@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { fmtDateFromDate, fmtTimeFromDate } from "@/lib/locale";
 import { renderTemplate } from "@/lib/settings-helpers";
-import { phonesMatch } from "@/lib/wa-phone";
+import { normalizeBrazilPhone, phonesMatch } from "@/lib/wa-phone";
 import { getDefaultReceptionAssignee } from "@/lib/wa-crm-assign.server";
 import { getFollowUpSequencesServer } from "@/lib/wa-tenant-settings.server";
 import {
@@ -141,6 +141,14 @@ async function applyTagToConversation(conversationId: string, tagId: string) {
   );
 }
 
+export function resolvePatientPhoneE164(phone: string, phoneDdi?: string | null): string {
+  const ddi = (phoneDdi ?? "55").replace(/\D/g, "") || "55";
+  const local = phone.replace(/\D/g, "");
+  if (!local) return "";
+  const combined = local.startsWith(ddi) ? local : `${ddi}${local}`;
+  return normalizeBrazilPhone(combined);
+}
+
 export async function findConversationForPatient(
   tenantId: string,
   patientId: string,
@@ -157,7 +165,7 @@ export async function findConversationForPatient(
 
   const { data: patient } = await supabaseAdmin
     .from("patients")
-    .select("phone, full_name")
+    .select("phone, phone_ddi, full_name")
     .eq("id", patientId)
     .maybeSingle();
   if (!patient?.phone) return null;
@@ -167,8 +175,9 @@ export async function findConversationForPatient(
     .select("id, contact_phone, contact_name")
     .eq("tenant_id", tenantId);
 
+  const patientPhone = resolvePatientPhoneE164(patient.phone, patient.phone_ddi);
   const match = ((convs ?? []) as { id: string; contact_phone: string; contact_name: string | null }[]).find((c) =>
-    phonesMatch(c.contact_phone, patient.phone ?? ""),
+    phonesMatch(c.contact_phone, patientPhone || patient.phone),
   );
   if (match) {
     await supabaseAdmin
@@ -178,6 +187,52 @@ export async function findConversationForPatient(
     return match;
   }
   return null;
+}
+
+/** Garante conversa WA para envio outbound (cria pelo telefone do paciente se necessário). */
+export async function ensureOutboundConversationForPatient(
+  tenantId: string,
+  patientId: string,
+): Promise<{ id: string; contact_phone: string; contact_name: string | null } | null> {
+  const existing = await findConversationForPatient(tenantId, patientId);
+  if (existing) return existing;
+
+  const { data: patient } = await supabaseAdmin
+    .from("patients")
+    .select("full_name, phone, phone_ddi")
+    .eq("id", patientId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (!patient?.phone?.trim()) return null;
+
+  const phone = resolvePatientPhoneE164(patient.phone, patient.phone_ddi);
+  if (!phone) return null;
+
+  const receptionistId = await getDefaultReceptionAssignee(tenantId);
+  const now = new Date().toISOString();
+
+  const { data: created, error } = await supabaseAdmin
+    .from("wa_conversations" as never)
+    .insert({
+      tenant_id: tenantId,
+      patient_id: patientId,
+      contact_phone: phone,
+      contact_name: patient.full_name?.trim() || phone,
+      contact_wa_id: phone,
+      assigned_to: receptionistId,
+      status: "open",
+      unread_count: 0,
+      last_message_at: now,
+      updated_at: now,
+    } as never)
+    .select("id, contact_phone, contact_name")
+    .single();
+
+  if (error) {
+    return findConversationForPatient(tenantId, patientId);
+  }
+
+  return created as { id: string; contact_phone: string; contact_name: string | null };
 }
 
 type WaMessageRow = {
@@ -734,9 +789,12 @@ async function attachFollowUpMessage(scheduleId: string, waMessageRowId: string 
     .eq("id", scheduleId);
 }
 
-export async function processDueFollowUps(limit = 30): Promise<{ processed: number; sent: number; manual: number; failed: number; skipped: number }> {
+export async function processDueFollowUps(
+  limit = 30,
+  options?: { runId?: string },
+): Promise<{ processed: number; sent: number; manual: number; failed: number; skipped: number }> {
   const now = new Date().toISOString();
-  const { data: due } = await supabaseAdmin
+  let q = supabaseAdmin
     .from("wa_follow_up_schedules" as never)
     .select(
       "id, tenant_id, run_id, step_key, mode, rendered_message, conversation_id, patient_id, assigned_to, message_template, appointment_id, wa_follow_up_runs!inner(trigger_type, started_at, status)",
@@ -746,6 +804,12 @@ export async function processDueFollowUps(limit = 30): Promise<{ processed: numb
     .lte("scheduled_at", now)
     .order("scheduled_at")
     .limit(limit);
+
+  if (options?.runId) {
+    q = q.eq("run_id", options.runId);
+  }
+
+  const { data: due } = await q;
 
   let sent = 0;
   let manual = 0;
@@ -1013,11 +1077,11 @@ export async function onAppointmentBooked(input: {
   createdBy?: string | null;
 }) {
   const [{ data: patient }, { data: professional }] = await Promise.all([
-    supabaseAdmin.from("patients").select("full_name, phone").eq("id", input.patientId).maybeSingle(),
+    supabaseAdmin.from("patients").select("full_name, phone, phone_ddi").eq("id", input.patientId).maybeSingle(),
     supabaseAdmin.from("profiles").select("full_name").eq("id", input.professionalId).maybeSingle(),
   ]);
 
-  const conv = await findConversationForPatient(input.tenantId, input.patientId);
+  const conv = await ensureOutboundConversationForPatient(input.tenantId, input.patientId);
 
   const { data: existingRun } = await supabaseAdmin
     .from("wa_follow_up_runs" as never)
@@ -1027,7 +1091,10 @@ export async function onAppointmentBooked(input: {
     .eq("trigger_type", "appointment_booked")
     .eq("status", "active")
     .maybeSingle();
-  if (existingRun) return;
+  if (existingRun) {
+    await processDueFollowUps(5, { runId: (existingRun as { id: string }).id });
+    return { conversationId: conv?.id ?? null, skipped: true as const };
+  }
 
   await logCrmEvent({
     tenantId: input.tenantId,
@@ -1045,7 +1112,7 @@ export async function onAppointmentBooked(input: {
     reason: "appointment_booked",
   });
 
-  await scheduleFollowUpRun({
+  const runId = await scheduleFollowUpRun({
     tenantId: input.tenantId,
     triggerType: "appointment_booked",
     sequenceKey: "appointment_booked",
@@ -1060,6 +1127,12 @@ export async function onAppointmentBooked(input: {
       appointmentAt: input.startsAt,
     },
   });
+
+  if (runId) {
+    await processDueFollowUps(10, { runId });
+  }
+
+  return { conversationId: conv?.id ?? null, runId, skipped: false as const };
 }
 
 export async function onAppointmentStatusChange(input: {
@@ -1071,7 +1144,7 @@ export async function onAppointmentStatusChange(input: {
   startsAt: Date;
 }) {
   if (input.status === "completed") {
-    const conv = await findConversationForPatient(input.tenantId, input.patientId);
+    const conv = await ensureOutboundConversationForPatient(input.tenantId, input.patientId);
     const { data: professional } = await supabaseAdmin
       .from("profiles")
       .select("full_name")
@@ -1149,7 +1222,7 @@ export async function onAppointmentStatusChange(input: {
   }
 
   if (input.status === "no_show") {
-    const conv = await findConversationForPatient(input.tenantId, input.patientId);
+    const conv = await ensureOutboundConversationForPatient(input.tenantId, input.patientId);
     const { data: patient } = await supabaseAdmin
       .from("patients")
       .select("full_name")
