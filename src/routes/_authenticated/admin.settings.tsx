@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Building2, Palette, DoorOpen, Stethoscope, Users, Receipt, MessageSquare, Plug, CreditCard, FolderOpen, Shield, type LucideIcon } from "lucide-react";
+import { Building2, Palette, DoorOpen, Stethoscope, Users, Receipt, MessageSquare, Plug, CreditCard, FolderOpen, Shield, LineChart, type LucideIcon } from "lucide-react";
 import { SectionAuditoria } from "@/components/settings/section-auditoria";
+import { SectionFunilCrm } from "@/components/settings/section-funil-crm";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { cn } from "@/lib/utils";
 import { SectionClinica } from "@/components/settings/section-clinica";
@@ -15,9 +16,14 @@ import { SectionIntegracoes } from "@/components/settings/section-integracoes";
 import { SectionPagamentos } from "@/components/settings/section-pagamentos";
 import { SectionDespesas } from "@/components/settings/section-despesas";
 
-export const Route = createFileRoute("/_authenticated/admin/settings")({ component: Page });
+export const Route = createFileRoute("/_authenticated/admin/settings")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    section: typeof search.section === "string" ? search.section : undefined,
+  }),
+  component: Page,
+});
 
-type SectionId = "clinica" | "aparencia" | "consultorios" | "especialidades" | "usuarios" | "servicos" | "pagamentos" | "despesas" | "mensagens" | "integracoes" | "auditoria";
+type SectionId = "clinica" | "aparencia" | "consultorios" | "especialidades" | "usuarios" | "servicos" | "pagamentos" | "despesas" | "mensagens" | "funil" | "integracoes" | "auditoria";
 
 const SECTIONS: { id: SectionId; label: string; icon: LucideIcon }[] = [
   { id: "clinica", label: "Clínica", icon: Building2 },
@@ -29,12 +35,29 @@ const SECTIONS: { id: SectionId; label: string; icon: LucideIcon }[] = [
   { id: "pagamentos", label: "Pagamentos", icon: CreditCard },
   { id: "despesas", label: "Despesas", icon: FolderOpen },
   { id: "mensagens", label: "Mensagens WhatsApp", icon: MessageSquare },
+  { id: "funil", label: "Funil de vendas", icon: LineChart },
   { id: "integracoes", label: "Integrações", icon: Plug },
   { id: "auditoria", label: "Auditoria", icon: Shield },
 ];
 
 function Page() {
-  const [active, setActive] = useState<SectionId>("clinica");
+  const { section } = Route.useSearch();
+  const initial: SectionId =
+    section === "funil" ||
+    section === "clinica" ||
+    section === "aparencia" ||
+    section === "consultorios" ||
+    section === "especialidades" ||
+    section === "usuarios" ||
+    section === "servicos" ||
+    section === "pagamentos" ||
+    section === "despesas" ||
+    section === "mensagens" ||
+    section === "integracoes" ||
+    section === "auditoria"
+      ? section
+      : "clinica";
+  const [active, setActive] = useState<SectionId>(initial);
   return (
     <DashboardShell title="Configurações">
       <div className="flex gap-6">
@@ -57,6 +80,7 @@ function Page() {
           {active === "pagamentos" && <SectionPagamentos />}
           {active === "despesas" && <SectionDespesas />}
           {active === "mensagens" && <SectionMensagens />}
+          {active === "funil" && <SectionFunilCrm />}
           {active === "integracoes" && <SectionIntegracoes />}
           {active === "auditoria" && <SectionAuditoria />}
         </div>

@@ -26,11 +26,13 @@ export type Database = {
           patient_id: string | null
           professional_id: string | null
           room_id: string | null
+          source: string | null
           specialty: string | null
           start_time: string
           status: string | null
           tenant_id: string | null
           type: string | null
+          wa_conversation_id: string | null
         }
         Insert: {
           cancel_reason?: string | null
@@ -43,11 +45,13 @@ export type Database = {
           patient_id?: string | null
           professional_id?: string | null
           room_id?: string | null
+          source?: string | null
           specialty?: string | null
           start_time: string
           status?: string | null
           tenant_id?: string | null
           type?: string | null
+          wa_conversation_id?: string | null
         }
         Update: {
           cancel_reason?: string | null
@@ -60,11 +64,13 @@ export type Database = {
           patient_id?: string | null
           professional_id?: string | null
           room_id?: string | null
+          source?: string | null
           specialty?: string | null
           start_time?: string
           status?: string | null
           tenant_id?: string | null
           type?: string | null
+          wa_conversation_id?: string | null
         }
         Relationships: [
           {

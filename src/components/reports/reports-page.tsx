@@ -40,7 +40,7 @@ function downloadCSV(name: string, rows: (string | number)[][]) {
 export function ReportsPage() {
   const [active, setActive] = useState<ReportId>("producao");
   return (
-    <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
+    <div className="grid min-w-0 gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
       <Card className="h-fit">
         <CardContent className="p-2">
           <nav className="space-y-1">
@@ -52,7 +52,7 @@ export function ReportsPage() {
           </nav>
         </CardContent>
       </Card>
-      <div>
+      <div className="min-w-0">
         {active === "producao" && <ProducaoReport />}
         {active === "pagamento" && <PagamentoReport />}
         {active === "especialidade" && <EspecialidadeReport />}

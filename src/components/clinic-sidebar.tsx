@@ -42,7 +42,7 @@ import {
 import { useAuth, type Role } from "@/lib/mock-auth";
 import { cn } from "@/lib/utils";
 
-type NavItem = { title: string; url: string; icon: LucideIcon };
+type NavItem = { title: string; url: string; icon: LucideIcon; highlight?: "whatsapp" };
 
 const NAV: Record<Role, { label: string; items: NavItem[] }[]> = {
   admin: [
@@ -52,7 +52,7 @@ const NAV: Record<Role, { label: string; items: NavItem[] }[]> = {
         { title: "Painel", url: "/admin/dashboard", icon: LayoutDashboard },
         { title: "Agenda", url: "/reception/agenda", icon: Calendar },
         { title: "Pacientes", url: "/reception/pacientes", icon: Users },
-        { title: "CRM WhatsApp", url: "/crm/inbox", icon: Inbox },
+        { title: "CRM WhatsApp", url: "/crm/inbox", icon: Inbox, highlight: "whatsapp" },
         { title: "Funil de vendas", url: "/crm/pipeline", icon: LineChart },
       ],
     },
@@ -80,7 +80,7 @@ const NAV: Record<Role, { label: string; items: NavItem[] }[]> = {
     {
       label: "Comunicação",
       items: [
-        { title: "CRM WhatsApp", url: "/crm/inbox", icon: Inbox },
+        { title: "CRM WhatsApp", url: "/crm/inbox", icon: Inbox, highlight: "whatsapp" },
         { title: "Funil de vendas", url: "/crm/pipeline", icon: LineChart },
         { title: "Mensagens", url: "/reception/mensagens", icon: MessageSquare },
         { title: "Campanhas", url: "/reception/marketing", icon: Megaphone },
@@ -94,7 +94,7 @@ const NAV: Record<Role, { label: string; items: NavItem[] }[]> = {
         { title: "Painel", url: "/professional/dashboard", icon: LayoutDashboard },
         { title: "Minha Agenda", url: "/professional/agenda", icon: Calendar },
         { title: "Pacientes", url: "/professional/patients", icon: Users },
-        { title: "CRM WhatsApp", url: "/crm/inbox", icon: Inbox },
+        { title: "CRM WhatsApp", url: "/crm/inbox", icon: Inbox, highlight: "whatsapp" },
         { title: "Funil de vendas", url: "/crm/pipeline", icon: LineChart },
         { title: "Prontuários", url: "/professional/prontuarios", icon: FileText },
         { title: "Receituário", url: "/professional/prescriptions", icon: FileText },
@@ -136,6 +136,7 @@ function SidebarNavLink({
 }) {
   const { isMobile, setOpenMobile } = useSidebar();
   const Icon = item.icon;
+  const isWhatsapp = item.highlight === "whatsapp";
 
   return (
     <SidebarMenuItem className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:justify-center">
@@ -143,7 +144,14 @@ function SidebarNavLink({
         asChild
         isActive={active}
         tooltip={item.title}
-        className="h-9 gap-3 rounded-md px-2.5 font-medium transition-colors duration-200 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[active=true]:shadow-none group-data-[collapsible=icon]:!mx-auto group-data-[collapsible=icon]:!size-[2.7rem] group-data-[collapsible=icon]:!justify-center group-data-[collapsible=icon]:!gap-0 group-data-[collapsible=icon]:!overflow-visible group-data-[collapsible=icon]:!p-0"
+        className={cn(
+          "h-9 gap-3 rounded-md px-2.5 font-medium transition-colors duration-200 group-data-[collapsible=icon]:!mx-auto group-data-[collapsible=icon]:!size-[2.7rem] group-data-[collapsible=icon]:!justify-center group-data-[collapsible=icon]:!gap-0 group-data-[collapsible=icon]:!overflow-visible group-data-[collapsible=icon]:!p-0",
+          isWhatsapp
+            ? active
+              ? "bg-emerald-600 text-white shadow-sm hover:bg-emerald-600 hover:text-white data-[active=true]:bg-emerald-600 data-[active=true]:text-white"
+              : "bg-emerald-500/12 text-emerald-800 hover:bg-emerald-500/20 hover:text-emerald-900 data-[active=true]:bg-emerald-600 data-[active=true]:text-white"
+            : "data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[active=true]:shadow-none",
+        )}
       >
         <Link
           to={item.url}
@@ -157,7 +165,12 @@ function SidebarNavLink({
             if (isMobile) setOpenMobile(false);
           }}
         >
-          <Icon className="size-4 shrink-0 opacity-80 group-data-[collapsible=icon]:size-[1.2rem]" />
+          <Icon
+            className={cn(
+              "size-4 shrink-0 group-data-[collapsible=icon]:size-[1.2rem]",
+              isWhatsapp ? (active ? "opacity-100" : "text-emerald-600 opacity-100") : "opacity-80",
+            )}
+          />
           <span className="group-data-[collapsible=icon]:hidden">{item.title}</span>
         </Link>
       </SidebarMenuButton>

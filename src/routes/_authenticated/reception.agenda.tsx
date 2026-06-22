@@ -209,6 +209,7 @@ function AgendaPage() {
         notes: form.notes || null,
         status: "scheduled",
         created_by: profile.id,
+        source: "reception",
       })
       .select("id")
       .single();

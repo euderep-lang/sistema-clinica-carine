@@ -30,6 +30,7 @@ import { CrmMessageBubble } from "@/components/crm/crm-message-bubble";
 import { CrmAudioRecorder } from "@/components/crm/crm-audio-recorder";
 import { CrmConnectionBadge } from "@/components/crm/crm-connection-badge";
 import { CrmMetricsStrip } from "@/components/crm/crm-metrics-strip";
+import { CrmFunnelAiSuggestion } from "@/components/crm/crm-funnel-ai-suggestion";
 import { CrmPatientPanel } from "@/components/crm/crm-patient-panel";
 import { CrmQuickReplies } from "@/components/crm/crm-quick-replies";
 import { CrmGlobalSearch } from "@/components/crm/crm-global-search";
@@ -1182,7 +1183,7 @@ export function CrmInboxPage() {
 
         <div
           className={cn(crmPanelShell, "min-h-0 flex-1")}
-          style={{ gridTemplateColumns: "20% 50% 30%" }}
+          style={{ gridTemplateColumns: "20% 55% 25%" }}
         >
           {/* Coluna 1 — Contatos */}
           <aside
@@ -1681,6 +1682,7 @@ export function CrmInboxPage() {
                         <CrmPatientPanel
                           patientId={selected.patient_id}
                           patientName={selected.patients?.full_name ?? conversationDisplayName(selected)}
+                          conversationId={selected.id}
                         />
                       </CrmDetailSection>
                     ) : (
@@ -1719,14 +1721,29 @@ export function CrmInboxPage() {
                     </CrmDetailSection>
 
                     <CrmDetailSection title="Funil de vendas">
-                      {!selected?.deal_id ? (
-                        <Button size="sm" className="w-full bg-emerald-600 hover:bg-emerald-700" onClick={() => void addToPipeline()}>
-                          Adicionar ao funil
-                        </Button>
+                      {selected ? (
+                        <>
+                          <CrmFunnelAiSuggestion
+                            conversationId={selected.id}
+                            dealId={selected.deal_id}
+                            onUpdated={() => void loadConversations({ silent: true })}
+                          />
+                          {!selected.deal_id ? (
+                            <Button
+                              size="sm"
+                              className="mt-2 w-full bg-emerald-600 hover:bg-emerald-700"
+                              onClick={() => void addToPipeline()}
+                            >
+                              Adicionar ao funil (manual)
+                            </Button>
+                          ) : (
+                            <Button size="sm" variant="outline" className="mt-2 w-full" asChild>
+                              <Link to="/crm/pipeline">Ver no funil</Link>
+                            </Button>
+                          )}
+                        </>
                       ) : (
-                        <Button size="sm" variant="outline" className="w-full" asChild>
-                          <Link to="/crm/pipeline">Ver no funil</Link>
-                        </Button>
+                        <p className="text-xs text-muted-foreground">Selecione uma conversa.</p>
                       )}
                     </CrmDetailSection>
 

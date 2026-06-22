@@ -71,7 +71,7 @@ export function CrmAnalyticsPage() {
     <DashboardShell>
       <PageHeader
         title="Métricas CRM"
-        description="Indicadores dos últimos 30 dias — leads, conversão e desempenho da equipe."
+        description="Indicadores dos últimos 30 dias — conversão do CRM (agendamentos feitos pelo inbox)."
         actions={
           <Link
             to="/crm/inbox"
@@ -108,30 +108,30 @@ export function CrmAnalyticsPage() {
               icon={MessageCircle}
             />
             <MetricCard
-              title="Taxa de agendamento"
-              value={`${data.schedulingRate}%`}
-              hint="Consultas vs conversas"
+              title="Taxa de conversão CRM"
+              value={`${data.crmConversionRate}%`}
+              hint={`${data.totals.conversationsWithCrmBooking} de ${data.totals.conversations} conversas geraram agendamento pelo CRM`}
               icon={CalendarCheck}
             />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <MetricCard
-              title="Comparecimento"
+              title="Comparecimento (CRM)"
               value={data.attendanceRate != null ? `${data.attendanceRate}%` : "—"}
-              hint="Realizadas vs faltas"
+              hint="Consultas CRM realizadas vs faltas"
               icon={UserCheck}
             />
             <MetricCard
               title="Fechamento pós-valor"
               value={data.closeRateAfterPrice != null ? `${data.closeRateAfterPrice}%` : "—"}
-              hint="Agendaram após receber valor"
+              hint="Conversas com preço que viraram agendamento CRM depois"
               icon={Target}
             />
             <MetricCard
-              title="Agendamentos"
-              value={String(data.totals.appointments)}
-              hint={`${data.totals.pricedConversations} conversas com valor enviado`}
+              title="Agendamentos pelo CRM"
+              value={String(data.totals.crmAppointments)}
+              hint={`${data.totals.clinicAppointments} pela agenda (recepção/profissional) · ${data.totals.pricedConversations} com valor enviado`}
               icon={TrendingUp}
             />
           </div>
@@ -182,7 +182,7 @@ export function CrmAnalyticsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Maior conversão (equipe)</CardTitle>
+              <CardTitle className="text-base">Maior conversão CRM (equipe)</CardTitle>
             </CardHeader>
             <CardContent>
               {data.topConverters.length === 0 ? (
@@ -199,7 +199,7 @@ export function CrmAnalyticsPage() {
                         {s.name}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {s.deals} ganhos · {s.appointments} agendamentos
+                        {s.deals} ganhos · {s.appointments} agend. CRM
                       </span>
                     </li>
                   ))}

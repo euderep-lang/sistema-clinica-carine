@@ -402,6 +402,7 @@ function ProfessionalAgendaPage() {
         onOpenChange={setNewApptOpen}
         defaultProfessionalId={profile?.role === "professional" ? profile.id : undefined}
         defaultDate={date}
+        appointmentSource="professional"
         onSaved={(savedDate) => {
           setDate(savedDate);
           void load();

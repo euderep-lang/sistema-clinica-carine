@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download } from "lucide-react";
+import { BanknoteArrowDown, Download } from "lucide-react";
 import { todayISO, shiftDateISO, fmtDate } from "@/lib/locale";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { fmt, PAYMENT_LABEL } from "@/lib/currency";
 import { resolveLetterheadProfessionalId } from "@/lib/letterhead";
 import { printWithLetterhead } from "@/lib/letterhead-print";
 import { TableSkeleton, EmptyState } from "@/components/feedback-states";
-import { BanknoteArrowDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type CashTx = {
   id: string;
@@ -31,6 +31,63 @@ function downloadCSV(name: string, rows: (string | number)[][]) {
   a.href = URL.createObjectURL(blob);
   a.download = name;
   a.click();
+}
+
+function formatDescription(description: string): { short: string; full: string } {
+  const full = description.trim();
+  if (full.length <= 96) return { short: full, full };
+
+  const parts = full.split(/,\s*(?=\d+x\s|\d+\s*x\s|[A-ZÁÉÍÓÚÂÊÔÃÕÇ])/i);
+  if (parts.length > 1) {
+    const first = parts[0].trim();
+    const rest = parts.length - 1;
+    return {
+      short: `${first} · +${rest} ${rest === 1 ? "item" : "itens"}`,
+      full,
+    };
+  }
+
+  return { short: `${full.slice(0, 94).trim()}…`, full };
+}
+
+function CashFlowRow({ t }: { t: CashTx }) {
+  const desc = formatDescription(t.description);
+  const payment = PAYMENT_LABEL[t.method] ?? t.method;
+
+  return (
+    <div className="grid gap-2 border-b px-3 py-2.5 last:border-b-0 sm:grid-cols-[4.75rem_minmax(0,1fr)_6.5rem] sm:items-start sm:gap-3">
+      <p className="text-xs text-muted-foreground sm:pt-0.5">{fmtDate(t.date)}</p>
+
+      <div className="min-w-0 space-y-0.5">
+        <p className="truncate text-sm font-medium">{t.party}</p>
+        <p className="break-words text-sm leading-snug text-muted-foreground line-clamp-2" title={desc.full}>
+          {desc.short}
+        </p>
+        <p className="text-xs text-muted-foreground">{payment}</p>
+      </div>
+
+      <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-end sm:justify-start">
+        <Badge
+          variant="outline"
+          className={cn(
+            "shrink-0",
+            t.type === "in" ? "border-emerald-200 text-emerald-700" : "border-red-200 text-red-700",
+          )}
+        >
+          {t.type === "in" ? "Entrada" : "Saída"}
+        </Badge>
+        <span
+          className={cn(
+            "shrink-0 text-sm font-semibold tabular-nums",
+            t.type === "in" ? "text-emerald-600" : "text-red-600",
+          )}
+        >
+          {t.type === "in" ? "+" : "−"}
+          {fmt(t.amount)}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 export function FluxoCashFlowReport() {
@@ -73,27 +130,21 @@ export function FluxoCashFlowReport() {
         method: (p.payment_method as string) ?? "—",
         amount: Number(p.amount),
       }));
-      setTx([...ins, ...outs].sort((a, b) => a.date.localeCompare(b.date)));
+      setTx(
+        [...ins, ...outs].sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)),
+      );
       setLoading(false);
     })();
   }, [from, to]);
 
-  const grouped = useMemo(() => {
-    const g: Record<string, CashTx[]> = {};
-    tx.forEach((t) => {
-      (g[t.date] ??= []).push(t);
-    });
-    return Object.entries(g).sort(([a], [b]) => a.localeCompare(b));
-  }, [tx]);
-
-  const totalIn = tx.filter((t) => t.type === "in").reduce((s, t) => s + t.amount, 0);
-  const totalOut = tx.filter((t) => t.type === "out").reduce((s, t) => s + t.amount, 0);
+  const totalIn = useMemo(() => tx.filter((t) => t.type === "in").reduce((s, t) => s + t.amount, 0), [tx]);
+  const totalOut = useMemo(() => tx.filter((t) => t.type === "out").reduce((s, t) => s + t.amount, 0), [tx]);
 
   return (
-    <Card>
+    <Card className="min-w-0 overflow-hidden">
       <CardHeader>
         <CardTitle>Fluxo de Caixa Detalhado</CardTitle>
-        <div className="flex flex-wrap gap-2 items-end pt-2">
+        <div className="flex flex-wrap items-end gap-2 pt-2">
           <div>
             <Label className="text-xs">De</Label>
             <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" />
@@ -104,7 +155,7 @@ export function FluxoCashFlowReport() {
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="min-w-0 space-y-4 overflow-x-hidden">
         {loading ? (
           <TableSkeleton />
         ) : tx.length === 0 ? (
@@ -125,55 +176,49 @@ export function FluxoCashFlowReport() {
                 <p className="text-lg font-semibold">{fmt(totalIn - totalOut)}</p>
               </div>
             </div>
-            <div className="space-y-4 max-h-[480px] overflow-y-auto">
-              {grouped.map(([date, items]) => (
-                <div key={date}>
-                  <p className="text-xs font-semibold text-muted-foreground mb-1 sticky top-0 bg-card py-1">
-                    {fmtDate(date)}
-                  </p>
-                  <div className="space-y-1">
-                    {items.map((t) => (
-                      <div key={t.id} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
-                        <div className="min-w-0">
-                          <p className="truncate font-medium">{t.description}</p>
-                          <p className="text-xs text-muted-foreground">{t.party} · {PAYMENT_LABEL[t.method] ?? t.method}</p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <Badge variant="outline" className={t.type === "in" ? "text-emerald-600" : "text-red-600"}>
-                            {t.type === "in" ? "Entrada" : "Saída"}
-                          </Badge>
-                          <span className={`font-medium ${t.type === "in" ? "text-emerald-600" : "text-red-600"}`}>
-                            {t.type === "in" ? "+" : "−"}{fmt(t.amount)}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+
+            <div className="overflow-hidden rounded-lg border">
+              <div className="hidden border-b bg-muted/50 px-3 py-2 text-xs font-semibold text-muted-foreground sm:grid sm:grid-cols-[4.75rem_minmax(0,1fr)_6.5rem] sm:gap-3">
+                <span>Data</span>
+                <span>Movimentação</span>
+                <span className="text-right">Valor</span>
+              </div>
+              <div className="max-h-[520px] overflow-y-auto overflow-x-hidden">
+                {tx.map((t) => (
+                  <CashFlowRow key={t.id} t={t} />
+                ))}
+              </div>
+              <div className="border-t px-3 py-2 text-xs text-muted-foreground">
+                {tx.length} movimentações no período
+              </div>
             </div>
-            <div className="flex gap-2">
+
+            <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() =>
                   downloadCSV("fluxo-caixa.csv", [
-                    ["Data", "Tipo", "Descrição", "Parte", "Forma", "Valor"],
+                    ["Data", "Tipo", "Descrição", "Paciente/Fornecedor", "Forma", "Valor"],
                     ...tx.map((t) => [
                       t.date,
                       t.type === "in" ? "Entrada" : "Saída",
                       t.description,
                       t.party,
-                      t.method,
+                      PAYMENT_LABEL[t.method] ?? t.method,
                       t.amount,
                     ]),
                   ])
                 }
               >
-                <Download className="size-4 mr-2" />
+                <Download className="mr-2 size-4" />
                 Exportar planilha
               </Button>
-              <Button variant="outline" size="sm" onClick={() => void printWithLetterhead(resolveLetterheadProfessionalId(profile))}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void printWithLetterhead(resolveLetterheadProfessionalId(profile))}
+              >
                 Imprimir PDF
               </Button>
             </div>

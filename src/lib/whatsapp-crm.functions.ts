@@ -32,6 +32,10 @@ import {
   listWhatsAppTemplates,
   sendWhatsAppTemplate,
 } from "@/lib/whatsapp-meta.server";
+import {
+  buildConversationTranscript,
+  suggestFunnelStageFromTranscript,
+} from "@/lib/wa-funnel-ai.server";
 
 type CrmRole = "admin" | "professional" | "receptionist";
 
@@ -49,6 +53,22 @@ async function requireCrmAccess(
     throw new Error("Sem permissão para o CRM");
   }
   return profile as { role: CrmRole; tenant_id: string };
+}
+
+async function requireCrmAdmin(
+  supabase: Awaited<ReturnType<typeof import("@supabase/supabase-js").createClient>>,
+  userId: string,
+) {
+  const profile = await requireCrmAccess(supabase, userId);
+  if (profile.role !== "admin") throw new Error("Apenas administradores podem alterar o funil");
+  return profile;
+}
+
+function inferStageWinProbability(name: string, winProbability: number): number {
+  const lower = name.trim().toLowerCase();
+  if (lower.includes("ganho")) return 100;
+  if (lower.includes("perdido")) return 0;
+  return Math.max(0, Math.min(100, Math.round(winProbability)));
 }
 
 export const getWhatsAppConnection = createServerFn({ method: "GET" }).handler(async () =>
@@ -827,7 +847,7 @@ export const getWaPipelineBoard = createServerFn({ method: "GET" })
 
     const pipelineId = (pipeline as { id: string }).id;
 
-    const [{ data: stages }, { data: deals }] = await Promise.all([
+    const [{ data: stages, error: stagesErr }, { data: deals, error: dealsErr }] = await Promise.all([
       context.supabase
         .from("wa_pipeline_stages" as never)
         .select("id, name, color, sort_order, win_probability")
@@ -836,12 +856,15 @@ export const getWaPipelineBoard = createServerFn({ method: "GET" })
       context.supabase
         .from("wa_deals" as never)
         .select(
-          "id, title, value_cents, status, stage_id, conversation_id, assigned_to, updated_at, wa_conversations(contact_name, contact_phone, channel)",
+          "id, title, value_cents, status, stage_id, conversation_id, assigned_to, updated_at, wa_conversations!wa_deals_conversation_id_fkey(contact_name, contact_phone, channel)",
         )
         .eq("pipeline_id", pipelineId)
         .eq("status", "open")
         .order("updated_at", { ascending: false }),
     ]);
+
+    if (stagesErr) throw new Error(stagesErr.message);
+    if (dealsErr) throw new Error(dealsErr.message);
 
     return { pipeline, stages: stages ?? [], deals: deals ?? [] };
   });
@@ -940,6 +963,176 @@ export const moveWaDealStage = createServerFn({ method: "POST" })
     }
 
     return { ok: true, status };
+  });
+
+export const getWaPipelineConfig = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const profile = await requireCrmAdmin(context.supabase, context.userId);
+    const pipelineId = await ensurePipelineForTenant(context.supabase, profile.tenant_id);
+
+    const { data: pipeline, error: pErr } = await context.supabase
+      .from("wa_pipelines" as never)
+      .select("id, name")
+      .eq("id", pipelineId)
+      .maybeSingle();
+    if (pErr) throw new Error(pErr.message);
+
+    const { data: stages, error: sErr } = await context.supabase
+      .from("wa_pipeline_stages" as never)
+      .select("id, name, color, sort_order, win_probability")
+      .eq("pipeline_id", pipelineId)
+      .order("sort_order");
+    if (sErr) throw new Error(sErr.message);
+
+    return { pipeline, stages: stages ?? [] };
+  });
+
+export const saveWaPipelineConfig = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    (d: {
+      pipelineName: string;
+      stages: { id?: string; name: string; color: string; win_probability: number }[];
+    }) => d,
+  )
+  .handler(async ({ data, context }) => {
+    const profile = await requireCrmAdmin(context.supabase, context.userId);
+    const pipelineId = await ensurePipelineForTenant(context.supabase, profile.tenant_id);
+
+    const name = data.pipelineName.trim() || "Funil principal";
+    const stages = data.stages
+      .map((s, i) => ({
+        id: s.id,
+        name: s.name.trim(),
+        color: s.color.trim() || "#6366f1",
+        win_probability: inferStageWinProbability(s.name, s.win_probability),
+        sort_order: i,
+      }))
+      .filter((s) => s.name.length > 0);
+
+    if (stages.length < 2) throw new Error("O funil precisa de pelo menos 2 etapas");
+
+    const { error: nameErr } = await context.supabase
+      .from("wa_pipelines" as never)
+      .update({ name } as never)
+      .eq("id", pipelineId);
+    if (nameErr) throw new Error(nameErr.message);
+
+    const incomingIds = new Set(stages.map((s) => s.id).filter(Boolean) as string[]);
+
+    const { data: existingStages, error: listErr } = await context.supabase
+      .from("wa_pipeline_stages" as never)
+      .select("id")
+      .eq("pipeline_id", pipelineId);
+    if (listErr) throw new Error(listErr.message);
+
+    for (const existing of (existingStages ?? []) as { id: string }[]) {
+      if (incomingIds.has(existing.id)) continue;
+      const { count, error: countErr } = await context.supabase
+        .from("wa_deals" as never)
+        .select("id", { count: "exact", head: true })
+        .eq("stage_id", existing.id);
+      if (countErr) throw new Error(countErr.message);
+      if ((count ?? 0) > 0) {
+        throw new Error("Não é possível excluir etapa com negócios — mova os cards antes");
+      }
+      const { error: delErr } = await context.supabase
+        .from("wa_pipeline_stages" as never)
+        .delete()
+        .eq("id", existing.id);
+      if (delErr) throw new Error(delErr.message);
+    }
+
+    for (const stage of stages) {
+      if (stage.id) {
+        const { error } = await context.supabase
+          .from("wa_pipeline_stages" as never)
+          .update({
+            name: stage.name,
+            color: stage.color,
+            win_probability: stage.win_probability,
+            sort_order: stage.sort_order,
+          } as never)
+          .eq("id", stage.id)
+          .eq("pipeline_id", pipelineId);
+        if (error) throw new Error(error.message);
+        continue;
+      }
+
+      const { error } = await context.supabase.from("wa_pipeline_stages" as never).insert({
+        pipeline_id: pipelineId,
+        name: stage.name,
+        color: stage.color,
+        win_probability: stage.win_probability,
+        sort_order: stage.sort_order,
+      } as never);
+      if (error) throw new Error(error.message);
+    }
+
+    return { ok: true };
+  });
+
+export const suggestWaDealStage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { conversationId: string }) => d)
+  .handler(async ({ data, context }) => {
+    const profile = await requireCrmAccess(context.supabase, context.userId);
+    const pipelineId = await ensurePipelineForTenant(context.supabase, profile.tenant_id);
+
+    const { data: conv, error: convErr } = await context.supabase
+      .from("wa_conversations" as never)
+      .select("id, contact_name, deal_id, pipeline_stage_id")
+      .eq("id", data.conversationId)
+      .eq("tenant_id", profile.tenant_id)
+      .maybeSingle();
+    if (convErr) throw new Error(convErr.message);
+    if (!conv) throw new Error("Conversa não encontrada");
+
+    const convRow = conv as {
+      contact_name: string | null;
+      deal_id: string | null;
+      pipeline_stage_id: string | null;
+    };
+
+    const [{ data: stages, error: stagesErr }, { data: messages, error: msgErr }] = await Promise.all([
+      context.supabase
+        .from("wa_pipeline_stages" as never)
+        .select("id, name, sort_order")
+        .eq("pipeline_id", pipelineId)
+        .order("sort_order"),
+      context.supabase
+        .from("wa_messages" as never)
+        .select("direction, body, message_type, sent_by, created_at")
+        .eq("conversation_id", data.conversationId)
+        .order("created_at", { ascending: true })
+        .limit(60),
+    ]);
+    if (stagesErr) throw new Error(stagesErr.message);
+    if (msgErr) throw new Error(msgErr.message);
+
+    const stageList = (stages ?? []) as { id: string; name: string; sort_order: number }[];
+    let currentStageName: string | null = null;
+    if (convRow.pipeline_stage_id) {
+      currentStageName =
+        stageList.find((s) => s.id === convRow.pipeline_stage_id)?.name ?? null;
+    }
+
+    const transcript = buildConversationTranscript(
+      (messages ?? []) as {
+        direction: "inbound" | "outbound";
+        body: string | null;
+        message_type: string;
+        sent_by: string | null;
+      }[],
+    );
+
+    return suggestFunnelStageFromTranscript({
+      transcript,
+      stages: stageList,
+      currentStageName,
+      contactName: convRow.contact_name,
+    });
   });
 
 // ---------------------------------------------------------------------------
@@ -1199,12 +1392,12 @@ export const getCrmAnalytics = createServerFn({ method: "GET" })
         .gte("created_at", since30),
       context.supabase
         .from("wa_conversations" as never)
-        .select("id, created_at, first_response_at, last_patient_reply_at, close_reason, assigned_to, price_sent_at")
+        .select("id, created_at, first_response_at, last_patient_reply_at, close_reason, assigned_to, price_sent_at, patient_id")
         .eq("tenant_id", tenantId)
         .gte("created_at", since30),
       context.supabase
         .from("appointments")
-        .select("id, status, patient_id, professional_id, created_at, date, start_time")
+        .select("id, status, patient_id, professional_id, created_at, date, start_time, source, wa_conversation_id")
         .eq("tenant_id", tenantId)
         .gte("created_at", since30),
       context.supabase
@@ -1247,8 +1440,14 @@ export const getCrmAnalytics = createServerFn({ method: "GET" })
       patient_id: string;
       professional_id: string;
       created_at: string;
+      source: string | null;
+      wa_conversation_id: string | null;
     }[];
-    const priced = (priceRes.data ?? []) as { id: string; patient_id: string | null }[];
+    const priced = (priceRes.data ?? []) as {
+      id: string;
+      patient_id: string | null;
+      price_sent_at: string;
+    }[];
     const closed = (closeRes.data ?? []) as { close_reason: string | null }[];
     const deals = (dealsRes.data ?? []) as { status: string; assigned_to: string | null }[];
     const staff = (staffRes.data ?? []) as { id: string; full_name: string }[];
@@ -1272,22 +1471,36 @@ export const getCrmAnalytics = createServerFn({ method: "GET" })
     const repliedLeads = convs.filter((c) => c.last_patient_reply_at).length;
     const leadResponseRate = convs.length ? Math.round((repliedLeads / convs.length) * 100) : 0;
 
-    const scheduledAppts = appts.filter((a) =>
-      ["scheduled", "confirmed", "completed", "in_progress", "no_show"].includes(a.status),
-    ).length;
-    const schedulingRate = convs.length ? Math.round((scheduledAppts / convs.length) * 100) : 0;
+    const crmAppts = appts.filter((a) => a.source === "crm");
+    const clinicAppts = appts.filter((a) => a.source !== "crm");
+    const activeStatuses = ["scheduled", "confirmed", "completed", "in_progress", "no_show"];
 
-    const completed = appts.filter((a) => a.status === "completed").length;
-    const noShow = appts.filter((a) => a.status === "no_show").length;
+    const convIdsWithCrmBooking = new Set(
+      crmAppts
+        .filter((a) => activeStatuses.includes(a.status) && a.wa_conversation_id)
+        .map((a) => a.wa_conversation_id!),
+    );
+    const crmConversionRate = convs.length
+      ? Math.round((convIdsWithCrmBooking.size / convs.length) * 100)
+      : 0;
+
+    const crmCompleted = crmAppts.filter((a) => a.status === "completed").length;
+    const crmNoShow = crmAppts.filter((a) => a.status === "no_show").length;
     const attendanceRate =
-      completed + noShow > 0 ? Math.round((completed / (completed + noShow)) * 100) : null;
+      crmCompleted + crmNoShow > 0 ? Math.round((crmCompleted / (crmCompleted + crmNoShow)) * 100) : null;
 
-    const pricedPatientIds = new Set(priced.map((p) => p.patient_id).filter(Boolean));
-    const bookedAfterPrice = appts.filter(
-      (a) => a.patient_id && pricedPatientIds.has(a.patient_id),
-    ).length;
+    let pricedConverted = 0;
+    for (const conv of priced) {
+      const booked = crmAppts.some(
+        (a) =>
+          a.wa_conversation_id === conv.id &&
+          activeStatuses.includes(a.status) &&
+          new Date(a.created_at).getTime() >= new Date(conv.price_sent_at).getTime(),
+      );
+      if (booked) pricedConverted++;
+    }
     const closeRateAfterPrice =
-      priced.length > 0 ? Math.round((bookedAfterPrice / priced.length) * 100) : null;
+      priced.length > 0 ? Math.round((pricedConverted / priced.length) * 100) : null;
 
     const lossReasons: Record<string, number> = {};
     for (const c of closed) {
@@ -1302,7 +1515,7 @@ export const getCrmAnalytics = createServerFn({ method: "GET" })
       if (!conversionByStaff[id]) conversionByStaff[id] = { name: staffNames[id] ?? "Equipe", deals: 0, appointments: 0 };
       conversionByStaff[id].deals++;
     }
-    for (const a of appts.filter((x) => ["completed", "confirmed", "scheduled"].includes(x.status))) {
+    for (const a of crmAppts.filter((x) => ["completed", "confirmed", "scheduled"].includes(x.status))) {
       const id = a.professional_id;
       if (!conversionByStaff[id]) conversionByStaff[id] = { name: staffNames[id] ?? "Equipe", deals: 0, appointments: 0 };
       conversionByStaff[id].appointments++;
@@ -1319,7 +1532,7 @@ export const getCrmAnalytics = createServerFn({ method: "GET" })
         .map(([date, count]) => ({ date, count })),
       avgFirstResponseMinutes,
       leadResponseRate,
-      schedulingRate,
+      crmConversionRate,
       attendanceRate,
       closeRateAfterPrice,
       lossReasons: Object.entries(lossReasons)
@@ -1329,7 +1542,9 @@ export const getCrmAnalytics = createServerFn({ method: "GET" })
       totals: {
         leads: leads.length,
         conversations: convs.length,
-        appointments: appts.length,
+        conversationsWithCrmBooking: convIdsWithCrmBooking.size,
+        crmAppointments: crmAppts.length,
+        clinicAppointments: clinicAppts.length,
         pricedConversations: priced.length,
       },
     };

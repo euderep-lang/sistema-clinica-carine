@@ -12,9 +12,10 @@ import { useAuth } from "@/lib/mock-auth";
 interface Props {
   patientId: string;
   patientName: string;
+  conversationId?: string;
 }
 
-export function CrmPatientPanel({ patientId, patientName }: Props) {
+export function CrmPatientPanel({ patientId, patientName, conversationId }: Props) {
   const { profile } = useAuth();
   const contextFn = useServerFn(getWaPatientContext);
   const [loading, setLoading] = useState(true);
@@ -116,6 +117,8 @@ export function CrmPatientPanel({ patientId, patientName }: Props) {
         defaultPatientId={patientId}
         defaultPatientName={patientName}
         defaultProfessionalId={profile?.role === "professional" ? profile.id : undefined}
+        appointmentSource="crm"
+        waConversationId={conversationId}
         onSaved={() => void loadContext()}
       />
     </>

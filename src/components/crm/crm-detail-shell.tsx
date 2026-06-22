@@ -64,7 +64,7 @@ export const crmDetailAsideShell =
 export const crmDetailTabsRoot = "flex min-h-0 flex-1 flex-col lg:flex-row";
 
 export const crmDetailTabList =
-  "mx-0 flex h-auto w-full shrink-0 gap-1 overflow-x-auto border-b border-border/50 bg-background/80 p-2 [-ms-overflow-style:none] [scrollbar-width:none] lg:w-[4.25rem] lg:flex-col lg:overflow-visible lg:border-b-0 lg:border-r lg:p-1 [&::-webkit-scrollbar]:hidden";
+  "mx-0 flex h-auto w-full shrink-0 gap-1 overflow-x-auto border-b border-border/50 bg-background/80 p-2 [-ms-overflow-style:none] [scrollbar-width:none] lg:w-[3.5rem] lg:flex-col lg:overflow-visible lg:border-b-0 lg:border-r lg:p-1 [&::-webkit-scrollbar]:hidden";
 
 export const crmDetailContentWrap = "flex min-h-0 min-w-0 flex-1 flex-col";
 

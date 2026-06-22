@@ -25,6 +25,7 @@ import {
   resolveAppointmentTypes,
 } from "@/lib/appointment-types";
 import { addOneHour, todayISO } from "@/lib/agenda-utils";
+import type { AppointmentSource } from "@/lib/appointment-source";
 import { triggerAppointmentFollowUp } from "@/lib/whatsapp-crm.functions";
 import { useAuth } from "@/lib/mock-auth";
 import { PatientSearchField } from "@/components/patient-search-field";
@@ -47,6 +48,10 @@ interface NewAppointmentDialogProps {
   /** Paciente pré-selecionado (ex.: vindo do CRM). */
   defaultPatientId?: string;
   defaultPatientName?: string;
+  /** Origem do agendamento para métricas CRM. */
+  appointmentSource?: AppointmentSource;
+  /** Conversa WA vinculada (quando agendado pelo CRM). */
+  waConversationId?: string;
 }
 
 export function NewAppointmentDialog({
@@ -57,6 +62,8 @@ export function NewAppointmentDialog({
   defaultProfessionalId,
   defaultPatientId,
   defaultPatientName,
+  appointmentSource,
+  waConversationId,
 }: NewAppointmentDialogProps) {
   const { profile } = useAuth();
   const followUpFn = useServerFn(triggerAppointmentFollowUp);
@@ -133,6 +140,13 @@ export function NewAppointmentDialog({
       return;
     }
     setSaving(true);
+    const resolvedSource: AppointmentSource | null =
+      appointmentSource ??
+      (profile.role === "receptionist"
+        ? "reception"
+        : profile.role === "professional"
+          ? "professional"
+          : null);
     const { data: created, error } = await supabase
       .from("appointments")
       .insert({
@@ -148,6 +162,8 @@ export function NewAppointmentDialog({
         notes: form.notes || null,
         status: "scheduled",
         created_by: profile.id,
+        source: resolvedSource,
+        wa_conversation_id: waConversationId ?? null,
       })
       .select("id")
       .single();

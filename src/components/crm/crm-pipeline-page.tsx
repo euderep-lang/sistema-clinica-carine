@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, GripVertical, Loader2, Settings } from "lucide-react";
 import { toast } from "sonner";
 import { fmt } from "@/lib/locale";
 import {
@@ -15,6 +15,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/mock-auth";
 
 type Stage = { id: string; name: string; color: string; sort_order: number; win_probability: number };
 type Deal = {
@@ -28,10 +29,14 @@ type Deal = {
 };
 
 export function CrmPipelinePage() {
+  const { profile } = useAuth();
   const ensureFn = useServerFn(ensureWaPipeline);
   const boardFn = useServerFn(getWaPipelineBoard);
   const moveFn = useServerFn(moveWaDealStage);
   const [loading, setLoading] = useState(true);
+  const [movingDealId, setMovingDealId] = useState<string | null>(null);
+  const [dragDealId, setDragDealId] = useState<string | null>(null);
+  const [dragOverStageId, setDragOverStageId] = useState<string | null>(null);
   const [pipelineName, setPipelineName] = useState<string | null>(null);
   const [stages, setStages] = useState<Stage[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -66,13 +71,34 @@ export function CrmPipelinePage() {
     return map;
   }, [stages, deals]);
 
-  const moveDeal = async (dealId: string, stageId: string) => {
+  const moveDeal = async (dealId: string, stageId: string, optimistic = true) => {
+    const deal = deals.find((d) => d.id === dealId);
+    if (!deal || deal.stage_id === stageId) return;
+
+    if (optimistic) {
+      setDeals((prev) => prev.map((d) => (d.id === dealId ? { ...d, stage_id: stageId } : d)));
+    }
+
+    setMovingDealId(dealId);
     try {
-      await moveFn({ data: { dealId, stageId } });
-      await load();
+      const result = await moveFn({ data: { dealId, stageId } });
+      if (result.status === "won" || result.status === "lost") {
+        setDeals((prev) => prev.filter((d) => d.id !== dealId));
+        toast.success(result.status === "won" ? "Negócio ganho!" : "Negócio marcado como perdido");
+      }
     } catch (e) {
       toast.error((e as Error).message);
+      await load();
+    } finally {
+      setMovingDealId(null);
     }
+  };
+
+  const onDropDeal = (stageId: string) => {
+    if (!dragDealId) return;
+    void moveDeal(dragDealId, stageId);
+    setDragDealId(null);
+    setDragOverStageId(null);
   };
 
   if (loading) {
@@ -89,22 +115,31 @@ export function CrmPipelinePage() {
     <DashboardShell>
       <PageHeader
         title={pipelineName ?? "Funil de vendas"}
-        description="Pipeline estilo Kommo — arraste negócios entre etapas ou use os botões."
+        description="Arraste os cards entre as colunas para avançar o atendimento."
         actions={
-          <Button variant="outline" size="sm" asChild>
-            <Link to="/crm/inbox">
-              <ArrowLeft className="mr-1.5 size-4" />
-              Inbox
-            </Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {profile?.role === "admin" ? (
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/admin/settings" search={{ section: "funil" }}>
+                  <Settings className="mr-1.5 size-4" />
+                  Editar etapas
+                </Link>
+              </Button>
+            ) : null}
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/crm/inbox">
+                <ArrowLeft className="mr-1.5 size-4" />
+                Inbox
+              </Link>
+            </Button>
+          </div>
         }
       />
 
       <div className="flex gap-3 overflow-x-auto pb-4">
-        {stages.map((stage, idx) => {
+        {stages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) ?? [];
-          const prevStage = stages[idx - 1];
-          const nextStage = stages[idx + 1];
+          const isDropTarget = dragOverStageId === stage.id && dragDealId != null;
 
           return (
             <div key={stage.id} className="flex w-[min(100%,280px)] shrink-0 flex-col">
@@ -113,53 +148,67 @@ export function CrmPipelinePage() {
                 <h3 className="text-sm font-semibold">{stage.name}</h3>
                 <span className="text-xs text-muted-foreground">({stageDeals.length})</span>
               </div>
-              <div className="flex min-h-[420px] flex-col gap-2 rounded-xl border bg-muted/20 p-2">
+              <div
+                className={cn(
+                  "flex min-h-[420px] flex-col gap-2 rounded-xl border bg-muted/20 p-2 transition-colors",
+                  isDropTarget && "border-primary bg-primary/5 ring-2 ring-primary/20",
+                )}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOverStageId(stage.id);
+                }}
+                onDragLeave={() => {
+                  if (dragOverStageId === stage.id) setDragOverStageId(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  onDropDeal(stage.id);
+                }}
+              >
                 {stageDeals.map((deal) => (
-                  <Card key={deal.id} className="p-3 shadow-sm">
-                    <p className="text-sm font-medium">{deal.title}</p>
-                    {deal.wa_conversations ? (
-                      <p className="text-xs text-muted-foreground">
-                        {conversationDisplayName(deal.wa_conversations)}
-                      </p>
-                    ) : null}
-                    {deal.value_cents > 0 ? (
-                      <p className="mt-1 text-xs font-medium text-emerald-700">
-                        {fmt(deal.value_cents / 100)}
-                      </p>
-                    ) : null}
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {prevStage ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-[10px]"
-                          onClick={() => void moveDeal(deal.id, prevStage.id)}
-                        >
-                          ←
-                        </Button>
-                      ) : null}
-                      {nextStage ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-[10px]"
-                          onClick={() => void moveDeal(deal.id, nextStage.id)}
-                        >
-                          →
-                        </Button>
-                      ) : null}
-                      {deal.conversation_id ? (
-                        <Button size="sm" variant="ghost" className="h-7 text-[10px]" asChild>
-                          <Link to="/crm/inbox" search={{ conversation: deal.conversation_id }}>
-                            Chat
-                          </Link>
-                        </Button>
-                      ) : null}
+                  <Card
+                    key={deal.id}
+                    draggable
+                    onDragStart={() => setDragDealId(deal.id)}
+                    onDragEnd={() => {
+                      setDragDealId(null);
+                      setDragOverStageId(null);
+                    }}
+                    className={cn(
+                      "cursor-grab p-3 shadow-sm active:cursor-grabbing",
+                      movingDealId === deal.id && "opacity-60",
+                      dragDealId === deal.id && "ring-2 ring-primary/30",
+                    )}
+                  >
+                    <div className="flex items-start gap-2">
+                      <GripVertical className="mt-0.5 size-4 shrink-0 text-muted-foreground/60" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{deal.title}</p>
+                        {deal.wa_conversations ? (
+                          <p className="truncate text-xs text-muted-foreground">
+                            {conversationDisplayName(deal.wa_conversations)}
+                          </p>
+                        ) : null}
+                        {deal.value_cents > 0 ? (
+                          <p className="mt-1 text-xs font-medium text-emerald-700">
+                            {fmt(deal.value_cents / 100)}
+                          </p>
+                        ) : null}
+                        {deal.conversation_id ? (
+                          <Button size="sm" variant="ghost" className="mt-2 h-7 px-2 text-[10px]" asChild>
+                            <Link to="/crm/inbox" search={{ conversation: deal.conversation_id }}>
+                              Abrir chat
+                            </Link>
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
                   </Card>
                 ))}
                 {stageDeals.length === 0 ? (
-                  <p className="py-6 text-center text-xs text-muted-foreground">Vazio</p>
+                  <p className="py-6 text-center text-xs text-muted-foreground">
+                    {isDropTarget ? "Solte aqui" : "Vazio"}
+                  </p>
                 ) : null}
               </div>
             </div>
@@ -167,8 +216,9 @@ export function CrmPipelinePage() {
         })}
       </div>
 
-      <p className={cn("text-xs text-muted-foreground")}>
-        Para criar negócio a partir de uma conversa, use o botão &quot;Adicionar ao funil&quot; no painel do inbox.
+      <p className="text-xs text-muted-foreground">
+        Adicione contatos pelo CRM WhatsApp → aba Paciente → &quot;Adicionar ao funil&quot;.
+        {profile?.role === "admin" ? " Configure etapas em Configurações → Funil de vendas." : null}
       </p>
     </DashboardShell>
   );

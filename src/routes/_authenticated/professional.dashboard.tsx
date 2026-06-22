@@ -240,6 +240,7 @@ function ProfessionalDashboard() {
         open={newApptOpen}
         onOpenChange={setNewApptOpen}
         defaultProfessionalId={profile?.role === "professional" ? profile.id : undefined}
+        appointmentSource="professional"
         onSaved={() => void load()}
       />
     </DashboardShell>
