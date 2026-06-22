@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "db:schema": "bun run scripts/apply-schema.ts",
+    "db:push": "bun run scripts/supabase-db-push.ts",
     "db:export": "bun run scripts/export-schema.ts",
     "db:setup": "bun run scripts/setup-database.ts",
     "db:migrate": "bun run scripts/migrate-supabase.ts",
