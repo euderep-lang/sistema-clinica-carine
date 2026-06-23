@@ -5,14 +5,17 @@ import {
   CalendarCheck,
   Camera,
   Columns2,
+  DollarSign,
   FilePenLine,
   Flag,
   FlaskConical,
   LayoutGrid,
+  Receipt,
   Salad,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { BudgetFormDialog } from "@/components/professional/budget-form-dialog";
 import { FinishConsultationDialog } from "@/components/professional/finish-consultation-dialog";
 import { useClinicalTools } from "@/components/professional/use-clinical-tools";
 import {
@@ -33,7 +36,15 @@ interface RecordBottomBarProps {
   onPhotosCompareClick?: () => void;
 }
 
-type ItemKey = "finish" | "sessions" | "rx" | "nutro" | "modules" | "photos";
+type ItemKey =
+  | "finish"
+  | "rx"
+  | "financeiro"
+  | "budget"
+  | "modules"
+  | "sessions"
+  | "nutro"
+  | "photos";
 
 type BarItem = {
   key: ItemKey;
@@ -45,15 +56,16 @@ type BarItem = {
 
 const ICON_STYLES: Record<ItemKey, string> = {
   finish: "text-emerald-600",
-  sessions: "text-violet-600",
   rx: "text-primary",
-  nutro: "text-lime-600",
+  financeiro: "text-sky-600",
+  budget: "text-amber-600",
   modules: "text-primary",
+  sessions: "text-violet-600",
+  nutro: "text-lime-600",
   photos: "text-rose-600",
 };
 
 const CLINICAL_MODULES = [
-  { id: "receituario", label: "Receituário", icon: FilePenLine, iconClass: ICON_STYLES.rx },
   { id: "nutrologia", label: "Nutrologia", icon: Salad, iconClass: ICON_STYLES.nutro },
 ] as const;
 
@@ -107,6 +119,7 @@ export function RecordBottomBar({
     patientName,
   );
   const [finishOpen, setFinishOpen] = useState(false);
+  const [budgetOpen, setBudgetOpen] = useState(false);
   const [modulesOpen, setModulesOpen] = useState(false);
   const [photosOpen, setPhotosOpen] = useState(false);
 
@@ -124,13 +137,19 @@ export function RecordBottomBar({
     });
   };
 
+  const openFinancial = () => {
+    navigate({
+      to: "/professional/patients/$id",
+      params: { id: patientId },
+      search: { tab: "financeiro" },
+    });
+  };
+
   const openModule = (moduleId: string) => {
-    if (moduleId === "receituario") {
+    if (moduleId === "nutrologia") {
       setModulesOpen(false);
-      openPrescription();
-      return;
+      toast.info("Módulo de nutrologia em desenvolvimento.");
     }
-    toast.info("Módulo em desenvolvimento.");
   };
 
   const actionItems: BarItem[] = [
@@ -140,6 +159,27 @@ export function RecordBottomBar({
       icon: Flag,
       iconClass: ICON_STYLES.finish,
       onClick: () => setFinishOpen(true),
+    },
+    {
+      key: "rx",
+      label: "Receituário",
+      icon: FilePenLine,
+      iconClass: ICON_STYLES.rx,
+      onClick: openPrescription,
+    },
+    {
+      key: "financeiro",
+      label: "Financeiro",
+      icon: DollarSign,
+      iconClass: ICON_STYLES.financeiro,
+      onClick: openFinancial,
+    },
+    {
+      key: "budget",
+      label: "Orçamento",
+      icon: Receipt,
+      iconClass: ICON_STYLES.budget,
+      onClick: () => setBudgetOpen(true),
     },
     {
       key: "modules",
@@ -181,6 +221,13 @@ export function RecordBottomBar({
         open={finishOpen}
         onOpenChange={setFinishOpen}
         patientId={patientId}
+      />
+
+      <BudgetFormDialog
+        open={budgetOpen}
+        onOpenChange={setBudgetOpen}
+        defaultPatientId={patientId}
+        onSaved={() => setBudgetOpen(false)}
       />
 
       <Sheet open={photosOpen} onOpenChange={setPhotosOpen}>
@@ -268,6 +315,19 @@ export function RecordBottomBar({
                 </li>
               );
             })}
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  setModulesOpen(false);
+                  openPrescription();
+                }}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-muted/50"
+              >
+                <FilePenLine className={cn("size-4 shrink-0", ICON_STYLES.rx)} strokeWidth={2} />
+                <span className="font-medium">Receituário</span>
+              </button>
+            </li>
             {(onPhotosExamsClick || onPhotosBeforeAfterClick || onPhotosCompareClick) && (
               <li>
                 <button

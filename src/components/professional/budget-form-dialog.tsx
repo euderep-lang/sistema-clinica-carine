@@ -71,6 +71,7 @@ interface BudgetFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   budgetId?: string | null;
+  defaultPatientId?: string | null;
   onSaved: () => void;
 }
 
@@ -78,6 +79,7 @@ export function BudgetFormDialog({
   open,
   onOpenChange,
   budgetId,
+  defaultPatientId,
   onSaved,
 }: BudgetFormDialogProps) {
   const { profile, tenant } = useAuth();
@@ -177,10 +179,11 @@ export function BudgetFormDialog({
         );
       } else {
         resetForm();
+        if (defaultPatientId) setPatientId(defaultPatientId);
       }
       setLoading(false);
     })();
-  }, [open, budgetId, profile, onOpenChange]);
+  }, [open, budgetId, defaultPatientId, profile, onOpenChange]);
 
   const filteredPatients = useMemo(() => {
     const q = patientSearch.trim().toLowerCase();

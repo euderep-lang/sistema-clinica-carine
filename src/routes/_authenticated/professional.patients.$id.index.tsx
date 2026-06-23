@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Pencil, Stethoscope } from "lucide-react";
+import { PatientFinancialTab } from "@/components/patient-financial-tab";
 import { PatientSessionsContent } from "@/components/professional/patient-sessions-content";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/dashboard-shell";
@@ -32,7 +33,7 @@ import {
 import type { PatientFormData } from "@/components/patient-form-dialog";
 import { PatientFormDialog } from "@/components/patient-form-dialog";
 
-const PATIENT_TABS = ["dados", "consultas", "sessoes"] as const;
+const PATIENT_TABS = ["dados", "consultas", "sessoes", "financeiro"] as const;
 type PatientTab = (typeof PATIENT_TABS)[number];
 
 export const Route = createFileRoute("/_authenticated/professional/patients/$id/")({
@@ -169,6 +170,7 @@ function ProfessionalPatientPage() {
             <TabsTrigger value="dados">Cadastro</TabsTrigger>
             <TabsTrigger value="consultas">Agendamentos</TabsTrigger>
             <TabsTrigger value="sessoes">Sessões</TabsTrigger>
+            <TabsTrigger value="financeiro">Financeiro</TabsTrigger>
           </TabsList>
 
           <TabsContent value="dados">
@@ -278,6 +280,10 @@ function ProfessionalPatientPage() {
               patientName={patient.full_name}
               active={tab === "sessoes"}
             />
+          </TabsContent>
+
+          <TabsContent value="financeiro">
+            <PatientFinancialTab patientId={id} />
           </TabsContent>
         </Tabs>
       </div>
