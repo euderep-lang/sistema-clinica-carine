@@ -42,6 +42,7 @@ import {
   PROFESSIONAL_AGENDA_STATUS_VALUES,
 } from "@/lib/appointment-types";
 import { useAuth } from "@/lib/mock-auth";
+import { AUTOMATION_QUEUED_MESSAGE } from "@/lib/automation-messages";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/professional/agenda")({
@@ -140,7 +141,12 @@ function ProfessionalAgendaPage() {
       status,
       async () => {
         const ok = await updateStatus(id, status);
-        if (ok) toast.success("Situação atualizada");
+        if (ok) {
+          toast.success("Situação atualizada");
+          if (status === "completed" || status === "no_show") {
+            toast.info(AUTOMATION_QUEUED_MESSAGE);
+          }
+        }
         return ok;
       },
       { patientName: row?.patients?.full_name },

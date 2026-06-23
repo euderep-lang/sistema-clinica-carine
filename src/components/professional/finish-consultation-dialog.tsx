@@ -29,6 +29,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
 import { fmt } from "@/lib/currency";
+import { AUTOMATION_QUEUED_MESSAGE } from "@/lib/automation-messages";
 
 interface Procedure {
   id: string;
@@ -212,6 +213,10 @@ export function FinishConsultationDialog({
       toast.success(`Consulta finalizada · ${fmt(result.total)} lançado no financeiro`);
     } else {
       toast.success("Consulta finalizada");
+    }
+
+    if (result?.appointment_id) {
+      toast.info(AUTOMATION_QUEUED_MESSAGE);
     }
 
     onOpenChange(false);

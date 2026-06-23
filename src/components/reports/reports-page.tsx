@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { todayISO, shiftDateISO, firstDayOfMonthISO, addMonthsISO, fmtDateShortWeekday, fmtDate } from "@/lib/locale";
+import { todayISO, shiftDateISO, firstDayOfMonthISO, addMonthsISO, fmtDateShortWeekday, fmtDate, fmtDateTime } from "@/lib/locale";
 import { Users, CreditCard, Stethoscope, CalendarRange, BanknoteArrowDown, UserPlus, Download, Star } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
@@ -16,6 +22,7 @@ import { resolveLetterheadProfessionalId } from "@/lib/letterhead";
 import { printWithLetterhead } from "@/lib/letterhead-print";
 import { TableSkeleton, EmptyState } from "@/components/feedback-states";
 import { FluxoCashFlowReport } from "@/components/reports/fluxo-cash-flow-report";
+import { cn } from "@/lib/utils";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend, PieChart, Pie, Cell } from "recharts";
 
 const REPORTS = [
@@ -294,23 +301,64 @@ function AgendaReport() {
 }
 
 // 6. NPS
+type NpsResponseRow = {
+  score: number;
+  feedback: string | null;
+  answered_at: string;
+  patientName: string;
+  professionalName: string;
+};
+
+function npsBadgeVariant(score: number): "default" | "destructive" | "secondary" {
+  if (score >= 9) return "default";
+  if (score <= 6) return "destructive";
+  return "secondary";
+}
+
 function NpsReport() {
   const [from, setFrom] = useState(() => shiftDateISO(todayISO(), -90));
   const [to, setTo] = useState(today());
   const [loading, setLoading] = useState(true);
   const [scores, setScores] = useState<number[]>([]);
-  const [rows, setRows] = useState<{ score: number; feedback: string | null; answered_at: string }[]>([]);
+  const [rows, setRows] = useState<NpsResponseRow[]>([]);
+  const [selected, setSelected] = useState<NpsResponseRow | null>(null);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
       const { data } = await supabase
         .from("nps_responses" as never)
-        .select("score, feedback, answered_at")
+        .select(
+          "score, feedback, answered_at, nps_surveys(patients(full_name), profiles!nps_surveys_professional_id_fkey(full_name))",
+        )
         .gte("answered_at", `${from}T00:00:00`)
         .lte("answered_at", `${to}T23:59:59`)
         .order("answered_at", { ascending: false });
-      const list = (data ?? []) as { score: number; feedback: string | null; answered_at: string }[];
+      type NpsRow = {
+        score: number;
+        feedback: string | null;
+        answered_at: string;
+        nps_surveys: {
+          patients: { full_name: string } | { full_name: string }[] | null;
+          profiles: { full_name: string } | { full_name: string }[] | null;
+        } | null;
+      };
+      const list = ((data ?? []) as NpsRow[]).map((r) => {
+        const survey = r.nps_surveys;
+        const patient = survey?.patients;
+        const professional = survey?.profiles;
+        const patientName = Array.isArray(patient) ? patient[0]?.full_name : patient?.full_name;
+        const professionalName = Array.isArray(professional)
+          ? professional[0]?.full_name
+          : professional?.full_name;
+        return {
+          score: r.score,
+          feedback: r.feedback,
+          answered_at: r.answered_at,
+          patientName: patientName ?? "—",
+          professionalName: professionalName ?? "—",
+        };
+      });
       setRows(list);
       setScores(list.map((r) => r.score));
       setLoading(false);
@@ -355,25 +403,76 @@ function NpsReport() {
                 <thead className="text-left text-xs text-muted-foreground uppercase">
                   <tr>
                     <th className="p-2">Data</th>
+                    <th>Paciente</th>
+                    <th>Profissional</th>
                     <th>Nota</th>
-                    <th>Comentário</th>
+                    <th className="max-w-[200px]">Comentário</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((r, i) => (
-                    <tr key={i} className="border-t">
-                      <td className="p-2">{fmtDate(r.answered_at.slice(0, 10))}</td>
+                    <tr
+                      key={i}
+                      className="cursor-pointer border-t transition-colors hover:bg-muted/50"
+                      onClick={() => setSelected(r)}
+                    >
+                      <td className="p-2 whitespace-nowrap">{fmtDate(r.answered_at.slice(0, 10))}</td>
+                      <td className="max-w-[140px] truncate font-medium">{r.patientName}</td>
+                      <td className="max-w-[120px] truncate text-muted-foreground">{r.professionalName}</td>
                       <td>
-                        <Badge variant={r.score >= 9 ? "default" : r.score <= 6 ? "destructive" : "secondary"}>
-                          {r.score}
-                        </Badge>
+                        <Badge variant={npsBadgeVariant(r.score)}>{r.score}</Badge>
                       </td>
-                      <td className="text-muted-foreground">{r.feedback ?? "—"}</td>
+                      <td className="max-w-[200px] truncate text-muted-foreground">
+                        {r.feedback ?? "—"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+
+            <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Resposta NPS</DialogTitle>
+                </DialogHeader>
+                {selected && (
+                  <dl className="grid gap-4 text-sm">
+                    <div className="grid gap-1 sm:grid-cols-[120px_1fr]">
+                      <dt className="text-muted-foreground">Data</dt>
+                      <dd className="font-medium">{fmtDateTime(selected.answered_at)}</dd>
+                    </div>
+                    <div className="grid gap-1 sm:grid-cols-[120px_1fr]">
+                      <dt className="text-muted-foreground">Paciente</dt>
+                      <dd className="font-medium">{selected.patientName}</dd>
+                    </div>
+                    <div className="grid gap-1 sm:grid-cols-[120px_1fr]">
+                      <dt className="text-muted-foreground">Profissional</dt>
+                      <dd>{selected.professionalName}</dd>
+                    </div>
+                    <div className="grid gap-1 sm:grid-cols-[120px_1fr]">
+                      <dt className="text-muted-foreground">Nota</dt>
+                      <dd>
+                        <Badge variant={npsBadgeVariant(selected.score)} className="text-sm">
+                          {selected.score}
+                        </Badge>
+                      </dd>
+                    </div>
+                    <div className="grid gap-2">
+                      <dt className="text-muted-foreground">Comentário</dt>
+                      <dd
+                        className={cn(
+                          "rounded-md border bg-muted/30 p-3 leading-relaxed whitespace-pre-wrap",
+                          !selected.feedback && "text-muted-foreground italic",
+                        )}
+                      >
+                        {selected.feedback?.trim() || "Sem comentário"}
+                      </dd>
+                    </div>
+                  </dl>
+                )}
+              </DialogContent>
+            </Dialog>
           </>
         )}
       </CardContent>

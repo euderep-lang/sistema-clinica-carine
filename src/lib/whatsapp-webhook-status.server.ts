@@ -27,7 +27,7 @@ export async function getWhatsAppWebhookStatus() {
     supabase,
     zapi: {
       configured: Boolean(zapi),
-      instanceId: zapi?.instanceId ?? null,
+      instanceId: zapi?.instanceId ? `…${zapi.instanceId.slice(-6)}` : null,
     },
     tenant: {
       resolved: Boolean(tenantId),

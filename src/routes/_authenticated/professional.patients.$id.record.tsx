@@ -49,7 +49,6 @@ import {
   findPatientAppointmentToday,
 } from "@/lib/patient-appointment";
 import { cn } from "@/lib/utils";
-import { ClinicalToolsPanel } from "@/components/professional/clinical-tools-panel";
 
 export const Route = createFileRoute("/_authenticated/professional/patients/$id/record")({
   component: RecordPage,
@@ -436,8 +435,8 @@ function RecordPage() {
 
   return (
     <DashboardShell title={`Prontuário · ${displayName}`} fullWidth>
-      <ClinicalToolsPanel patientId={id} patientName={patient.full_name} />
-      <div className="flex h-[calc(100dvh-4.5rem)] min-h-[36rem] flex-col gap-2">
+      <div className="flex h-[calc(100dvh-4.5rem)] min-h-[36rem] flex-col">
+        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden pb-1">
         <div className="flex shrink-0 items-center justify-between gap-3">
           <div className="flex items-center gap-1.5 text-sm">
           <span className="font-semibold text-foreground">{displayName}</span>
@@ -488,8 +487,8 @@ function RecordPage() {
           </Button>
         </div>
 
-        <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
-          <ResizablePanel defaultSize={56} minSize={30} className="min-h-0 pr-1">
+        <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1 gap-1">
+          <ResizablePanel defaultSize={56} minSize={30} className="min-h-0">
             <EvolutionHistory
               entries={history}
               loading={loading}
@@ -498,13 +497,21 @@ function RecordPage() {
               onAddFiles={(files) => void prepareMediaFiles(files)}
             />
           </ResizablePanel>
-          <ResizableHandle className="w-1 rounded-full bg-border transition-colors hover:bg-primary/30" />
-          <ResizablePanel defaultSize={44} minSize={28} className="min-h-0 pl-1">
-            <div className="flex h-full min-h-0 flex-col rounded-xl border border-primary/10 bg-muted/40 p-2 ring-1 ring-inset ring-primary/5">
-              <EvolutionEditor saving={saving} onSave={handleSave} />
-            </div>
+          <ResizableHandle withHandle className="mx-1 w-2 bg-border/50 transition-colors hover:bg-primary/20" />
+          <ResizablePanel defaultSize={44} minSize={28} className="min-h-0">
+            <EvolutionEditor saving={saving} onSave={handleSave} />
           </ResizablePanel>
         </ResizablePanelGroup>
+        </div>
+
+        <RecordBottomBar
+          patientId={id}
+          patientName={patient.full_name}
+          onSessionsClick={() => setSessionsOpen(true)}
+          onPhotosExamsClick={() => openPhotoPicker("exams")}
+          onPhotosBeforeAfterClick={() => openPhotoPicker("before_after")}
+          onPhotosCompareClick={() => setCompareOpen(true)}
+        />
 
         <MediaCaptionDialog
           open={captionDialogOpen}
@@ -521,14 +528,6 @@ function RecordPage() {
           }
           onConfirm={() => void confirmMediaUpload()}
           onCancel={clearPendingMedia}
-        />
-
-        <RecordBottomBar
-          patientId={id}
-          onSessionsClick={() => setSessionsOpen(true)}
-          onPhotosExamsClick={() => openPhotoPicker("exams")}
-          onPhotosBeforeAfterClick={() => openPhotoPicker("before_after")}
-          onPhotosCompareClick={() => setCompareOpen(true)}
         />
 
         <input

@@ -1,15 +1,8 @@
+import { verifyCronAuth } from "@/lib/internal-api-auth.server";
 import { processAppointmentNotifyQueue } from "@/lib/wa-appointment-notify.server";
 import { processDueFollowUps } from "@/lib/wa-follow-up.server";
 
-/** Valida Authorization: Bearer <CRON_SECRET> (enviado automaticamente pelo Vercel Cron). */
-export function verifyCronAuth(request: Request): boolean {
-  const secret = process.env.CRON_SECRET?.trim();
-  if (!secret) {
-    return process.env.NODE_ENV !== "production";
-  }
-  const auth = request.headers.get("authorization");
-  return auth === `Bearer ${secret}`;
-}
+export { verifyCronAuth };
 
 export async function handleWaFollowUpsCron(request: Request): Promise<Response> {
   if (request.method !== "GET" && request.method !== "POST") {

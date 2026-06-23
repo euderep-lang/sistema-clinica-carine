@@ -6,7 +6,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { dashboardPathFor, useAuth } from "@/lib/mock-auth";
+import { useAuth } from "@/lib/mock-auth";
+import { postLoginPathForRole } from "@/lib/crm-pwa";
 
 export const Route = createFileRoute("/login")({
   head: () => ({ meta: [{ title: "Entrar — ClinicOS" }] }),
@@ -27,7 +28,7 @@ function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
 
   if (!loading && profile) {
-    return <Navigate to={dashboardPathFor(profile.role)} />;
+    return <Navigate to={postLoginPathForRole(profile.role)} />;
   }
 
   const onSubmit = async (e: FormEvent) => {
@@ -36,7 +37,7 @@ function LoginPage() {
     try {
       const p = await signIn(email, password);
       toast.success(`Bem-vindo(a), ${p.full_name}`);
-      navigate({ to: dashboardPathFor(p.role) });
+      navigate({ to: postLoginPathForRole(p.role) });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Falha ao entrar");
     } finally {

@@ -14,6 +14,7 @@ import { logAuditSafe } from "@/lib/audit.server";
 import { isWhatsAppConfigured, providerSendText } from "@/lib/whatsapp-provider.server";
 import { buildGenderTemplateVars } from "@/lib/wa-template-gender";
 import { normalizeOutboundMessageBody } from "@/lib/wa-automation-quick-replies.server";
+import { getPublicAppUrl } from "@/lib/app-url";
 
 export type { FollowUpMode, FollowUpStepDef };
 
@@ -25,7 +26,12 @@ export type FollowUpTrigger =
   | "no_show"
   | "reactivation"
   | "objection"
-  | "professional_request";
+  | "professional_request"
+  | "nps";
+
+/** Aguarda este tempo após concluir a consulta antes de enviar o NPS por WhatsApp. */
+export const NPS_SEND_DELAY_MINUTES = 5;
+const NPS_STEP_KEY = "nps_post_consultation";
 
 export const OBJECTION_TYPES = {
   vou_pensar: "Vou pensar",
@@ -436,6 +442,27 @@ async function shouldSendFollowUpStep(input: {
       }
       break;
     }
+    case "nps": {
+      if (!input.appointmentId) break;
+      const { data: survey } = await supabaseAdmin
+        .from("nps_surveys" as never)
+        .select("status")
+        .eq("appointment_id", input.appointmentId)
+        .maybeSingle();
+      const surveyStatus = (survey as { status?: string } | null)?.status;
+      if (surveyStatus === "answered") {
+        return { ok: false, reason: "nps_ja_respondido", cancelRun: true };
+      }
+      const { data: appt } = await supabaseAdmin
+        .from("appointments")
+        .select("status")
+        .eq("id", input.appointmentId)
+        .maybeSingle();
+      if ((appt as { status?: string } | null)?.status !== "completed") {
+        return { ok: false, reason: "consulta_nao_concluida", cancelRun: true };
+      }
+      break;
+    }
     case "no_show": {
       if (!input.appointmentId) break;
       const { data: appt } = await supabaseAdmin
@@ -493,6 +520,7 @@ export async function cancelActiveFollowUpRuns(input: {
   tenantId: string;
   conversationId?: string;
   patientId?: string;
+  appointmentId?: string;
   triggerTypes?: string[];
   reason: string;
 }) {
@@ -504,6 +532,7 @@ export async function cancelActiveFollowUpRuns(input: {
 
   if (input.conversationId) q = q.eq("conversation_id", input.conversationId);
   if (input.patientId) q = q.eq("patient_id", input.patientId);
+  if (input.appointmentId) q = q.eq("appointment_id", input.appointmentId);
   if (input.triggerTypes?.length) q = q.in("trigger_type", input.triggerTypes);
 
   const { data: runs } = await q;
@@ -686,6 +715,77 @@ export async function scheduleFollowUpRun(input: {
   }
 
   return runId;
+}
+
+function buildNpsMessageText(patientName: string | null | undefined, npsToken: string): string {
+  const first = patientName?.trim().split(/\s+/)[0];
+  const npsLink = `${getPublicAppUrl()}/nps/${npsToken}`;
+  return `Olá${first ? `, ${first}` : ""}! Em uma escala de 0 a 10, o quanto você recomendaria nossa clínica? Responda aqui: ${npsLink}`;
+}
+
+/** Agenda envio do NPS por WhatsApp alguns minutos após a conclusão da consulta. */
+async function scheduleNpsWhatsApp(input: {
+  tenantId: string;
+  appointmentId: string;
+  patientId: string;
+  conversationId: string | null;
+  npsToken: string;
+  patientName?: string | null;
+}) {
+  if (!input.conversationId) return;
+
+  const npsText = buildNpsMessageText(input.patientName, input.npsToken);
+  const publicUrl = getPublicAppUrl();
+
+  const { data: priorNpsMsg } = await supabaseAdmin
+    .from("wa_messages" as never)
+    .select("id, body")
+    .eq("conversation_id", input.conversationId)
+    .eq("direction", "outbound")
+    .ilike("body", `%/nps/${input.npsToken}%`)
+    .limit(1)
+    .maybeSingle();
+  const priorBody = (priorNpsMsg as { body?: string } | null)?.body ?? "";
+  if (priorNpsMsg && priorBody.includes(publicUrl)) return;
+
+  await cancelActiveFollowUpRuns({
+    tenantId: input.tenantId,
+    appointmentId: input.appointmentId,
+    triggerTypes: ["nps"],
+    reason: "nps_reagendado",
+  });
+
+  const scheduledAt = new Date(Date.now() + NPS_SEND_DELAY_MINUTES * 60_000);
+
+  const { data: run, error: runErr } = await supabaseAdmin
+    .from("wa_follow_up_runs" as never)
+    .insert({
+      tenant_id: input.tenantId,
+      trigger_type: "nps",
+      patient_id: input.patientId,
+      conversation_id: input.conversationId,
+      appointment_id: input.appointmentId,
+      metadata: { nps_token: input.npsToken },
+    } as never)
+    .select("id")
+    .single();
+  if (runErr) throw new Error(runErr.message);
+
+  const runId = (run as { id: string }).id;
+  const { error: schedErr } = await supabaseAdmin.from("wa_follow_up_schedules" as never).insert({
+    tenant_id: input.tenantId,
+    run_id: runId,
+    step_key: NPS_STEP_KEY,
+    sequence_order: 0,
+    mode: "auto",
+    scheduled_at: scheduledAt.toISOString(),
+    message_template: npsText,
+    rendered_message: npsText,
+    conversation_id: input.conversationId,
+    patient_id: input.patientId,
+    appointment_id: input.appointmentId,
+  } as never);
+  if (schedErr) throw new Error(schedErr.message);
 }
 
 async function sendAutomatedMessage(
@@ -902,6 +1002,18 @@ export async function processDueFollowUps(
       }
 
       await attachFollowUpMessage(row.id, result.messageRowId || null);
+
+      if (row.step_key === NPS_STEP_KEY && row.appointment_id) {
+        await supabaseAdmin
+          .from("nps_surveys" as never)
+          .update({ status: "sent", sent_at: new Date().toISOString() } as never)
+          .eq("appointment_id", row.appointment_id)
+          .in("status", ["pending"]);
+        await supabaseAdmin
+          .from("wa_follow_up_runs" as never)
+          .update({ status: "completed", completed_at: new Date().toISOString() } as never)
+          .eq("id", row.run_id);
+      }
 
       if (
         row.step_key === "appointment_reminder_24h" ||
@@ -1144,6 +1256,12 @@ export async function onAppointmentStatusChange(input: {
   startsAt: Date;
 }) {
   if (input.status === "completed") {
+    const { data: existingNps } = await supabaseAdmin
+      .from("nps_surveys" as never)
+      .select("token, status")
+      .eq("appointment_id", input.appointmentId)
+      .maybeSingle();
+
     const conv = await ensureOutboundConversationForPatient(input.tenantId, input.patientId);
     const { data: professional } = await supabaseAdmin
       .from("profiles")
@@ -1164,60 +1282,66 @@ export async function onAppointmentStatusChange(input: {
       conversationId: conv?.id ?? null,
     });
 
-    await scheduleFollowUpRun({
-      tenantId: input.tenantId,
-      triggerType: "post_consultation",
-      sequenceKey: "post_consultation",
-      conversationId: conv?.id ?? null,
-      patientId: input.patientId,
-      appointmentId: input.appointmentId,
-      baseTime: new Date(),
-      templateContext: {
-        patientName: patient?.full_name ?? conv?.contact_name,
-        professionalName: professional?.full_name,
-      },
-    });
-
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 14);
-    const { data: npsRow } = await supabaseAdmin
-      .from("nps_surveys" as never)
-      .insert({
-        tenant_id: input.tenantId,
-        patient_id: input.patientId,
-        appointment_id: input.appointmentId,
-        professional_id: input.professionalId,
-        expires_at: expiresAt.toISOString(),
-        status: "pending",
-      } as never)
-      .select("token")
-      .single();
-    const npsToken = (npsRow as { token?: string } | null)?.token;
-    if (npsToken && conv?.id) {
-      const baseUrl =
-        process.env.PUBLIC_APP_URL?.replace(/\/$/, "") ??
-        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:8080");
-      const npsLink = `${baseUrl}/nps/${npsToken}`;
-      void sendAutomatedMessage(
-        input.tenantId,
-        conv.id,
-        `Olá${patient?.full_name ? `, ${patient.full_name.split(" ")[0]}` : ""}! Em uma escala de 0 a 10, o quanto você recomendaria nossa clínica? Responda aqui: ${npsLink}`,
-        { triggerType: "post_consultation" },
-      ).catch((e) => console.error("[CRM] NPS link send error:", e));
+    if (!existingNps) {
+      await scheduleFollowUpRun({
+        tenantId: input.tenantId,
+        triggerType: "post_consultation",
+        sequenceKey: "post_consultation",
+        conversationId: conv?.id ?? null,
+        patientId: input.patientId,
+        appointmentId: input.appointmentId,
+        baseTime: new Date(),
+        templateContext: {
+          patientName: patient?.full_name ?? conv?.contact_name,
+          professionalName: professional?.full_name,
+        },
+      });
     }
 
-    await scheduleFollowUpRun({
-      tenantId: input.tenantId,
-      triggerType: "reactivation",
-      sequenceKey: "reactivation",
-      conversationId: conv?.id ?? null,
-      patientId: input.patientId,
-      baseTime: new Date(),
-      templateContext: {
+    let npsToken = (existingNps as { token?: string } | null)?.token;
+    if (!npsToken) {
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 14);
+      const { data: npsRow } = await supabaseAdmin
+        .from("nps_surveys" as never)
+        .insert({
+          tenant_id: input.tenantId,
+          patient_id: input.patientId,
+          appointment_id: input.appointmentId,
+          professional_id: input.professionalId,
+          expires_at: expiresAt.toISOString(),
+          status: "pending",
+        } as never)
+        .select("token")
+        .single();
+      npsToken = (npsRow as { token?: string } | null)?.token;
+    }
+
+    if (npsToken && conv?.id) {
+      await scheduleNpsWhatsApp({
+        tenantId: input.tenantId,
+        appointmentId: input.appointmentId,
+        patientId: input.patientId,
+        conversationId: conv.id,
+        npsToken,
         patientName: patient?.full_name ?? conv?.contact_name,
-        professionalName: professional?.full_name,
-      },
-    });
+      }).catch((e) => console.error("[CRM] NPS schedule error:", e));
+    }
+
+    if (!existingNps) {
+      await scheduleFollowUpRun({
+        tenantId: input.tenantId,
+        triggerType: "reactivation",
+        sequenceKey: "reactivation",
+        conversationId: conv?.id ?? null,
+        patientId: input.patientId,
+        baseTime: new Date(),
+        templateContext: {
+          patientName: patient?.full_name ?? conv?.contact_name,
+          professionalName: professional?.full_name,
+        },
+      });
+    }
     return;
   }
 

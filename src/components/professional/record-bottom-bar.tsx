@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { FinishConsultationDialog } from "@/components/professional/finish-consultation-dialog";
+import { useClinicalTools } from "@/components/professional/use-clinical-tools";
 import {
   Sheet,
   SheetContent,
@@ -25,6 +26,7 @@ import { cn } from "@/lib/utils";
 
 interface RecordBottomBarProps {
   patientId: string;
+  patientName: string;
   onSessionsClick?: () => void;
   onPhotosExamsClick?: () => void;
   onPhotosBeforeAfterClick?: () => void;
@@ -61,14 +63,58 @@ const PHOTO_OPTIONS = [
   { id: "compare", label: "Comparação Antes x Depois", icon: Columns2, iconClass: "text-violet-600" },
 ] as const;
 
+function BarButton({
+  label,
+  icon: Icon,
+  iconClass,
+  onClick,
+  emphasized,
+}: {
+  label: string;
+  icon: LucideIcon;
+  iconClass: string;
+  onClick: () => void;
+  emphasized?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex shrink-0 items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors",
+        "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        emphasized && "text-foreground",
+      )}
+    >
+      <Icon className={cn("size-4", iconClass)} strokeWidth={2} />
+      <span className="whitespace-nowrap">{label}</span>
+    </button>
+  );
+}
+
+function BarDivider() {
+  return (
+    <span
+      className="mx-1 hidden h-6 w-px shrink-0 bg-border sm:block"
+      aria-hidden
+    />
+  );
+}
+
 export function RecordBottomBar({
   patientId,
+  patientName,
   onSessionsClick,
   onPhotosExamsClick,
   onPhotosBeforeAfterClick,
   onPhotosCompareClick,
 }: RecordBottomBarProps) {
   const navigate = useNavigate();
+  const { barItems: clinicalItems, dialogs: clinicalDialogs } = useClinicalTools(
+    patientId,
+    patientName,
+  );
   const [finishOpen, setFinishOpen] = useState(false);
   const [modulesOpen, setModulesOpen] = useState(false);
   const [photosOpen, setPhotosOpen] = useState(false);
@@ -96,7 +142,7 @@ export function RecordBottomBar({
     toast.info("Módulo em desenvolvimento.");
   };
 
-  const items: BarItem[] = [
+  const actionItems: BarItem[] = [
     {
       key: "finish",
       label: "Finalizar Consulta",
@@ -152,34 +198,39 @@ export function RecordBottomBar({
   return (
     <>
       <nav
-        aria-label="Ações da consulta"
-        className="flex shrink-0 items-center justify-center overflow-x-auto border-t bg-card px-3 py-2.5"
+        aria-label="Ferramentas e ações da consulta"
+        className={cn(
+          "sticky bottom-0 z-30 shrink-0 border-t bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/90",
+          "shadow-[0_-4px_16px_rgba(0,0,0,0.06)]",
+        )}
       >
-        <div className="flex items-center gap-1 sm:gap-0">
-          {items.map((item, index) => (
-            <div key={item.key} className="flex items-center">
-              {index > 0 && (
-                <span className="mx-2 hidden text-border sm:inline" aria-hidden>
-                  |
-                </span>
-              )}
-              <button
-                type="button"
+        <div className="overflow-x-auto px-3 py-2.5">
+          <div className="flex min-w-max items-center gap-0.5">
+            {clinicalItems.map((item) => (
+              <BarButton
+                key={item.key}
+                label={item.label}
+                icon={item.icon}
+                iconClass={item.iconClass}
                 onClick={item.onClick}
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors",
-                  "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  item.key === "modules" && "text-foreground",
-                )}
-              >
-                <item.icon className={cn("size-4", item.iconClass)} strokeWidth={2} />
-                <span className="whitespace-nowrap">{item.label}</span>
-              </button>
-            </div>
-          ))}
+              />
+            ))}
+            <BarDivider />
+            {actionItems.map((item) => (
+              <BarButton
+                key={item.key}
+                label={item.label}
+                icon={item.icon}
+                iconClass={item.iconClass}
+                onClick={item.onClick}
+                emphasized={item.key === "modules"}
+              />
+            ))}
+          </div>
         </div>
       </nav>
+
+      {clinicalDialogs}
 
       <FinishConsultationDialog
         open={finishOpen}
@@ -228,7 +279,7 @@ export function RecordBottomBar({
           </SheetHeader>
           <ul className="mt-4 divide-y rounded-lg border">
             {MODULES.map((mod) => {
-              const item = items.find((i) => i.key === mod.key);
+              const item = actionItems.find((i) => i.key === mod.key);
               if (!item) return null;
               const Icon = item.icon;
               return (

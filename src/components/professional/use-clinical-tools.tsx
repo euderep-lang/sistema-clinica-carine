@@ -1,19 +1,15 @@
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Brain, Download, FlaskConical, Share2, Loader2 } from "lucide-react";
-import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+  Brain,
+  Download,
+  FileSearch,
+  FlaskConical,
+  Link2,
+  Loader2,
+  Share2,
+  type LucideIcon,
+} from "lucide-react";
 import {
   createExamRequest,
   createPreRegistrationLink,
@@ -24,12 +20,15 @@ import {
 } from "@/lib/platform.functions";
 import { supabase } from "@/integrations/supabase/client";
 
-interface ClinicalToolsPanelProps {
-  patientId: string;
-  patientName: string;
-}
+export type ClinicalToolBarItem = {
+  key: string;
+  label: string;
+  icon: LucideIcon;
+  iconClass: string;
+  onClick: () => void;
+};
 
-export function ClinicalToolsPanel({ patientId, patientName }: ClinicalToolsPanelProps) {
+export function useClinicalTools(patientId: string, patientName: string) {
   const summaryFn = useServerFn(summarizePatientRecord);
   const examFn = useServerFn(createExamRequest);
   const interpretFn = useServerFn(interpretExamText);
@@ -141,47 +140,62 @@ export function ClinicalToolsPanel({ patientId, patientName }: ClinicalToolsPane
     }
   };
 
-  return (
-    <>
-      <Card className="mb-4">
-        <CardHeader className="py-3">
-          <CardTitle className="text-sm font-medium">Ferramentas clínicas</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2 pb-3">
-          <Button size="sm" variant="outline" onClick={() => void loadSummary()}>
-            <Brain className="size-3.5 mr-1.5" />
-            Resumo IA
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setExamOpen(true)}>
-            <FlaskConical className="size-3.5 mr-1.5" />
-            Solicitar exames
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setInterpretOpen(true)}>
-            Interpretar laudo
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => void openShare()}>
-            <Share2 className="size-3.5 mr-1.5" />
-            Compartilhar
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => void exportData()}>
-            <Download className="size-3.5 mr-1.5" />
-            Exportar LGPD
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => void copyPreRegLink()}>
-            Link pré-cadastro
-          </Button>
-        </CardContent>
-      </Card>
+  const barItems: ClinicalToolBarItem[] = [
+    {
+      key: "summary",
+      label: "Resumo IA",
+      icon: Brain,
+      iconClass: "text-violet-600",
+      onClick: () => void loadSummary(),
+    },
+    {
+      key: "exam",
+      label: "Solicitar exames",
+      icon: FlaskConical,
+      iconClass: "text-sky-600",
+      onClick: () => setExamOpen(true),
+    },
+    {
+      key: "interpret",
+      label: "Interpretar laudo",
+      icon: FileSearch,
+      iconClass: "text-amber-600",
+      onClick: () => setInterpretOpen(true),
+    },
+    {
+      key: "share",
+      label: "Compartilhar",
+      icon: Share2,
+      iconClass: "text-blue-600",
+      onClick: () => void openShare(),
+    },
+    {
+      key: "export",
+      label: "Exportar LGPD",
+      icon: Download,
+      iconClass: "text-muted-foreground",
+      onClick: () => void exportData(),
+    },
+    {
+      key: "prereg",
+      label: "Link pré-cadastro",
+      icon: Link2,
+      iconClass: "text-muted-foreground",
+      onClick: () => void copyPreRegLink(),
+    },
+  ];
 
+  const dialogs = (
+    <>
       <Dialog open={summaryOpen} onOpenChange={setSummaryOpen}>
-        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-h-[80vh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Resumo do prontuário</DialogTitle>
           </DialogHeader>
           {summaryLoading ? (
-            <Loader2 className="size-5 animate-spin mx-auto" />
+            <Loader2 className="mx-auto size-5 animate-spin" />
           ) : (
-            <p className="text-sm whitespace-pre-wrap">{summary}</p>
+            <p className="whitespace-pre-wrap text-sm">{summary}</p>
           )}
         </DialogContent>
       </Dialog>
@@ -219,7 +233,9 @@ export function ClinicalToolsPanel({ patientId, patientName }: ClinicalToolsPane
             rows={6}
           />
           {interpretResult && (
-            <p className="text-sm whitespace-pre-wrap rounded-md border p-3 bg-muted/30">{interpretResult}</p>
+            <p className="whitespace-pre-wrap rounded-md border bg-muted/30 p-3 text-sm">
+              {interpretResult}
+            </p>
           )}
           <DialogFooter>
             <Button onClick={() => void runInterpret()} disabled={!interpretText.trim()}>
@@ -256,4 +272,6 @@ export function ClinicalToolsPanel({ patientId, patientName }: ClinicalToolsPane
       </Dialog>
     </>
   );
+
+  return { barItems, dialogs };
 }

@@ -75,6 +75,14 @@ export const getWhatsAppConnection = createServerFn({ method: "GET" }).handler(a
   getWhatsAppConnectionStatus(),
 );
 
+export const getWhatsAppIntegrationStatus = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await requireCrmAdmin(context.supabase, context.userId);
+    const { getWhatsAppWebhookStatus } = await import("@/lib/whatsapp-webhook-status.server");
+    return getWhatsAppWebhookStatus();
+  });
+
 export const getCrmMetrics = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {

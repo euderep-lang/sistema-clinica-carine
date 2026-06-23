@@ -1,5 +1,6 @@
 import { processDueFollowUps } from "@/lib/wa-follow-up.server";
 import { isBrazilMobileE164, isWhatsAppLid, normalizeBrazilPhone } from "@/lib/wa-phone";
+import { verifyZApiWebhookAuth } from "@/lib/zapi-webhook-auth.server";
 import {
   insertWaMessage,
   maybeSendAfterHoursAutoReply,
@@ -230,6 +231,9 @@ export async function handleZApiWebhook(request: Request): Promise<Response> {
   }
 
   const config = getZApiConfig();
+  const authError = verifyZApiWebhookAuth(request, config);
+  if (authError) return authError;
+
   if (config?.instanceId && payload.instanceId && payload.instanceId !== config.instanceId) {
     return new Response("OK", { status: 200 });
   }
@@ -240,9 +244,9 @@ export async function handleZApiWebhook(request: Request): Promise<Response> {
   });
   if (!tenantId) {
     console.error(
-      "[Z-API webhook] mensagem descartada — configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY na Vercel. Diagnóstico: /api/whatsapp/webhook-status",
+      "[Z-API webhook] Supabase indisponível — configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY na Vercel.",
     );
-    return new Response("OK", { status: 200 });
+    return new Response("Service Unavailable", { status: 503 });
   }
 
   try {

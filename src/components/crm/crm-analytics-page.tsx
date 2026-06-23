@@ -11,7 +11,8 @@ import {
   UserCheck,
   Users,
 } from "lucide-react";
-import { DashboardShell } from "@/components/dashboard-shell";
+import { CrmPageShell } from "@/components/crm/crm-pwa-shell";
+import { useCrmPwaMode } from "@/components/crm/use-crm-pwa-mode";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCrmAnalytics } from "@/lib/whatsapp-crm.functions";
@@ -46,6 +47,7 @@ function MetricCard({
 
 export function CrmAnalyticsPage() {
   const { profile } = useAuth();
+  const pwaMode = useCrmPwaMode();
   const analyticsFn = useServerFn(getCrmAnalytics);
   const [data, setData] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -60,15 +62,19 @@ export function CrmAnalyticsPage() {
 
   if (profile?.role !== "admin") {
     return (
-      <DashboardShell>
+      <CrmPageShell title="Métricas CRM" pwa={pwaMode ? { activeTab: "analytics", header: { title: "Métricas" } } : undefined}>
         <PageHeader title="Métricas CRM" description="Acesso restrito ao administrador." />
-        <p className="text-sm text-muted-foreground">Você não tem permissão para ver esta página.</p>
-      </DashboardShell>
+        <p className="p-4 text-sm text-muted-foreground">Você não tem permissão para ver esta página.</p>
+      </CrmPageShell>
     );
   }
 
   return (
-    <DashboardShell>
+    <CrmPageShell
+      title="Métricas CRM"
+      pwa={pwaMode ? { activeTab: "analytics", header: { title: "Métricas CRM" } } : undefined}
+    >
+      {!pwaMode ? (
       <PageHeader
         title="Métricas CRM"
         description="Indicadores dos últimos 30 dias — conversão do CRM (agendamentos feitos pelo inbox)."
@@ -81,6 +87,7 @@ export function CrmAnalyticsPage() {
           </Link>
         }
       />
+      ) : null}
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Carregando métricas…</p>
@@ -209,6 +216,6 @@ export function CrmAnalyticsPage() {
           </Card>
         </div>
       ) : null}
-    </DashboardShell>
+    </CrmPageShell>
   );
 }

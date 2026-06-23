@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
 import { APPOINTMENT_STATUS_LABEL, APPOINTMENT_TYPE_LABEL } from "@/lib/appointment-types";
+import { AUTOMATION_QUEUED_MESSAGE } from "@/lib/automation-messages";
 import { todayISO } from "@/lib/locale";
 
 export const Route = createFileRoute("/_authenticated/reception/checkin")({
@@ -40,6 +41,7 @@ type AppointmentRow = {
   type: string | null;
   notes: string | null;
   patient_id: string | null;
+  professional_id: string | null;
   patients: { full_name: string; phone: string | null } | null;
   profiles: { full_name: string } | null;
   rooms: { name: string } | null;
@@ -67,7 +69,7 @@ function CheckinPage() {
     let q = supabase
       .from("appointments")
       .select(
-        "id, date, start_time, end_time, status, type, notes, patient_id, patients(full_name, phone), profiles:professional_id(full_name), rooms(name)",
+        "id, date, start_time, end_time, status, type, notes, patient_id, professional_id, patients(full_name, phone), profiles:professional_id(full_name), rooms(name)",
       )
       .eq("date", date)
       .order("start_time");
@@ -119,6 +121,9 @@ function CheckinPage() {
           ? "Consulta confirmada"
           : "Status atualizado",
     );
+    if (status === "completed" || status === "no_show") {
+      toast.info(AUTOMATION_QUEUED_MESSAGE);
+    }
     void load();
   };
 

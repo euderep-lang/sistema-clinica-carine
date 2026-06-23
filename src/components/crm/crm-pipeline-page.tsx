@@ -10,7 +10,8 @@ import {
   moveWaDealStage,
 } from "@/lib/whatsapp-crm.functions";
 import { conversationDisplayName } from "@/lib/whatsapp-crm";
-import { DashboardShell } from "@/components/dashboard-shell";
+import { CrmPageShell } from "@/components/crm/crm-pwa-shell";
+import { useCrmPwaMode } from "@/components/crm/use-crm-pwa-mode";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -30,6 +31,7 @@ type Deal = {
 
 export function CrmPipelinePage() {
   const { profile } = useAuth();
+  const pwaMode = useCrmPwaMode();
   const ensureFn = useServerFn(ensureWaPipeline);
   const boardFn = useServerFn(getWaPipelineBoard);
   const moveFn = useServerFn(moveWaDealStage);
@@ -103,16 +105,27 @@ export function CrmPipelinePage() {
 
   if (loading) {
     return (
-      <DashboardShell>
-        <div className="flex h-[50vh] items-center justify-center">
+      <CrmPageShell
+        title="Funil"
+        pwa={pwaMode ? { activeTab: "pipeline", header: { title: "Funil de vendas" } } : undefined}
+      >
+        <div className="flex h-full min-h-[50vh] items-center justify-center">
           <Loader2 className="size-8 animate-spin text-muted-foreground" />
         </div>
-      </DashboardShell>
+      </CrmPageShell>
     );
   }
 
   return (
-    <DashboardShell>
+    <CrmPageShell
+      title="Funil"
+      pwa={
+        pwaMode
+          ? { activeTab: "pipeline", header: { title: pipelineName ?? "Funil de vendas" } }
+          : undefined
+      }
+    >
+      {!pwaMode ? (
       <PageHeader
         title={pipelineName ?? "Funil de vendas"}
         description="Arraste os cards entre as colunas para avançar o atendimento."
@@ -135,8 +148,9 @@ export function CrmPipelinePage() {
           </div>
         }
       />
+      ) : null}
 
-      <div className="flex gap-3 overflow-x-auto pb-4">
+      <div className={cn("flex gap-3 overflow-x-auto pb-4", pwaMode && "p-2 pt-3")}>
         {stages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) ?? [];
           const isDropTarget = dragOverStageId === stage.id && dragDealId != null;
@@ -216,10 +230,10 @@ export function CrmPipelinePage() {
         })}
       </div>
 
-      <p className="text-xs text-muted-foreground">
+      <p className={cn("text-xs text-muted-foreground", pwaMode && "px-2 pb-2")}>
         Adicione contatos pelo CRM WhatsApp → aba Paciente → &quot;Adicionar ao funil&quot;.
         {profile?.role === "admin" ? " Configure etapas em Configurações → Funil de vendas." : null}
       </p>
-    </DashboardShell>
+    </CrmPageShell>
   );
 }

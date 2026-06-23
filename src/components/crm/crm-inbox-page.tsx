@@ -52,14 +52,18 @@ import {
 } from "@/components/crm/crm-detail-shell";
 import {
   crmChatBg,
+  crmChatMessagesScroll,
   crmComposerBar,
   crmFilterPill,
   crmListItemActive,
   crmListItemBase,
   crmListScrollArea,
   crmPanelShell,
+  crmWaListBg,
 } from "@/components/crm/crm-inbox-theme";
-import { DashboardShell } from "@/components/dashboard-shell";
+import { CrmPageShell } from "@/components/crm/crm-pwa-shell";
+import { CrmPwaInstallBanner } from "@/components/crm/crm-pwa-install-banner";
+import { useCrmPwaMode } from "@/components/crm/use-crm-pwa-mode";
 import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -131,6 +135,7 @@ import {
   startWaConversation,
   transferWaConversation,
 } from "@/lib/whatsapp.functions";
+import { markCrmPwaSession } from "@/lib/crm-pwa";
 import { cn } from "@/lib/utils";
 import {
   getWaNotificationPermission,
@@ -155,9 +160,14 @@ type ComposeTarget = {
 const crmInboxRoute = getRouteApi("/_authenticated/crm/inbox");
 
 export function CrmInboxPage() {
-  const { conversation: conversationFromUrl, patient: patientFromUrl, phone: phoneFromUrl, draft: draftFromUrl } =
+  const { conversation: conversationFromUrl, patient: patientFromUrl, phone: phoneFromUrl, draft: draftFromUrl, source: sourceFromUrl } =
     crmInboxRoute.useSearch();
   const { profile, tenant } = useAuth();
+  const pwaMode = useCrmPwaMode();
+
+  useEffect(() => {
+    if (sourceFromUrl === "pwa") markCrmPwaSession();
+  }, [sourceFromUrl]);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
   const [conversations, setConversations] = useState<WaConversation[]>([]);
@@ -1050,7 +1060,7 @@ export function CrmInboxPage() {
 
   if (configured === false) {
     return (
-      <DashboardShell title="CRM WhatsApp">
+      <CrmPageShell title="CRM WhatsApp">
         <PageHeader title="CRM WhatsApp" description="Inbox compartilhado via Z-API ou Meta" />
         <Card className="p-6 text-sm text-muted-foreground">
           <p className="font-medium text-foreground">WhatsApp não configurado</p>
@@ -1072,13 +1082,63 @@ export function CrmInboxPage() {
             Ative também &quot;notificar mensagens enviadas por mim&quot; para espelhar respostas do celular no CRM.
           </p>
         </Card>
-      </DashboardShell>
+      </CrmPageShell>
     );
   }
 
+  const pwaHeader =
+    pwaMode && mobileView !== "list"
+      ? {
+          title:
+            mobileView === "details"
+              ? "Dados do contato"
+              : selected
+                ? conversationDisplayName(selected)
+                : composeTarget
+                  ? composeTarget.name
+                  : "Conversa",
+          subtitle:
+            mobileView === "chat" && selected
+              ? formatPhoneBR(selected.contact_phone)
+              : undefined,
+          showBack: true,
+          onBack: () => setMobileView(mobileView === "details" ? "chat" : "list"),
+          right:
+            mobileView === "chat" && selected ? (
+              <button
+                type="button"
+                aria-label="Detalhes"
+                className="flex size-10 items-center justify-center rounded-full transition-colors active:bg-white/10"
+                onClick={() => setMobileView("details")}
+              >
+                <Info className="size-5" />
+              </button>
+            ) : undefined,
+        }
+      : pwaMode
+        ? { title: "WhatsApp Business", subtitle: tenant?.name ?? "Conversas da clínica" }
+        : undefined;
+
   return (
-    <DashboardShell title="CRM WhatsApp" fullWidth>
-      <div className="flex h-[calc(100dvh-4rem)] min-w-0 flex-col gap-3 overflow-x-hidden lg:h-[calc(100dvh-7.5rem)]">
+    <CrmPageShell
+      title="CRM WhatsApp"
+      fullWidth
+      pwa={
+        pwaMode
+          ? {
+              activeTab: "inbox",
+              hideBottomNav: mobileView !== "list",
+              header: pwaHeader,
+            }
+          : undefined
+      }
+    >
+      <div
+        className={cn(
+          "flex min-w-0 flex-col overflow-x-hidden",
+          pwaMode ? "h-full gap-0" : "h-[calc(100dvh-4rem)] gap-3 lg:h-[calc(100dvh-7.5rem)]",
+        )}
+      >
         {/* Toolbar desktop */}
         <div className="hidden min-w-0 shrink-0 flex-wrap items-center justify-between gap-3 lg:flex">
           <div className="min-w-0 shrink">
@@ -1131,6 +1191,7 @@ export function CrmInboxPage() {
           </div>
         </div>
 
+        {!pwaMode ? (
         <div className="flex items-center justify-between gap-2 px-1 lg:hidden">
           {mobileView !== "list" ? (
             <Button
@@ -1169,7 +1230,9 @@ export function CrmInboxPage() {
             )}
           </div>
         </div>
+        ) : null}
 
+        {!pwaMode ? (
         <CrmMetricsStrip
           onFilterUnassigned={() => {
             setFilter("queue");
@@ -1180,26 +1243,34 @@ export function CrmInboxPage() {
             setMobileView("list");
           }}
         />
+        ) : null}
+
+        {pwaMode && mobileView === "list" ? <CrmPwaInstallBanner /> : null}
 
         <div
-          className={cn(crmPanelShell, "min-h-0 flex-1")}
+          className={cn(
+            crmPanelShell,
+            "min-h-0 flex-1",
+            pwaMode && mobileView === "chat" && "h-full",
+          )}
           style={{ gridTemplateColumns: "20% 55% 25%" }}
         >
           {/* Coluna 1 — Contatos */}
           <aside
             className={cn(
-              "flex min-h-0 min-w-0 flex-col overflow-hidden border-border/60 bg-muted/20 lg:border-r",
+              "flex min-h-0 min-w-0 flex-col overflow-hidden lg:border-r lg:border-border/60 lg:bg-muted/20",
+              crmWaListBg,
               mobileView !== "list" && "hidden lg:flex",
             )}
           >
-            <div className="space-y-2 border-b border-border/50 p-2.5">
+            <div className="space-y-2 border-b border-black/[0.06] bg-[#f0f2f5] p-2 dark:border-white/10 dark:bg-[#111b21]">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Buscar conversa…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="h-9 rounded-full border-border/60 bg-background pl-9 text-sm shadow-none"
+                  className="h-9 rounded-lg border-0 bg-white pl-9 text-sm shadow-none dark:bg-[#202c33]"
                 />
               </div>
               <div className="flex gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -1406,6 +1477,9 @@ export function CrmInboxPage() {
               "flex min-h-0 min-w-0 flex-col overflow-hidden",
               mobileView === "list" && "hidden lg:flex",
               mobileView === "details" && "hidden lg:flex",
+              (pwaMode && mobileView === "chat") || mobileView === "chat"
+                ? "h-full flex-1 lg:h-auto lg:flex-none"
+                : "",
             )}
           >
             {!selected && !composeTarget ? (
@@ -1417,8 +1491,13 @@ export function CrmInboxPage() {
                 </div>
               </div>
             ) : (
-              <>
-                <div className="flex items-center justify-between gap-2 border-b border-border/50 bg-background/95 px-3 py-2.5 backdrop-blur-sm">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <div
+                  className={cn(
+                    "shrink-0 items-center justify-between gap-2 border-b border-border/50 bg-[#f0f2f5]/95 px-3 py-2.5 backdrop-blur-sm dark:bg-[#202c33]/95",
+                    pwaMode && mobileView === "chat" ? "hidden lg:flex" : "flex",
+                  )}
+                >
                   <div className="flex min-w-0 items-center gap-2.5">
                     {composeTarget ? (
                       <CrmContactAvatar
@@ -1486,7 +1565,7 @@ export function CrmInboxPage() {
                     ) : null}
                   </div>
                 ) : null}
-                <ScrollArea className={cn("min-h-0 flex-1 overflow-x-hidden px-3 py-3", crmChatBg)}>
+                <div className={cn(crmChatMessagesScroll, crmChatBg)}>
                   {composeTarget ? (
                     <div className="flex min-h-[min(50vh,320px)] flex-col items-center justify-center py-12">
                       <div className="max-w-sm rounded-2xl bg-background/85 px-5 py-4 text-center text-sm text-muted-foreground shadow-sm backdrop-blur-sm">
@@ -1529,7 +1608,7 @@ export function CrmInboxPage() {
                       <div ref={bottomRef} />
                     </div>
                   )}
-                </ScrollArea>
+                </div>
                 <div className={crmComposerBar}>
                   {replyTo ? (
                     <div className="mb-1.5 flex items-center gap-1.5 rounded-lg border border-border/60 bg-background px-2 py-1.5 text-[11px]">
@@ -1622,7 +1701,7 @@ export function CrmInboxPage() {
                     />
                     <Button
                       size="icon"
-                      className="size-8 shrink-0 rounded-full bg-emerald-600 hover:bg-emerald-700"
+                      className="size-8 shrink-0 rounded-full bg-[#25D366] hover:bg-[#20bd5a]"
                       onClick={() => void sendText()}
                       disabled={sending || !text.trim() || (!composeTarget && selected?.status === "closed")}
                     >
@@ -1630,7 +1709,7 @@ export function CrmInboxPage() {
                     </Button>
                   </div>
                 </div>
-              </>
+              </div>
             )}
           </main>
 
@@ -2074,6 +2153,6 @@ export function CrmInboxPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </DashboardShell>
+    </CrmPageShell>
   );
 }

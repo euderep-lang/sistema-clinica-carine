@@ -2,6 +2,8 @@ import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import { verifyInternalApiAuth } from "./lib/internal-api-auth.server";
+import { getPublicHealthStatus } from "./lib/production-env.server";
 import { handleWaFollowUpsCron } from "./lib/wa-cron.server";
 import { handleWhatsAppWebhook } from "./lib/whatsapp-webhook.server";
 import { getWhatsAppWebhookStatus } from "./lib/whatsapp-webhook-status.server";
@@ -47,7 +49,14 @@ export default {
       if (pathname === "/api/whatsapp/webhook") {
         return handleWhatsAppWebhook(request);
       }
+      if (pathname === "/api/health") {
+        const health = getPublicHealthStatus();
+        return Response.json(health, { status: health.ok ? 200 : 503 });
+      }
       if (pathname === "/api/whatsapp/webhook-status") {
+        if (!verifyInternalApiAuth(request)) {
+          return new Response("Unauthorized", { status: 401 });
+        }
         const status = await getWhatsAppWebhookStatus();
         return Response.json(status, { status: status.ok ? 200 : 503 });
       }

@@ -37,12 +37,13 @@ import {
   timeToMinutes,
   todayISO,
 } from "@/lib/agenda-utils";
+import { patchFormForProfessional } from "@/lib/appointment-professional";
 import { useAuth } from "@/lib/mock-auth";
 import { printWithLetterhead } from "@/lib/letterhead-print";
 import {
   triggerAppointmentFollowUp,
-  triggerAppointmentStatusFollowUp,
 } from "@/lib/whatsapp-crm.functions";
+import { AUTOMATION_QUEUED_MESSAGE } from "@/lib/automation-messages";
 
 export const Route = createFileRoute("/_authenticated/reception/agenda")({
   component: AgendaPage,
@@ -78,7 +79,6 @@ const STATUS_CLASS: Record<string, string> = {
 function AgendaPage() {
   const { profile } = useAuth();
   const followUpFn = useServerFn(triggerAppointmentFollowUp);
-  const statusFollowUpFn = useServerFn(triggerAppointmentStatusFollowUp);
   const { requestStatusChange, cancelConfirmDialog } = useAppointmentCancelConfirm();
   const [viewMode, setViewMode] = useState<"timeline" | "rooms" | "list">("timeline");
   const [date, setDate] = useState(todayISO());
@@ -174,7 +174,23 @@ function AgendaPage() {
 
   const openNew = () => {
     setPatientLabel("");
-    setForm((f) => ({ ...f, patient_id: "", date, end_time: addOneHour(f.start_time) }));
+    const defaultProfId =
+      filterProfessional !== "all"
+        ? filterProfessional
+        : professionals.length === 1
+          ? professionals[0].id
+          : form.professional_id;
+    const professional = professionals.find((p) => p.id === defaultProfId);
+    const patch = patchFormForProfessional(professional, form.type);
+    setForm((f) => ({
+      ...f,
+      patient_id: "",
+      date,
+      end_time: addOneHour(f.start_time),
+      professional_id: defaultProfId ?? "",
+      specialty: patch.specialty,
+      type: patch.type,
+    }));
     setOpen(true);
   };
 
@@ -244,26 +260,13 @@ function AgendaPage() {
   };
 
   const updateStatus = async (id: string, status: string) => {
-    const row = rows.find((r) => r.id === id);
     const { error } = await supabase.from("appointments").update({ status }).eq("id", id);
     if (error) toast.error(error.message);
     else {
       setRows((current) => current.map((r) => (r.id === id ? { ...r, status } : r)));
       toast.success("Situação atualizada");
-      if (row?.patient_id && row.professional_id && (status === "completed" || status === "no_show")) {
-        try {
-          await statusFollowUpFn({
-            data: {
-              appointmentId: id,
-              patientId: row.patient_id,
-              professionalId: row.professional_id,
-              status,
-              startsAt: new Date(`${row.date}T${row.start_time}:00`).toISOString(),
-            },
-          });
-        } catch {
-          toast.warning("Situação salva. Follow-up automático será processado pelo sistema em instantes.");
-        }
+      if (status === "completed" || status === "no_show") {
+        toast.info(AUTOMATION_QUEUED_MESSAGE);
       }
     }
   };
@@ -455,12 +458,12 @@ function AgendaPage() {
               <Label>Profissional</Label>
               <Select value={form.professional_id} onValueChange={(value) => {
                 const professional = professionals.find((p) => p.id === value);
-                const types = resolveAppointmentTypes(professional?.appointment_types);
+                const patch = patchFormForProfessional(professional, form.type);
                 setForm((f) => ({
                   ...f,
                   professional_id: value,
-                  specialty: professional?.specialty ?? f.specialty,
-                  type: types.includes(f.type as (typeof types)[number]) ? f.type : types[0],
+                  specialty: patch.specialty,
+                  type: patch.type,
                 }));
               }}>
                 <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
@@ -506,7 +509,12 @@ function AgendaPage() {
             </div>
             <div>
               <Label>Especialidade</Label>
-              <Input value={form.specialty} onChange={(e) => setForm((f) => ({ ...f, specialty: e.target.value }))} />
+              <Input
+                value={form.specialty}
+                readOnly
+                placeholder="Preenchida ao selecionar o profissional"
+                className="bg-muted"
+              />
             </div>
             <div className="md:col-span-2">
               <Label>Observações</Label>

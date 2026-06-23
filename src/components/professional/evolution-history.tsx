@@ -1,6 +1,6 @@
 import { Fragment, useRef, useState } from "react";
 import { fmtDateTimeFromDate } from "@/lib/locale";
-import { FileText, Image as ImageIcon, Loader2, Paperclip } from "lucide-react";
+import { Clock, FileText, Image as ImageIcon, Loader2, Paperclip } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -186,11 +186,18 @@ export function EvolutionHistory({
   const fileRef = useRef<HTMLInputElement>(null);
 
   return (
-    <div className="flex h-full min-h-0 flex-col rounded-lg border bg-card shadow-sm">
-      <div className="flex items-center justify-between gap-2 border-b px-4 py-2.5">
-        <div className="min-w-0">
-          <h2 className="font-display text-sm font-semibold">Histórico</h2>
-          <p className="text-xs text-muted-foreground">{entries.length} registro(s)</p>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border/70 bg-muted/20 shadow-sm">
+      <div className="flex items-center justify-between gap-2 border-b border-border/60 bg-muted/45 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-background shadow-sm">
+            <Clock className="size-4 text-muted-foreground" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="font-display text-sm font-semibold tracking-tight">Histórico</h2>
+            <p className="text-xs text-muted-foreground">
+              {entries.length} registro(s) · consultas e anexos anteriores
+            </p>
+          </div>
         </div>
         {onAddFiles && (
           <>

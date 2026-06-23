@@ -89,7 +89,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { title: "ClinicOS — Gestão Clínica" },
       { name: "description", content: "Sistema de gestão para clínicas médicas e odontológicas." },
-      { name: "theme-color", content: "#16a34a" },
+      { name: "theme-color", content: "#075E54" },
       { name: "mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },

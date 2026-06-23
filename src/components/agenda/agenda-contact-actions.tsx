@@ -2,7 +2,9 @@ import { Link } from "@tanstack/react-router";
 import { MessageCircle, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { buildCrmInboxSearch } from "@/lib/crm-navigation";
+import { crmHighlightOutlineButton } from "@/components/crm/crm-inbox-theme";
 import { telUrl } from "@/lib/agenda-utils";
+import { cn } from "@/lib/utils";
 
 export function AgendaContactActions({
   phone,
@@ -31,7 +33,7 @@ export function AgendaContactActions({
         <Button
           variant="outline"
           size={size === "icon" ? "icon" : "sm"}
-          className={size === "icon" ? "size-8 text-emerald-600" : "h-8 gap-1 text-emerald-600"}
+          className={cn(size === "icon" ? "size-8" : "h-8 gap-1", crmHighlightOutlineButton)}
           asChild
           title="CRM WhatsApp"
         >

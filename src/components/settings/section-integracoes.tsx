@@ -3,6 +3,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { WhatsAppIntegrationDiagnostics } from "@/components/settings/whatsapp-integration-diagnostics";
+import { getPublicAppUrl } from "@/lib/app-url";
 
 const INTEGRATIONS = [
   { id: "whatsapp", name: "WhatsApp (Z-API)", desc: "CRM com inbox via Z-API — QR code no celular, sem burocracia Meta", icon: MessageSquare, color: "#22c55e", active: true },
@@ -12,6 +14,8 @@ const INTEGRATIONS = [
   { id: "gdrive", name: "Google Drive", desc: "Armazene documentos na nuvem automaticamente", icon: Cloud, color: "#eab308", active: false },
   { id: "nfse", name: "Nota Fiscal", desc: "Emissão automática de NFS-e", icon: Receipt, color: "#8b5cf6", active: false },
 ];
+
+const WEBHOOK_URL = `${getPublicAppUrl()}/api/whatsapp/webhook`;
 
 export function SectionIntegracoes() {
   return (
@@ -32,22 +36,20 @@ export function SectionIntegracoes() {
             </div>
             <p className="text-xs text-muted-foreground min-h-[2.5rem]">{i.desc}</p>
             {i.id === "whatsapp" ? (
-              <div className="space-y-1 text-[11px] text-muted-foreground">
+              <div className="space-y-2 text-[11px] text-muted-foreground">
                 <p>
                   Webhook:{" "}
-                  <code className="rounded bg-muted px-1">https://sistema-clinicos.vercel.app/api/whatsapp/webhook</code>
+                  <code className="rounded bg-muted px-1 break-all">{WEBHOOK_URL}</code>
                 </p>
                 <p>
-                  Na Vercel, configure também (Production):{" "}
+                  Na Vercel (Production):{" "}
                   <code className="rounded bg-muted px-1">SUPABASE_URL</code>,{" "}
                   <code className="rounded bg-muted px-1">SUPABASE_SERVICE_ROLE_KEY</code>,{" "}
-                  <code className="rounded bg-muted px-1">WHATSAPP_PROVIDER</code>,{" "}
+                  <code className="rounded bg-muted px-1">CRON_SECRET</code>,{" "}
+                  <code className="rounded bg-muted px-1">PUBLIC_APP_URL</code>,{" "}
                   <code className="rounded bg-muted px-1">ZAPI_*</code>.
                 </p>
-                <p>
-                  Diagnóstico:{" "}
-                  <code className="rounded bg-muted px-1">/api/whatsapp/webhook-status</code>
-                </p>
+                <WhatsAppIntegrationDiagnostics />
               </div>
             ) : (
               <Tooltip>

@@ -7,6 +7,7 @@ export const Route = createFileRoute("/_authenticated/crm/inbox")({
     patient: typeof search.patient === "string" ? search.patient : undefined,
     phone: typeof search.phone === "string" ? search.phone : undefined,
     draft: typeof search.draft === "string" ? search.draft : undefined,
+    source: typeof search.source === "string" ? search.source : undefined,
   }),
   component: CrmInboxPage,
 });

@@ -24,6 +24,7 @@ import {
   APPOINTMENT_TYPE_OPTIONS,
   resolveAppointmentTypes,
 } from "@/lib/appointment-types";
+import { patchFormForProfessional, type AppointmentProfessionalOption } from "@/lib/appointment-professional";
 import { addOneHour, todayISO } from "@/lib/agenda-utils";
 import type { AppointmentSource } from "@/lib/appointment-source";
 import { triggerAppointmentFollowUp } from "@/lib/whatsapp-crm.functions";
@@ -31,12 +32,7 @@ import { useAuth } from "@/lib/mock-auth";
 import { PatientSearchField } from "@/components/patient-search-field";
 
 type Room = { id: string; name: string };
-type Professional = {
-  id: string;
-  full_name: string;
-  specialty: string | null;
-  appointment_types: string[] | null;
-};
+type Professional = AppointmentProfessionalOption;
 
 interface NewAppointmentDialogProps {
   open: boolean;
@@ -88,12 +84,14 @@ export function NewAppointmentDialog({
     const pro = list.find((p) => p.id === id);
     setProfessionalId(id);
     setAppointmentTypes(pro?.appointment_types ?? null);
-    const allowed = resolveAppointmentTypes(pro?.appointment_types);
-    setForm((f) => ({
-      ...f,
-      specialty: pro?.specialty ?? "",
-      type: allowed.includes(f.type as (typeof allowed)[number]) ? f.type : allowed[0] ?? "consultation",
-    }));
+    setForm((f) => {
+      const patch = patchFormForProfessional(pro, f.type);
+      return {
+        ...f,
+        specialty: patch.specialty,
+        type: patch.type,
+      };
+    });
   };
 
   useEffect(() => {
@@ -104,7 +102,6 @@ export function NewAppointmentDialog({
       patient_id: defaultPatientId ?? "",
       date: defaultDate ?? todayISO(),
       end_time: addOneHour(f.start_time),
-      specialty: "",
     }));
 
     (async () => {

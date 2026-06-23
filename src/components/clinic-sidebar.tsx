@@ -41,6 +41,11 @@ import {
 } from "@/components/ui/sidebar";
 import { useAuth, type Role } from "@/lib/mock-auth";
 import { cn } from "@/lib/utils";
+import {
+  crmHighlightButtonActive,
+  crmHighlightButtonIdle,
+  crmHighlightIcon,
+} from "@/components/crm/crm-inbox-theme";
 
 type NavItem = { title: string; url: string; icon: LucideIcon; highlight?: "whatsapp" };
 
@@ -148,8 +153,8 @@ function SidebarNavLink({
           "h-9 gap-3 rounded-md px-2.5 font-medium transition-colors duration-200 group-data-[collapsible=icon]:!mx-auto group-data-[collapsible=icon]:!size-[2.7rem] group-data-[collapsible=icon]:!justify-center group-data-[collapsible=icon]:!gap-0 group-data-[collapsible=icon]:!overflow-visible group-data-[collapsible=icon]:!p-0",
           isWhatsapp
             ? active
-              ? "bg-emerald-600 text-white shadow-sm hover:bg-emerald-600 hover:text-white data-[active=true]:bg-emerald-600 data-[active=true]:text-white"
-              : "bg-emerald-500/12 text-emerald-800 hover:bg-emerald-500/20 hover:text-emerald-900 data-[active=true]:bg-emerald-600 data-[active=true]:text-white"
+              ? crmHighlightButtonActive
+              : crmHighlightButtonIdle
             : "data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[active=true]:shadow-none",
         )}
       >
@@ -168,7 +173,7 @@ function SidebarNavLink({
           <Icon
             className={cn(
               "size-4 shrink-0 group-data-[collapsible=icon]:size-[1.2rem]",
-              isWhatsapp ? (active ? "opacity-100" : "text-emerald-600 opacity-100") : "opacity-80",
+              isWhatsapp ? (active ? "opacity-100" : cn(crmHighlightIcon, "opacity-100")) : "opacity-80",
             )}
           />
           <span className="group-data-[collapsible=icon]:hidden">{item.title}</span>

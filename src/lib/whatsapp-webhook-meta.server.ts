@@ -185,8 +185,14 @@ export async function handleMetaWhatsAppWebhook(request: Request): Promise<Respo
     return new Response("Bad Request", { status: 400 });
   }
 
-  const tenantId = await resolveTenantId();
-  if (!tenantId) return new Response("OK", { status: 200 });
+  const tenantId = await resolveTenantId().catch((e) => {
+    console.error("[Meta webhook] falha ao conectar Supabase:", e);
+    return null;
+  });
+  if (!tenantId) {
+    console.error("[Meta webhook] Supabase indisponível");
+    return new Response("Service Unavailable", { status: 503 });
+  }
 
   const socialObject = payload.object;
   const isSocial = socialObject === "page" || socialObject === "instagram";
