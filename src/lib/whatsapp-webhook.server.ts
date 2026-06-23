@@ -9,6 +9,12 @@ function isMetaWebhookPayload(payload: unknown): boolean {
 
 export async function handleWhatsAppWebhook(request: Request): Promise<Response> {
   if (request.method === "GET") {
+    if (getWhatsAppProvider() === "zapi") {
+      return new Response(
+        "Webhook Z-API ativo — use POST com Client-Token. Abrir no navegador não testa o webhook.",
+        { status: 200, headers: { "content-type": "text/plain; charset=utf-8" } },
+      );
+    }
     return handleMetaWhatsAppWebhook(request);
   }
 

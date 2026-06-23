@@ -24,7 +24,7 @@ export function checkProductionEnv(): ProductionEnvCheck {
   const publicUrl = process.env.PUBLIC_APP_URL?.trim();
   if (!publicUrl) {
     warnings.push("PUBLIC_APP_URL não definida — usando fallback fixo do app");
-  } else if (publicUrl.includes("vercel.app") && publicUrl.includes("-")) {
+  } else if (publicUrl.includes("vercel.app") && /-[a-z0-9]{6,}\.vercel\.app/i.test(publicUrl)) {
     warnings.push("PUBLIC_APP_URL parece ser preview da Vercel, não produção");
   }
 
