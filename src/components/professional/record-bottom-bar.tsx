@@ -43,11 +43,6 @@ type BarItem = {
   onClick: () => void;
 };
 
-const CLINICAL_MODULES = [
-  { id: "receituario", label: "Receituário", icon: FilePenLine, iconClass: ICON_STYLES.rx },
-  { id: "nutrologia", label: "Nutrologia", icon: Salad, iconClass: ICON_STYLES.nutro },
-] as const;
-
 const ICON_STYLES: Record<ItemKey, string> = {
   finish: "text-emerald-600",
   sessions: "text-violet-600",
@@ -56,6 +51,11 @@ const ICON_STYLES: Record<ItemKey, string> = {
   modules: "text-primary",
   photos: "text-rose-600",
 };
+
+const CLINICAL_MODULES = [
+  { id: "receituario", label: "Receituário", icon: FilePenLine, iconClass: ICON_STYLES.rx },
+  { id: "nutrologia", label: "Nutrologia", icon: Salad, iconClass: ICON_STYLES.nutro },
+] as const;
 
 const PHOTO_OPTIONS = [
   { id: "exams", label: "Exames", icon: FlaskConical, iconClass: "text-sky-600" },
