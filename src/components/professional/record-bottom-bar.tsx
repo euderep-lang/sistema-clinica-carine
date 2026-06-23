@@ -43,10 +43,10 @@ type BarItem = {
   onClick: () => void;
 };
 
-const MODULES = [
-  { id: "receituario", label: "Receituário", key: "rx" as const },
-  { id: "nutrologia", label: "Nutrologia", key: "nutro" as const },
-];
+const CLINICAL_MODULES = [
+  { id: "receituario", label: "Receituário", icon: FilePenLine, iconClass: ICON_STYLES.rx },
+  { id: "nutrologia", label: "Nutrologia", icon: Salad, iconClass: ICON_STYLES.nutro },
+] as const;
 
 const ICON_STYLES: Record<ItemKey, string> = {
   finish: "text-emerald-600",
@@ -90,15 +90,6 @@ function BarButton({
       <Icon className={cn("size-4", iconClass)} strokeWidth={2} />
       <span className="whitespace-nowrap">{label}</span>
     </button>
-  );
-}
-
-function BarDivider() {
-  return (
-    <span
-      className="mx-1 hidden h-6 w-px shrink-0 bg-border sm:block"
-      aria-hidden
-    />
   );
 }
 
@@ -150,42 +141,6 @@ export function RecordBottomBar({
       iconClass: ICON_STYLES.finish,
       onClick: () => setFinishOpen(true),
     },
-    ...(onSessionsClick
-      ? [
-          {
-            key: "sessions" as const,
-            label: "Dar baixa em sessões",
-            icon: CalendarCheck,
-            iconClass: ICON_STYLES.sessions,
-            onClick: onSessionsClick,
-          },
-        ]
-      : []),
-    {
-      key: "rx",
-      label: "Receituário",
-      icon: FilePenLine,
-      iconClass: ICON_STYLES.rx,
-      onClick: openPrescription,
-    },
-    ...(onPhotosExamsClick || onPhotosBeforeAfterClick || onPhotosCompareClick
-      ? [
-          {
-            key: "photos" as const,
-            label: "Fotos",
-            icon: Camera,
-            iconClass: ICON_STYLES.photos,
-            onClick: () => setPhotosOpen(true),
-          },
-        ]
-      : []),
-    {
-      key: "nutro",
-      label: "Nutrologia",
-      icon: Salad,
-      iconClass: ICON_STYLES.nutro,
-      onClick: () => toast.info("Módulo de nutrologia em desenvolvimento."),
-    },
     {
       key: "modules",
       label: "Todos os módulos",
@@ -206,16 +161,6 @@ export function RecordBottomBar({
       >
         <div className="overflow-x-auto px-3 py-2.5">
           <div className="flex min-w-max items-center gap-0.5">
-            {clinicalItems.map((item) => (
-              <BarButton
-                key={item.key}
-                label={item.label}
-                icon={item.icon}
-                iconClass={item.iconClass}
-                onClick={item.onClick}
-              />
-            ))}
-            <BarDivider />
             {actionItems.map((item) => (
               <BarButton
                 key={item.key}
@@ -272,16 +217,44 @@ export function RecordBottomBar({
       </Sheet>
 
       <Sheet open={modulesOpen} onOpenChange={setModulesOpen}>
-        <SheetContent side="bottom" className="rounded-t-xl pb-8">
+        <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-xl pb-8">
           <SheetHeader>
-            <SheetTitle>Módulos clínicos</SheetTitle>
-            <SheetDescription>Selecione uma ferramenta para este atendimento.</SheetDescription>
+            <SheetTitle>Todos os módulos</SheetTitle>
+            <SheetDescription>
+              Ferramentas clínicas e módulos de atendimento para {patientName}.
+            </SheetDescription>
           </SheetHeader>
-          <ul className="mt-4 divide-y rounded-lg border">
-            {MODULES.map((mod) => {
-              const item = actionItems.find((i) => i.key === mod.key);
-              if (!item) return null;
+
+          <p className="mt-4 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Ferramentas
+          </p>
+          <ul className="mt-2 divide-y rounded-lg border">
+            {clinicalItems.map((item) => {
               const Icon = item.icon;
+              return (
+                <li key={item.key}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModulesOpen(false);
+                      item.onClick();
+                    }}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-muted/50"
+                  >
+                    <Icon className={cn("size-4 shrink-0", item.iconClass)} strokeWidth={2} />
+                    <span className="font-medium">{item.label}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+
+          <p className="mt-4 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Módulos clínicos
+          </p>
+          <ul className="mt-2 divide-y rounded-lg border">
+            {CLINICAL_MODULES.map((mod) => {
+              const Icon = mod.icon;
               return (
                 <li key={mod.id}>
                   <button
@@ -289,12 +262,45 @@ export function RecordBottomBar({
                     onClick={() => openModule(mod.id)}
                     className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-muted/50"
                   >
-                    <Icon className={cn("size-4 shrink-0", item.iconClass)} strokeWidth={2} />
+                    <Icon className={cn("size-4 shrink-0", mod.iconClass)} strokeWidth={2} />
                     <span className="font-medium">{mod.label}</span>
                   </button>
                 </li>
               );
             })}
+            {(onPhotosExamsClick || onPhotosBeforeAfterClick || onPhotosCompareClick) && (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModulesOpen(false);
+                    setPhotosOpen(true);
+                  }}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-muted/50"
+                >
+                  <Camera className={cn("size-4 shrink-0", ICON_STYLES.photos)} strokeWidth={2} />
+                  <span className="font-medium">Fotos</span>
+                </button>
+              </li>
+            )}
+            {onSessionsClick && (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModulesOpen(false);
+                    onSessionsClick();
+                  }}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-muted/50"
+                >
+                  <CalendarCheck
+                    className={cn("size-4 shrink-0", ICON_STYLES.sessions)}
+                    strokeWidth={2}
+                  />
+                  <span className="font-medium">Dar baixa em sessões</span>
+                </button>
+              </li>
+            )}
           </ul>
         </SheetContent>
       </Sheet>
