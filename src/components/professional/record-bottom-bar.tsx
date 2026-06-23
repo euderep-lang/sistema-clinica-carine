@@ -200,7 +200,7 @@ export function RecordBottomBar({
         )}
       >
         <div className="overflow-x-auto px-3 py-2.5">
-          <div className="flex min-w-max items-center gap-0.5">
+          <div className="mx-auto flex w-max max-w-full items-center justify-center gap-0.5">
             {actionItems.map((item) => (
               <BarButton
                 key={item.key}
