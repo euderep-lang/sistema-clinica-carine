@@ -41,6 +41,15 @@ interface ZApiReceivedPayload {
   video?: { videoUrl?: string; mimeType?: string; caption?: string };
   document?: { documentUrl?: string; mimeType?: string; fileName?: string; caption?: string };
   sticker?: { stickerUrl?: string; mimeType?: string };
+  reaction?: { value?: string; reaction?: string; referencedMessageId?: string } | string;
+  location?: { latitude?: number | string; longitude?: number | string; name?: string; address?: string; url?: string };
+  contact?: { displayName?: string; vCard?: string; vcard?: string };
+  contacts?: { displayName?: string; vCard?: string; vcard?: string }[] | { contacts?: { displayName?: string }[] };
+  poll?: { name?: string; question?: string; options?: ({ name?: string } | string)[] };
+  buttonsResponseMessage?: { message?: string; buttonId?: string; title?: string };
+  listResponseMessage?: { message?: string; title?: string; selectedRowId?: string };
+  buttonReply?: { message?: string; title?: string };
+  listReply?: { title?: string; message?: string };
 }
 
 /** Resolve o contato real — Z-API pode enviar @lid no phone, principalmente em fromMe. */
@@ -82,6 +91,49 @@ function photoFromZApi(payload: ZApiReceivedPayload): string | null {
   return null;
 }
 
+function reactionValue(payload: ZApiReceivedPayload): string | null {
+  const r = payload.reaction;
+  if (!r) return null;
+  if (typeof r === "string") return r.trim() || null;
+  return (r.value ?? r.reaction ?? "")?.trim() || null;
+}
+
+function contactName(payload: ZApiReceivedPayload): string | null {
+  const c = payload.contact;
+  if (c?.displayName?.trim()) return c.displayName.trim();
+  if (Array.isArray(payload.contacts)) {
+    const first = payload.contacts[0];
+    if (first?.displayName?.trim()) return first.displayName.trim();
+  }
+  return null;
+}
+
+function hasContact(payload: ZApiReceivedPayload): boolean {
+  return (
+    !!payload.contact ||
+    (Array.isArray(payload.contacts) && payload.contacts.length > 0) ||
+    (!!payload.contacts && !Array.isArray(payload.contacts) && !!payload.contacts.contacts?.length)
+  );
+}
+
+function pollName(payload: ZApiReceivedPayload): string | null {
+  return payload.poll?.name?.trim() || payload.poll?.question?.trim() || null;
+}
+
+function buttonOrListText(payload: ZApiReceivedPayload): string | null {
+  return (
+    payload.buttonsResponseMessage?.message?.trim() ||
+    payload.buttonsResponseMessage?.title?.trim() ||
+    payload.buttonReply?.message?.trim() ||
+    payload.buttonReply?.title?.trim() ||
+    payload.listResponseMessage?.title?.trim() ||
+    payload.listResponseMessage?.message?.trim() ||
+    payload.listReply?.title?.trim() ||
+    payload.listReply?.message?.trim() ||
+    null
+  );
+}
+
 function previewFromZApi(payload: ZApiReceivedPayload): string {
   if (payload.text?.message) return payload.text.message.slice(0, 120);
   if (payload.image) return payload.image.caption ? `📷 ${payload.image.caption}` : "📷 Imagem";
@@ -89,7 +141,18 @@ function previewFromZApi(payload: ZApiReceivedPayload): string {
   if (payload.video) return payload.video.caption ? `🎬 ${payload.video.caption}` : "🎬 Vídeo";
   if (payload.document) return `📎 ${payload.document.fileName ?? "Documento"}`;
   if (payload.sticker) return "🙂 Figurinha";
-  return "[mensagem]";
+  const reaction = reactionValue(payload);
+  if (reaction) return `${reaction} Reagiu`;
+  if (payload.location) return "📍 Localização";
+  if (hasContact(payload)) {
+    const name = contactName(payload);
+    return name ? `👤 Contato: ${name}` : "👤 Contato";
+  }
+  const poll = pollName(payload);
+  if (poll) return `📊 Enquete: ${poll}`;
+  const btn = buttonOrListText(payload);
+  if (btn) return btn.slice(0, 120);
+  return "💬 Mensagem";
 }
 
 function mediaFromZApi(payload: ZApiReceivedPayload): {
@@ -143,6 +206,42 @@ function mediaFromZApi(payload: ZApiReceivedPayload): {
       mediaMime: payload.sticker.mimeType,
     };
   }
+  const reaction = reactionValue(payload);
+  if (reaction) {
+    return { messageType: "reaction", body: `${reaction} Reagiu a uma mensagem` };
+  }
+  if (payload.location) {
+    const loc = payload.location;
+    const label = loc.name || loc.address || "Localização";
+    const url =
+      loc.url ||
+      (loc.latitude != null && loc.longitude != null
+        ? `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`
+        : undefined);
+    return {
+      messageType: "location",
+      body: url ? `📍 ${label}\n${url}` : `📍 ${label}`,
+    };
+  }
+  if (hasContact(payload)) {
+    const name = contactName(payload);
+    return { messageType: "contact", body: name ? `👤 Contato: ${name}` : "👤 Contato compartilhado" };
+  }
+  const poll = pollName(payload);
+  if (poll) {
+    const options = (payload.poll?.options ?? [])
+      .map((o) => (typeof o === "string" ? o : o?.name))
+      .filter(Boolean)
+      .join(", ");
+    return {
+      messageType: "poll",
+      body: options ? `📊 Enquete: ${poll}\nOpções: ${options}` : `📊 Enquete: ${poll}`,
+    };
+  }
+  const btn = buttonOrListText(payload);
+  if (btn) {
+    return { messageType: "text", body: btn };
+  }
   return { messageType: "unknown", body: previewFromZApi(payload) };
 }
 
@@ -169,6 +268,16 @@ async function processZApiReceived(tenantId: string, payload: ZApiReceivedPayloa
   }
 
   const media = mediaFromZApi(payload);
+  if (media.messageType === "unknown") {
+    const knownKeys = ["text", "image", "audio", "video", "document", "sticker", "reaction", "location", "contact", "contacts", "poll"];
+    const extraKeys = Object.keys(payload).filter(
+      (k) => !["type", "instanceId", "phone", "messageId", "fromMe", "momment", "senderName", "chatName", "connectedPhone"].includes(k),
+    );
+    console.warn(
+      "[Z-API webhook] tipo de mensagem não reconhecido:",
+      extraKeys.filter((k) => !knownKeys.includes(k)),
+    );
+  }
   const preview = previewFromZApi(payload);
   const ts = new Date(payload.momment ?? Date.now());
   const { phone, waId, contactName } = resolveZApiContact(payload);

@@ -183,6 +183,24 @@ type ComposeTarget = {
 
 const crmInboxRoute = getRouteApi("/_authenticated/crm/inbox");
 
+function isTransientNetworkError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("failed to fetch") ||
+    m.includes("networkerror") ||
+    m.includes("load failed") ||
+    m.includes("network request failed")
+  );
+}
+
+function notifyCrmQueryError(error: { message: string }, context: string) {
+  if (isTransientNetworkError(error.message)) {
+    console.warn(`[CRM] ${context}: falha temporária de rede`, error.message);
+    return;
+  }
+  toast.error(error.message);
+}
+
 export function CrmInboxPage() {
   const { conversation: conversationFromUrl, patient: patientFromUrl, phone: phoneFromUrl, draft: draftFromUrl, source: sourceFromUrl } =
     crmInboxRoute.useSearch();
@@ -327,8 +345,8 @@ export function CrmInboxPage() {
       supabase.from("wa_conversation_tags" as never).select("conversation_id, tag_id"),
     ]);
 
-    if (convRes.error) toast.error(convRes.error.message);
-    if (transferRes.error) toast.error(transferRes.error.message);
+    if (convRes.error) notifyCrmQueryError(convRes.error, "carregar conversas");
+    if (transferRes.error) notifyCrmQueryError(transferRes.error, "carregar transferências");
 
     const tagMap: Record<string, string[]> = {};
     for (const row of (tagLinksRes.data ?? []) as { conversation_id: string; tag_id: string }[]) {
