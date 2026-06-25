@@ -15,13 +15,16 @@ export function isCrmStaff(role: Role) {
   return role === "admin" || role === "professional" || role === "receptionist";
 }
 
-/** Recepção e admin recebem alerta de toda mensagem nova; profissional só das atribuídas a ele. */
+/**
+ * Notificação de mensagem recebida.
+ * Admin e recepção: toda mensagem nova.
+ * Profissional: NÃO recebe alerta de mensagem — só é notificado quando uma
+ * conversa é transferida para ele (ver notificação de transferência).
+ */
 export function shouldReceiveWaInboundNotification(
   role: Role,
-  userId: string,
-  assignedTo: string | null,
+  _userId: string,
+  _assignedTo: string | null,
 ): boolean {
-  if (role === "admin" || role === "receptionist") return true;
-  if (role === "professional") return assignedTo === userId;
-  return false;
+  return role === "admin" || role === "receptionist";
 }

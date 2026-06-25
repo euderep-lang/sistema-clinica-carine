@@ -20,8 +20,18 @@ import {
   waInboxFocus,
 } from "@/lib/wa-notifications";
 import { listenWaSwNavigation, registerWaServiceWorker } from "@/lib/wa-pwa";
+import { ensureWaPushSubscription } from "@/lib/wa-push-subscribe";
 
 type InboundRow = WaMessage & { tenant_id: string };
+
+type TransferRow = {
+  id: string;
+  tenant_id: string;
+  conversation_id: string;
+  from_user_id: string | null;
+  to_user_id: string;
+  note: string | null;
+};
 
 type ProfileSlice = { id: string; role: Role };
 
@@ -108,6 +118,62 @@ async function handleInboundMessage(row: InboundRow) {
   }
 }
 
+async function handleTransfer(row: TransferRow) {
+  const profile = notifyCtx.profile;
+  const navigate = notifyCtx.navigate;
+  if (!profile || !navigate) return;
+  // Só notifica quem recebeu a transferência.
+  if (row.to_user_id !== profile.id) return;
+
+  const dedupeKey = `transfer:${row.id}`;
+  if (notifyCtx.notifiedIds.has(dedupeKey)) return;
+  notifyCtx.notifiedIds.add(dedupeKey);
+  if (notifyCtx.notifiedIds.size > 300) {
+    const oldest = notifyCtx.notifiedIds.values().next().value;
+    if (oldest) notifyCtx.notifiedIds.delete(oldest);
+  }
+
+  const { data: conv } = await supabase
+    .from("wa_conversations" as never)
+    .select("contact_name, contact_phone, patients(full_name)")
+    .eq("id", row.conversation_id)
+    .maybeSingle();
+
+  if (!conv) return;
+
+  const name = conversationDisplayName(conv as Parameters<typeof conversationDisplayName>[0]);
+  const body = row.note
+    ? `Conversa transferida para você · ${row.note}`
+    : "Conversa transferida para você";
+  const openConversation = () => {
+    navigate({
+      to: "/crm/inbox",
+      search: { conversation: row.conversation_id },
+    });
+  };
+
+  playWaNotificationSound();
+  vibrateWaNotification();
+
+  const showedBrowser = showWaBrowserNotification({
+    title: `WhatsApp · ${name}`,
+    body,
+    conversationId: row.conversation_id,
+    onOpen: openConversation,
+  });
+
+  if (!showedBrowser && document.visibilityState === "visible") {
+    toast.message(`WhatsApp · ${name}`, {
+      description: body,
+      duration: 8000,
+      action: {
+        label: "Abrir",
+        onClick: openConversation,
+      },
+    });
+  }
+}
+
 function ensureWaNotifyChannel(tenantId: string) {
   if (notifyState.channel && notifyState.tenantId === tenantId) return;
 
@@ -127,6 +193,13 @@ function ensureWaNotifyChannel(tenantId: string) {
       { event: "INSERT", schema: "public", table: "wa_messages", filter: `tenant_id=eq.${tenantId}` },
       (payload) => {
         void handleInboundMessage(payload.new as InboundRow);
+      },
+    )
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "wa_transfers", filter: `tenant_id=eq.${tenantId}` },
+      (payload) => {
+        void handleTransfer(payload.new as TransferRow);
       },
     )
     .subscribe();
@@ -151,10 +224,15 @@ export function useWaMessageNotifications() {
     }
 
     if (getWaNotificationPermission() === "default" && isSecureNotificationContext()) {
-      void requestWaNotificationPermission();
+      void requestWaNotificationPermission().then((perm) => {
+        if (perm === "granted") void ensureWaPushSubscription();
+      });
     }
 
-    void registerWaServiceWorker();
+    void registerWaServiceWorker().then(() => {
+      // Assina Web Push 24/7 (idempotente) quando já há permissão concedida.
+      if (getWaNotificationPermission() === "granted") void ensureWaPushSubscription();
+    });
     const offSwNav = listenWaSwNavigation((conversationId) => {
       if (conversationId) {
         navigateRef.current({

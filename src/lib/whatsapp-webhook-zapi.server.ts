@@ -9,6 +9,7 @@ import {
   updateMessageStatus,
   upsertConversation,
 } from "@/lib/whatsapp-crm-storage.server";
+import { getInboundPushUserIds, sendPushToUsers } from "@/lib/web-push.server";
 import { getZApiConfig } from "@/lib/whatsapp-zapi.server";
 import { isValidContactPhotoUrl } from "@/lib/wa-contact-photo";
 
@@ -201,7 +202,7 @@ async function processZApiReceived(tenantId: string, payload: ZApiReceivedPayloa
   });
 
   // A mensagem já foi gravada acima. O pós-processamento (resposta automática,
-  // tracking) não pode derrubar o webhook — senão a Z-API reentrega à toa.
+  // tracking, push) não pode derrubar o webhook — senão a Z-API reentrega à toa.
   try {
     if (direction === "inbound") {
       await maybeSendAfterHoursAutoReply(
@@ -215,6 +216,23 @@ async function processZApiReceived(tenantId: string, payload: ZApiReceivedPayloa
     }
   } catch (e) {
     console.error("[Z-API webhook] pós-processamento falhou (mensagem já gravada):", e);
+  }
+
+  // Web Push 24/7: admin e recepção são notificados de toda mensagem recebida.
+  // (Profissional só recebe push quando uma conversa é transferida para ele.)
+  if (direction === "inbound") {
+    try {
+      const userIds = await getInboundPushUserIds(tenantId);
+      await sendPushToUsers(userIds, {
+        title: `WhatsApp · ${contactName?.trim() || phone}`,
+        body: preview || "Nova mensagem",
+        conversationId: convId,
+        tag: `wa-${convId}`,
+        url: `/crm/inbox?conversation=${convId}`,
+      });
+    } catch (e) {
+      console.error("[Z-API webhook] push falhou (mensagem já gravada):", e);
+    }
   }
 }
 

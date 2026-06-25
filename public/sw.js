@@ -1,6 +1,6 @@
-/// <reference lib="webworker" />
+/* Service Worker do CRM — cache do shell + notificações (in-app e Web Push 24/7). */
 
-const CACHE = "clinicos-crm-v2";
+const CACHE = "clinicos-crm-v3";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());
@@ -8,9 +8,10 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))),
-    ).then(() => self.clients.claim()),
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim()),
   );
 });
 
@@ -44,16 +45,9 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-type WaNotifyPayload = {
-  type: "wa-message";
-  title: string;
-  body: string;
-  conversationId: string;
-  tag?: string;
-};
-
+/* Notificação disparada pela aba (realtime) quando o app está aberto. */
 self.addEventListener("message", (event) => {
-  const data = event.data as WaNotifyPayload | undefined;
+  const data = event.data;
   if (!data || data.type !== "wa-message") return;
 
   event.waitUntil(
@@ -69,10 +63,54 @@ self.addEventListener("message", (event) => {
   );
 });
 
+/* Web Push: chega mesmo com o app fechado (24/7). */
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = {};
+  }
+
+  const title = payload.title || "WhatsApp";
+  const conversationId = payload.conversationId;
+  const tag = payload.tag || (conversationId ? `wa-${conversationId}` : "wa");
+  const url =
+    payload.url || (conversationId ? `/crm/inbox?conversation=${conversationId}` : "/crm/inbox");
+
+  event.waitUntil(
+    (async () => {
+      const clientsArr = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      // App aberto e em foco: deixa a notificação in-app cuidar (evita duplicar).
+      const focused = clientsArr.find((c) => c.focused && c.visibilityState === "visible");
+      if (focused) {
+        focused.postMessage({ type: "wa-push", conversationId });
+        return;
+      }
+
+      await self.registration.showNotification(title, {
+        body: payload.body || "Nova mensagem",
+        tag,
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",
+        vibrate: [180, 80, 180],
+        data: { conversationId, url },
+        renotify: true,
+        requireInteraction: false,
+      });
+    })(),
+  );
+});
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const conversationId = (event.notification.data as { conversationId?: string } | undefined)
-    ?.conversationId;
+  const data = event.notification.data || {};
+  const conversationId = data.conversationId;
+  const targetUrl =
+    data.url || (conversationId ? `/crm/inbox?conversation=${conversationId}` : "/crm/inbox");
 
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
@@ -80,15 +118,10 @@ self.addEventListener("notificationclick", (event) => {
         if ("focus" in client) {
           client.focus();
           client.postMessage({ type: "wa-open-conversation", conversationId });
-          return;
+          return undefined;
         }
       }
-      const url = conversationId
-        ? `/crm/inbox?conversation=${conversationId}`
-        : "/crm/inbox";
-      return self.clients.openWindow(url);
+      return self.clients.openWindow(targetUrl);
     }),
   );
 });
-
-export {};

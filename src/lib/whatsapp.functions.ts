@@ -13,6 +13,7 @@ import {
 } from "@/lib/whatsapp-provider.server";
 import { sendMetaSocialText } from "@/lib/whatsapp-meta.server";
 import { normalizeOutboundMessageBody } from "@/lib/wa-automation-quick-replies.server";
+import { sendPushToUsers } from "@/lib/web-push.server";
 import { logAuditSafe } from "@/lib/audit.server";
 
 type CrmRole = "admin" | "professional" | "receptionist";
@@ -245,11 +246,14 @@ export const transferWaConversation = createServerFn({ method: "POST" })
 
     const { data: conv } = await supabase
       .from("wa_conversations" as never)
-      .select("unread_count")
+      .select("unread_count, contact_name, contact_phone")
       .eq("id", data.conversationId)
       .maybeSingle();
 
-    const unread = (conv as { unread_count?: number } | null)?.unread_count ?? 0;
+    const convRow = conv as
+      | { unread_count?: number; contact_name?: string | null; contact_phone?: string | null }
+      | null;
+    const unread = convRow?.unread_count ?? 0;
 
     await supabase
       .from("wa_conversations" as never)
@@ -267,6 +271,22 @@ export const transferWaConversation = createServerFn({ method: "POST" })
       to_user_id: data.toUserId,
       note: data.note ?? null,
     } as never);
+
+    // Web Push 24/7: quem recebe a transferência é notificado (inclusive profissional).
+    try {
+      const name = convRow?.contact_name?.trim() || convRow?.contact_phone || "Conversa";
+      await sendPushToUsers([data.toUserId], {
+        title: `WhatsApp · ${name}`,
+        body: data.note?.trim()
+          ? `Conversa transferida para você · ${data.note.trim()}`
+          : "Conversa transferida para você",
+        conversationId: data.conversationId,
+        tag: `wa-${data.conversationId}`,
+        url: `/crm/inbox?conversation=${data.conversationId}`,
+      });
+    } catch (e) {
+      console.error("[transferWaConversation] push falhou:", e);
+    }
 
     return { ok: true };
   });

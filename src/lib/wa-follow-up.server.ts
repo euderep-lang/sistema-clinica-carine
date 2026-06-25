@@ -650,7 +650,17 @@ export async function scheduleFollowUpRun(input: {
     }
   }
 
-  if (input.conversationId || input.patientId) {
+  if (input.appointmentId) {
+    // Sequências ligadas a uma consulta (lembretes, pós-consulta, no-show, NPS)
+    // devem substituir apenas a sequência da MESMA consulta. Cancelar por paciente
+    // apagaria os lembretes de outras consultas futuras do mesmo paciente.
+    await cancelActiveFollowUpRuns({
+      tenantId: input.tenantId,
+      appointmentId: input.appointmentId,
+      triggerTypes: [input.triggerType],
+      reason: "replaced_by_new_sequence",
+    });
+  } else if (input.conversationId || input.patientId) {
     await cancelActiveFollowUpRuns({
       tenantId: input.tenantId,
       conversationId: input.conversationId ?? undefined,
