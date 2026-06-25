@@ -1264,7 +1264,7 @@ export function CrmInboxPage() {
     }
   };
 
-  const [detailTab, setDetailTab] = useState("tags");
+  const [detailTab, setDetailTab] = useState("patient");
   const detailTabLabels: Record<string, string> = {
     tags: "Tags",
     patient: "Paciente",
@@ -2113,8 +2113,8 @@ export function CrmInboxPage() {
               <TabsList className={crmDetailTabList}>
                 {(
                   [
-                    ["tags", Tag, "Tags"],
                     ["patient", UserRound, "Paciente"],
+                    ["tags", Tag, "Tags"],
                     ["notes", StickyNote, "Notas"],
                     ["tasks", ClipboardList, "Tarefas"],
                     ["reminders", Bell, "Alertas"],
