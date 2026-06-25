@@ -34,7 +34,7 @@ export function checkProductionEnv(): ProductionEnvCheck {
     if (!zapi) {
       missing.push("ZAPI_INSTANCE_ID / ZAPI_TOKEN");
     } else if (!zapi.clientToken?.trim()) {
-      missing.push("ZAPI_CLIENT_TOKEN");
+      warnings.push("ZAPI_CLIENT_TOKEN ausente — necessário se o token de segurança da conta Z-API estiver ativo");
     }
   }
 

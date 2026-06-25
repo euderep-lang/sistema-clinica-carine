@@ -18,7 +18,8 @@ if (!config) {
   process.exit(1);
 }
 
-const webhookUrl = `${base}/api/whatsapp/webhook`;
+const secret = process.env.ZAPI_WEBHOOK_SECRET?.trim();
+const webhookUrl = `${base}/api/whatsapp/webhook${secret ? `?token=${encodeURIComponent(secret)}` : ""}`;
 
 async function zapiPut(path: string, body: unknown) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
