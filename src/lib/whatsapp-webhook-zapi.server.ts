@@ -200,15 +200,21 @@ async function processZApiReceived(tenantId: string, payload: ZApiReceivedPayloa
     rawPayload: payload,
   });
 
-  if (direction === "inbound") {
-    await maybeSendAfterHoursAutoReply(
-      tenantId,
-      convId,
-      phone,
-      conversationId.lastAfterHoursReplyAt,
-    );
-  } else {
-    await trackStaffFirstResponse(convId);
+  // A mensagem já foi gravada acima. O pós-processamento (resposta automática,
+  // tracking) não pode derrubar o webhook — senão a Z-API reentrega à toa.
+  try {
+    if (direction === "inbound") {
+      await maybeSendAfterHoursAutoReply(
+        tenantId,
+        convId,
+        phone,
+        conversationId.lastAfterHoursReplyAt,
+      );
+    } else {
+      await trackStaffFirstResponse(convId);
+    }
+  } catch (e) {
+    console.error("[Z-API webhook] pós-processamento falhou (mensagem já gravada):", e);
   }
 }
 
