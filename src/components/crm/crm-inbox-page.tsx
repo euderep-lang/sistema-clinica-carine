@@ -7,19 +7,25 @@ import {
   ArrowRightLeft,
   BarChart3,
   Bell,
+  CalendarClock,
   ClipboardList,
   ExternalLink,
+  FileDown,
   Info,
   Loader2,
+  MailOpen,
   MessageSquare,
   Paperclip,
   Plus,
   FileAudio,
   Reply,
+  RefreshCw,
   Search,
   Send,
   StickyNote,
   Tag,
+  Trash2,
+  UserPlus,
   UserRound,
   Video,
   X,
@@ -37,6 +43,8 @@ import { CrmGlobalSearch } from "@/components/crm/crm-global-search";
 import { CrmBroadcastDialog } from "@/components/crm/crm-broadcast-dialog";
 import { CrmTasksPanel } from "@/components/crm/crm-tasks-panel";
 import { CrmTagRulesPanel } from "@/components/crm/crm-tag-rules-panel";
+import { CrmEmojiPicker } from "@/components/crm/crm-emoji-picker";
+import { PatientFormDialog } from "@/components/patient-form-dialog";
 import {
   CrmDetailEmpty,
   CrmDetailSection,
@@ -65,6 +73,16 @@ import { CrmPageShell } from "@/components/crm/crm-pwa-shell";
 import { CrmPwaInstallBanner } from "@/components/crm/crm-pwa-install-banner";
 import { useCrmPwaMode } from "@/components/crm/use-crm-pwa-mode";
 import { PageHeader } from "@/components/layout/page-header";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -125,16 +143,22 @@ import {
   toggleWaConversationTag,
   markWaObjection,
   processWaFollowUps,
+  syncWaChatsFromZApi,
 } from "@/lib/whatsapp-crm.functions";
 import {
+  cancelScheduledWaMessage,
   fetchWaMediaUrl,
   getWhatsAppStatus,
+  listScheduledWaMessages,
   markWaConversationRead,
+  markWaConversationUnread,
+  scheduleWaMessage,
   sendWaMedia,
   sendWaText,
   startWaConversation,
   transferWaConversation,
 } from "@/lib/whatsapp.functions";
+import { exportWaConversationToPdf } from "@/lib/crm-export";
 import { markCrmPwaSession } from "@/lib/crm-pwa";
 import { cn } from "@/lib/utils";
 import {
@@ -188,6 +212,7 @@ export function CrmInboxPage() {
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [convTagsMap, setConvTagsMap] = useState<Record<string, string[]>>({});
   const [mobileView, setMobileView] = useState<"list" | "chat" | "details">("list");
+  const [visibleCount, setVisibleCount] = useState(30);
   const [replyTo, setReplyTo] = useState<WaMessage | null>(null);
   const [closeReason, setCloseReason] = useState(WA_CLOSE_REASONS[0]);
   const [patientSearch, setPatientSearch] = useState("");
@@ -208,10 +233,25 @@ export function CrmInboxPage() {
   const [newMsg, setNewMsg] = useState("");
   const [composeTarget, setComposeTarget] = useState<ComposeTarget | null>(null);
   const [manualConvOpen, setManualConvOpen] = useState(false);
+  const [createPatientOpen, setCreatePatientOpen] = useState(false);
+  const [syncConfirmOpen, setSyncConfirmOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleAt, setScheduleAt] = useState("");
+  const [scheduling, setScheduling] = useState(false);
+  const [scheduledList, setScheduledList] = useState<
+    { id: string; body: string; send_at: string; status: string; created_at: string; error: string | null }[]
+  >([]);
+  const [typingUser, setTypingUser] = useState<string | null>(null);
   const [notifyPermission, setNotifyPermission] = useState<WaNotificationPermission>(() =>
     getWaNotificationPermission(),
   );
   const bottomRef = useRef<HTMLDivElement>(null);
+  const listSentinelRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const lastTypingSentRef = useRef(0);
+  const typingClearTimerRef = useRef<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const videoFileRef = useRef<HTMLInputElement>(null);
   const audioFileRef = useRef<HTMLInputElement>(null);
@@ -227,6 +267,8 @@ export function CrmInboxPage() {
   const sendMediaFn = useServerFn(sendWaMedia);
   const transferFn = useServerFn(transferWaConversation);
   const readFn = useServerFn(markWaConversationRead);
+  const unreadFn = useServerFn(markWaConversationUnread);
+  const syncChatsFn = useServerFn(syncWaChatsFromZApi);
   const mediaUrlFn = useServerFn(fetchWaMediaUrl);
   const startConvFn = useServerFn(startWaConversation);
   const closeFn = useServerFn(closeWaConversation);
@@ -239,6 +281,9 @@ export function CrmInboxPage() {
   const processFollowUpsFn = useServerFn(processWaFollowUps);
   const searchMsgFn = useServerFn(searchWaMessages);
   const createDealFn = useServerFn(createWaDeal);
+  const scheduleFn = useServerFn(scheduleWaMessage);
+  const listScheduledFn = useServerFn(listScheduledWaMessages);
+  const cancelScheduledFn = useServerFn(cancelScheduledWaMessage);
 
   const selected = useMemo(
     () => conversations.find((c) => c.id === selectedId) ?? null,
@@ -269,7 +314,8 @@ export function CrmInboxPage() {
         .select(
           "id, tenant_id, patient_id, contact_phone, contact_name, channel, external_user_id, assigned_to, status, last_message_at, last_message_preview, unread_count, contact_photo_url, contact_photo_fetched_at, deal_id, patients(full_name, gender), assigned_profile:assigned_to(full_name)",
         )
-        .order("last_message_at", { ascending: false, nullsFirst: false }),
+        .order("last_message_at", { ascending: false, nullsFirst: false })
+        .limit(500),
       supabase
         .from("wa_transfers" as never)
         .select(
@@ -612,6 +658,49 @@ export function CrmInboxPage() {
     };
   }, [tenant?.id, scheduleReloadConversations]);
 
+  // Indicador "digitando…" entre a equipe (Realtime broadcast por conversa).
+  useEffect(() => {
+    setTypingUser(null);
+    if (typingClearTimerRef.current) window.clearTimeout(typingClearTimerRef.current);
+    const tenantId = tenant?.id;
+    if (!tenantId || !selectedId) {
+      typingChannelRef.current = null;
+      return;
+    }
+
+    const channel = supabase.channel(`wa-typing:${tenantId}:${selectedId}`, {
+      config: { broadcast: { self: false } },
+    });
+    channel
+      .on("broadcast", { event: "typing" }, (msg) => {
+        const payload = msg.payload as { userId?: string; name?: string };
+        if (!payload?.name || payload.userId === profile?.id) return;
+        setTypingUser(payload.name);
+        if (typingClearTimerRef.current) window.clearTimeout(typingClearTimerRef.current);
+        typingClearTimerRef.current = window.setTimeout(() => setTypingUser(null), 3500);
+      })
+      .subscribe();
+    typingChannelRef.current = channel;
+
+    return () => {
+      typingChannelRef.current = null;
+      void supabase.removeChannel(channel);
+    };
+  }, [tenant?.id, selectedId, profile?.id]);
+
+  const broadcastTyping = useCallback(() => {
+    const channel = typingChannelRef.current;
+    if (!channel || !profile) return;
+    const now = Date.now();
+    if (now - lastTypingSentRef.current < 1800) return;
+    lastTypingSentRef.current = now;
+    void channel.send({
+      type: "broadcast",
+      event: "typing",
+      payload: { userId: profile.id, name: profile.full_name },
+    });
+  }, [profile]);
+
   const pendingTransferCount = useMemo(() => Object.keys(pendingTransfers).length, [pendingTransfers]);
 
   useEffect(() => {
@@ -665,6 +754,33 @@ export function CrmInboxPage() {
       );
     });
   }, [conversations, search, filter, channelFilter, tagFilter, convTagsMap, profile, pendingTransfers]);
+
+  // Renderização incremental: evita montar centenas de itens de uma vez.
+  useEffect(() => {
+    setVisibleCount(30);
+  }, [search, filter, channelFilter, tagFilter]);
+
+  const visibleConversations = useMemo(
+    () => filteredConversations.slice(0, visibleCount),
+    [filteredConversations, visibleCount],
+  );
+  const hasMoreConversations = filteredConversations.length > visibleConversations.length;
+
+  useEffect(() => {
+    if (!hasMoreConversations) return;
+    const sentinel = listSentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount((c) => c + 30);
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMoreConversations, visibleConversations.length]);
 
   const sendText = async () => {
     const body = normalizeMessageLineBreaks(text);
@@ -722,7 +838,27 @@ export function CrmInboxPage() {
       return;
     }
     const hits = await searchMsgFn({ data: { conversationId: selectedId, query: msgSearch.trim() } });
-    setMsgSearchHits(hits as { id: string; body: string | null; created_at: string }[]);
+    const list = hits as { id: string; body: string | null; created_at: string }[];
+    setMsgSearchHits(list);
+    if (list.length > 0) {
+      // Rola até a ocorrência mais recente automaticamente.
+      scrollToMessage(list[list.length - 1].id);
+    } else {
+      toast.info("Nenhuma mensagem encontrada nesta conversa");
+    }
+  };
+
+  const scrollToMessage = (messageId: string) => {
+    setMobileView("chat");
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`msg-${messageId}`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("ring-2", "ring-amber-400/90", "ring-offset-1");
+      window.setTimeout(() => {
+        el.classList.remove("ring-2", "ring-amber-400/90", "ring-offset-1");
+      }, 2200);
+    });
   };
 
   const closeConversation = async () => {
@@ -784,6 +920,142 @@ export function CrmInboxPage() {
     setMobileView("chat");
     setReplyTo(null);
     setMsgSearchHits([]);
+  };
+
+  const insertEmoji = (emoji: string) => {
+    const el = composerRef.current;
+    if (!el) {
+      setText((prev) => prev + emoji);
+      return;
+    }
+    const start = el.selectionStart ?? text.length;
+    const end = el.selectionEnd ?? text.length;
+    const next = text.slice(0, start) + emoji + text.slice(end);
+    setText(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + emoji.length;
+      el.setSelectionRange(pos, pos);
+    });
+  };
+
+  const markUnread = async () => {
+    if (!selectedId) return;
+    try {
+      await unreadFn({ data: { conversationId: selectedId } });
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === selectedId ? { ...c, unread_count: c.unread_count > 0 ? c.unread_count : 1 } : c,
+        ),
+      );
+      toast.success("Marcada como não lida");
+      setSelectedId(null);
+      setMobileView("list");
+      await loadConversations({ silent: true });
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
+  const refreshScheduled = useCallback(async () => {
+    if (!selectedId) {
+      setScheduledList([]);
+      return;
+    }
+    try {
+      const list = await listScheduledFn({ data: { conversationId: selectedId } });
+      setScheduledList(list);
+    } catch {
+      setScheduledList([]);
+    }
+  }, [selectedId, listScheduledFn]);
+
+  useEffect(() => {
+    void refreshScheduled();
+  }, [refreshScheduled]);
+
+  const openSchedule = () => {
+    if (!text.trim()) {
+      toast.info("Digite a mensagem antes de agendar");
+      return;
+    }
+    // Sugestão: daqui a 1 hora, arredondado.
+    const d = new Date(Date.now() + 60 * 60 * 1000);
+    d.setSeconds(0, 0);
+    const tzOffset = d.getTimezoneOffset() * 60000;
+    setScheduleAt(new Date(d.getTime() - tzOffset).toISOString().slice(0, 16));
+    setScheduleOpen(true);
+  };
+
+  const confirmSchedule = async () => {
+    if (!selectedId || !text.trim() || !scheduleAt) return;
+    setScheduling(true);
+    try {
+      const when = new Date(scheduleAt);
+      await scheduleFn({
+        data: { conversationId: selectedId, body: text.trim(), sendAt: when.toISOString() },
+      });
+      toast.success(`Mensagem agendada para ${fmtDateTime(when.toISOString())}`);
+      setText("");
+      setScheduleOpen(false);
+      await refreshScheduled();
+    } catch (e) {
+      toast.error((e as Error).message || "Falha ao agendar");
+    } finally {
+      setScheduling(false);
+    }
+  };
+
+  const cancelScheduled = async (id: string) => {
+    try {
+      await cancelScheduledFn({ data: { id } });
+      setScheduledList((prev) => prev.filter((s) => s.id !== id));
+      toast.success("Agendamento cancelado");
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
+  const exportConversation = () => {
+    if (!selected) return;
+    try {
+      exportWaConversationToPdf(selected, messages, {
+        clinicName: tenant?.name ?? "Clínica",
+        displayName: conversationDisplayName(selected),
+      });
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
+  const doSyncChats = async () => {
+    setSyncing(true);
+    try {
+      const res = await syncChatsFn();
+      toast.success(
+        res.synced > 0
+          ? `${res.synced} conversa(s) sincronizada(s) do WhatsApp`
+          : "Nenhuma conversa nova encontrada",
+      );
+      await loadConversations({ silent: true });
+    } catch (e) {
+      toast.error((e as Error).message || "Falha ao sincronizar conversas");
+    } finally {
+      setSyncing(false);
+      setSyncConfirmOpen(false);
+    }
+  };
+
+  const onPatientCreated = async (patientId: string) => {
+    setCreatePatientOpen(false);
+    if (!selectedId) return;
+    try {
+      await linkPatientFn({ data: { conversationId: selectedId, patientId } });
+      toast.success("Paciente criado e vinculado");
+      await loadConversations({ silent: true });
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
   };
 
   const messagesById = useMemo(() => {
@@ -1155,6 +1427,22 @@ export function CrmInboxPage() {
           <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2">
             <CrmGlobalSearch onOpenConversation={(id) => selectConversation(id)} />
             <CrmBroadcastDialog conversations={conversations} provider={provider} />
+            {provider === "zapi" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSyncConfirmOpen(true)}
+                disabled={syncing}
+                title="Importar conversas existentes do WhatsApp para o CRM"
+              >
+                {syncing ? (
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 size-4" />
+                )}
+                Sincronizar
+              </Button>
+            ) : null}
             <Button variant="outline" size="sm" asChild>
               <Link to="/crm/pipeline">Funil</Link>
             </Button>
@@ -1363,7 +1651,7 @@ export function CrmInboxPage() {
                 <p className="p-4 text-center text-sm text-muted-foreground">Nenhuma conversa.</p>
               ) : (
                 <div className="min-w-0 max-w-full px-2">
-                {filteredConversations.map((c) => {
+                {visibleConversations.map((c) => {
                   const name = conversationDisplayName(c);
                   const pendingTransfer = pendingTransfers[c.id];
                   const isPendingTransfer = !!pendingTransfer;
@@ -1455,19 +1743,46 @@ export function CrmInboxPage() {
                     </button>
                   );
                 })}
+                {hasMoreConversations ? (
+                  <div ref={listSentinelRef} className="flex justify-center py-3">
+                    <button
+                      type="button"
+                      onClick={() => setVisibleCount((c) => c + 30)}
+                      className="rounded-full bg-muted/60 px-3 py-1 text-[11px] text-muted-foreground transition hover:bg-muted"
+                    >
+                      Carregar mais ({filteredConversations.length - visibleConversations.length})
+                    </button>
+                  </div>
+                ) : null}
                 </div>
               )}
             </ScrollArea>
-            <div className="border-t border-border/50 bg-background/50 p-2">
+            <div className="flex gap-2 border-t border-border/50 bg-background/50 p-2">
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 w-full rounded-full text-xs"
+                className="h-8 flex-1 rounded-full text-xs"
                 onClick={() => setManualConvOpen(true)}
               >
                 <Plus className="mr-1.5 size-3.5" />
                 Iniciar por telefone
               </Button>
+              {provider === "zapi" ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 shrink-0 rounded-full"
+                  onClick={() => setSyncConfirmOpen(true)}
+                  disabled={syncing}
+                  title="Sincronizar conversas do WhatsApp"
+                >
+                  {syncing ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="size-3.5" />
+                  )}
+                </Button>
+              ) : null}
             </div>
           </aside>
 
@@ -1518,9 +1833,20 @@ export function CrmInboxPage() {
                       <p className="truncate font-semibold tracking-tight">
                         {composeTarget ? composeTarget.name : conversationDisplayName(selected!)}
                       </p>
-                      <p className="text-xs text-muted-foreground">
-                        {composeTarget ? formatPhoneBR(composeTarget.phone) : formatPhoneBR(selected!.contact_phone)}
-                      </p>
+                      {!composeTarget && typingUser ? (
+                        <p className="flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                          <span className="inline-flex gap-0.5">
+                            <span className="size-1 animate-bounce rounded-full bg-current [animation-delay:-0.2s]" />
+                            <span className="size-1 animate-bounce rounded-full bg-current [animation-delay:-0.1s]" />
+                            <span className="size-1 animate-bounce rounded-full bg-current" />
+                          </span>
+                          {typingUser} está digitando…
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          {composeTarget ? formatPhoneBR(composeTarget.phone) : formatPhoneBR(selected!.contact_phone)}
+                        </p>
+                      )}
                       {!composeTarget && patientLink ? (
                         <Link
                           to={patientLink.to}
@@ -1543,6 +1869,26 @@ export function CrmInboxPage() {
                         <Badge variant="secondary" className="font-normal">
                           {WA_STATUS_LABEL[selected.status] ?? selected.status}
                         </Badge>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 rounded-full text-xs"
+                          onClick={() => void markUnread()}
+                          title="Marcar como não lida e voltar à lista"
+                        >
+                          <MailOpen className="mr-1.5 size-3.5" />
+                          <span className="hidden lg:inline">Não lida</span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 rounded-full text-xs"
+                          onClick={exportConversation}
+                          title="Exportar conversa em PDF (LGPD)"
+                        >
+                          <FileDown className="mr-1.5 size-3.5" />
+                          <span className="hidden lg:inline">Exportar</span>
+                        </Button>
                         {profile && selected.assigned_to !== profile.id ? (
                           <Button size="sm" variant="outline" className="h-8 rounded-full text-xs" onClick={() => void assignToMe()}>
                             Assumir
@@ -1610,6 +1956,30 @@ export function CrmInboxPage() {
                   )}
                 </div>
                 <div className={crmComposerBar}>
+                  {!composeTarget && scheduledList.length > 0 ? (
+                    <div className="mb-1.5 space-y-1 rounded-lg border border-amber-300/60 bg-amber-50 px-2 py-1.5 text-[11px] dark:border-amber-900/50 dark:bg-amber-950/30">
+                      <p className="flex items-center gap-1.5 font-medium text-amber-800 dark:text-amber-200">
+                        <CalendarClock className="size-3.5" />
+                        {scheduledList.length} mensagem(ns) agendada(s)
+                      </p>
+                      {scheduledList.map((s) => (
+                        <div key={s.id} className="flex items-center gap-1.5">
+                          <span className="shrink-0 tabular-nums text-amber-700 dark:text-amber-300">
+                            {fmtDateTime(s.send_at)}
+                          </span>
+                          <span className="line-clamp-1 flex-1 text-muted-foreground">{s.body}</span>
+                          <button
+                            type="button"
+                            className="shrink-0 text-muted-foreground hover:text-red-600"
+                            onClick={() => void cancelScheduled(s.id)}
+                            title="Cancelar agendamento"
+                          >
+                            <Trash2 className="size-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                   {replyTo ? (
                     <div className="mb-1.5 flex items-center gap-1.5 rounded-lg border border-border/60 bg-background px-2 py-1.5 text-[11px]">
                       <Reply className="size-3 shrink-0 text-emerald-600" />
@@ -1685,10 +2055,18 @@ export function CrmInboxPage() {
                       disabled={sending || !selectedId || selected?.status === "closed" || !!composeTarget || (selected?.channel ?? "whatsapp") !== "whatsapp"}
                       onRecorded={(f) => void sendFile(f)}
                     />
+                    <CrmEmojiPicker
+                      onSelect={insertEmoji}
+                      disabled={(!composeTarget && selected?.status === "closed") || (!selectedId && !composeTarget)}
+                    />
                     <Textarea
+                      ref={composerRef}
                       placeholder="Digite uma mensagem… (Shift+Enter para nova linha)"
                       value={text}
-                      onChange={(e) => setText(e.target.value)}
+                      onChange={(e) => {
+                        setText(e.target.value);
+                        if (selectedId) broadcastTyping();
+                      }}
                       disabled={!composeTarget && selected?.status === "closed"}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey) {
@@ -1699,6 +2077,16 @@ export function CrmInboxPage() {
                       rows={2}
                       className="min-h-[2.25rem] max-h-28 flex-1 resize-none border-0 bg-transparent py-1.5 text-[13px] shadow-none focus-visible:ring-0"
                     />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 shrink-0 rounded-full"
+                      onClick={openSchedule}
+                      disabled={sending || !text.trim() || !!composeTarget || !selectedId || selected?.status === "closed"}
+                      title="Agendar envio"
+                    >
+                      <CalendarClock className="size-4" />
+                    </Button>
                     <Button
                       size="icon"
                       className="size-8 shrink-0 rounded-full bg-[#25D366] hover:bg-[#20bd5a]"
@@ -1792,6 +2180,18 @@ export function CrmInboxPage() {
                           </button>
                         ))}
                       </div>
+                      {!selected?.patient_id ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-2 h-8 w-full text-xs"
+                          disabled={!selectedId}
+                          onClick={() => setCreatePatientOpen(true)}
+                        >
+                          <UserPlus className="mr-1.5 size-3.5" />
+                          Criar novo paciente
+                        </Button>
+                      ) : null}
                       {selected?.patient_id ? (
                         <Button size="sm" variant="ghost" className="mt-2 h-8 w-full text-xs" onClick={() => void linkPatient(null)}>
                           Remover vínculo
@@ -1840,11 +2240,21 @@ export function CrmInboxPage() {
                         </Button>
                       </div>
                       <div className="mt-2 space-y-1.5">
+                        {msgSearchHits.length > 0 ? (
+                          <p className="text-[10px] text-muted-foreground">
+                            {msgSearchHits.length} ocorrência(s) · toque para ir até a mensagem
+                          </p>
+                        ) : null}
                         {msgSearchHits.map((h) => (
-                          <div key={h.id} className="rounded-lg bg-muted/40 px-2.5 py-2 text-xs">
+                          <button
+                            key={h.id}
+                            type="button"
+                            onClick={() => scrollToMessage(h.id)}
+                            className="block w-full rounded-lg bg-muted/40 px-2.5 py-2 text-left text-xs transition hover:bg-muted"
+                          >
                             <p className="line-clamp-2">{h.body}</p>
                             <p className="mt-1 text-[10px] text-muted-foreground">{fmtDateTime(h.created_at)}</p>
-                          </div>
+                          </button>
                         ))}
                       </div>
                     </CrmDetailSection>
@@ -2153,6 +2563,105 @@ export function CrmInboxPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Agendar envio</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+              <p className="line-clamp-4 whitespace-pre-wrap">{text}</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="schedule-at">Data e hora do envio</Label>
+              <Input
+                id="schedule-at"
+                type="datetime-local"
+                value={scheduleAt}
+                min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+                onChange={(e) => setScheduleAt(e.target.value)}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                A mensagem será enviada automaticamente no horário escolhido, mesmo com o CRM fechado.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScheduleOpen(false)} disabled={scheduling}>
+              Cancelar
+            </Button>
+            <Button onClick={() => void confirmSchedule()} disabled={scheduling || !scheduleAt}>
+              {scheduling ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Agendando…
+                </>
+              ) : (
+                "Agendar"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <PatientFormDialog
+        open={createPatientOpen}
+        onOpenChange={setCreatePatientOpen}
+        initial={
+          selected
+            ? {
+                full_name:
+                  selected.contact_name && selected.contact_name !== selected.contact_phone
+                    ? selected.contact_name
+                    : "",
+                phone: localPhoneFromContact(selected.contact_phone),
+              }
+            : undefined
+        }
+        onSaved={(id) => void onPatientCreated(id)}
+      />
+
+      <AlertDialog open={syncConfirmOpen} onOpenChange={setSyncConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sincronizar conversas do WhatsApp?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isto importa as conversas existentes da sua conta Z-API para o CRM (nome e telefone
+              dos contatos). É útil para trazer contatos que já existiam no celular. Mensagens novas
+              chegam sozinhas pelo webhook — use a sincronização apenas para popular contatos antigos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={syncing}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void doSyncChats();
+              }}
+              disabled={syncing}
+            >
+              {syncing ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Sincronizando…
+                </>
+              ) : (
+                "Sincronizar agora"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </CrmPageShell>
   );
+}
+
+/** Telefone local (sem +55) para pré-preencher o cadastro de paciente. */
+function localPhoneFromContact(contactPhone: string): string {
+  const digits = contactPhone.replace(/\D/g, "");
+  const local = digits.startsWith("55") && digits.length > 11 ? digits.slice(2) : digits;
+  if (local.length === 11) return local.replace(/^(\d{2})(\d{5})(\d{4})$/, "($1) $2-$3");
+  if (local.length === 10) return local.replace(/^(\d{2})(\d{4})(\d{4})$/, "($1) $2-$3");
+  return local;
 }

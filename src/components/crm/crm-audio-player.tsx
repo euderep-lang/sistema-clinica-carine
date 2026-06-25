@@ -15,12 +15,15 @@ interface Props {
   className?: string;
 }
 
+const SPEEDS = [1, 1.5, 2] as const;
+
 /** Player compacto estilo WhatsApp — substitui o <audio controls> nativo. */
 export function CrmAudioPlayer({ src, outbound, className }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1);
 
   useEffect(() => {
     const el = audioRef.current;
@@ -56,7 +59,14 @@ export function CrmAudioPlayer({ src, outbound, className }: Props) {
     else void el.play();
   };
 
-  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+  const cycleSpeed = () => {
+    const idx = SPEEDS.indexOf(speed);
+    const next = SPEEDS[(idx + 1) % SPEEDS.length];
+    setSpeed(next);
+    if (audioRef.current) audioRef.current.playbackRate = next;
+  };
+
+  const seek = (e: React.MouseEvent<HTMLButtonElement>) => {
     const el = audioRef.current;
     if (!el || !duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -64,10 +74,14 @@ export function CrmAudioPlayer({ src, outbound, className }: Props) {
     el.currentTime = ratio * duration;
   };
 
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.playbackRate = speed;
+  }, [speed, src, playing]);
+
   const pct = duration > 0 ? (current / duration) * 100 : 0;
 
   return (
-    <div className={cn("flex w-[min(100%,11.5rem)] items-center gap-1.5", className)}>
+    <div className={cn("flex w-[min(100%,13rem)] items-center gap-1.5", className)}>
       <audio ref={audioRef} src={src} preload="metadata" className="hidden" />
       <button
         type="button"
@@ -105,6 +119,20 @@ export function CrmAudioPlayer({ src, outbound, className }: Props) {
           {formatDuration(playing || current > 0 ? current : duration)}
         </p>
       </div>
+      <button
+        type="button"
+        onClick={cycleSpeed}
+        className={cn(
+          "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold tabular-nums transition",
+          outbound
+            ? "bg-emerald-700/15 text-emerald-900 dark:text-emerald-100"
+            : "bg-emerald-600/12 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-100",
+        )}
+        aria-label="Velocidade de reprodução"
+        title="Velocidade do áudio"
+      >
+        {speed}x
+      </button>
     </div>
   );
 }

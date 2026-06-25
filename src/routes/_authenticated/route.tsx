@@ -3,6 +3,7 @@ import { KeepAliveOutlet } from "@/components/keep-alive-outlet";
 import { useWaMessageNotifications } from "@/hooks/use-wa-message-notifications";
 import { useWaReminderNotifications } from "@/hooks/use-wa-reminder-notifications";
 import { dashboardPathFor, useAuth, type Role } from "@/lib/mock-auth";
+import { isPathAllowedByPermissions, type PermissionMatrix } from "@/lib/permissions";
 
 export const Route = createFileRoute("/_authenticated")({
   component: AuthGate,
@@ -21,8 +22,15 @@ const CROSS_ROLE_PATH_PREFIXES: Partial<Record<Role, string[]>> = {
   receptionist: ["/financial/inventory", "/financial/inventory/items", "/financial/inventory/categories"],
 };
 
-function canAccessPath(role: Role, pathname: string) {
+function canAccessPath(
+  role: Role,
+  pathname: string,
+  permissions: PermissionMatrix | null,
+) {
   if (role === "admin") return true;
+
+  // Camada de permissões configuráveis pelo admin (áreas desligadas por perfil).
+  if (!isPathAllowedByPermissions(role, pathname, permissions)) return false;
 
   if (pathname === "/crm/inbox" || pathname.startsWith("/crm/")) {
     return role === "admin" || role === "professional" || role === "receptionist";
@@ -39,7 +47,7 @@ function canAccessPath(role: Role, pathname: string) {
 }
 
 function AuthGate() {
-  const { profile, loading } = useAuth();
+  const { profile, permissions, loading } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useWaMessageNotifications();
@@ -53,7 +61,7 @@ function AuthGate() {
     );
   }
   if (!profile) return <Navigate to="/login" />;
-  if (!canAccessPath(profile.role, pathname)) {
+  if (!canAccessPath(profile.role, pathname, permissions)) {
     return <Navigate to={dashboardPathFor(profile.role)} />;
   }
   return <KeepAliveOutlet />;

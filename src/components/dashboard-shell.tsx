@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
-import { LogOut, Search, User } from "lucide-react";
+import { LogOut, User } from "lucide-react";
 
 import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -13,7 +13,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
 import { clearKeepAliveCache } from "@/components/keep-alive-outlet";
 import { ClinicSidebar } from "./clinic-sidebar";
 import { CommandPalette } from "./command-palette";
@@ -86,19 +85,6 @@ export function DashboardShell({
           </nav>
 
           <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="hidden h-9 gap-2 text-muted-foreground md:inline-flex"
-              onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}
-            >
-              <Search className="size-4" />
-              <span>Buscar</span>
-              <kbd className="pointer-events-none hidden rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground lg:inline">
-                ⌘K
-              </kbd>
-            </Button>
-
             <NotificationsBell />
 
             {profile && (

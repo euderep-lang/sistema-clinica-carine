@@ -1,6 +1,7 @@
 import { verifyCronAuth } from "@/lib/internal-api-auth.server";
 import { processAppointmentNotifyQueue } from "@/lib/wa-appointment-notify.server";
 import { processDueFollowUps } from "@/lib/wa-follow-up.server";
+import { processScheduledMessages } from "@/lib/wa-scheduled.server";
 
 export { verifyCronAuth };
 
@@ -16,8 +17,9 @@ export async function handleWaFollowUpsCron(request: Request): Promise<Response>
   try {
     const queue = await processAppointmentNotifyQueue(25);
     const followUps = await processDueFollowUps(50);
-    console.info("[cron wa-follow-ups]", { queue, followUps });
-    return Response.json({ ok: true, queue, followUps });
+    const scheduled = await processScheduledMessages(25);
+    console.info("[cron wa-follow-ups]", { queue, followUps, scheduled });
+    return Response.json({ ok: true, queue, followUps, scheduled });
   } catch (e) {
     console.error("[cron wa-follow-ups]", e);
     return Response.json(

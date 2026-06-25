@@ -311,6 +311,96 @@ export const markWaConversationRead = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const scheduleWaMessage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { conversationId: string; body: string; sendAt: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const profile = await requireCrmAccess(supabase, userId);
+
+    const body = data.body.trim();
+    if (!body) throw new Error("Mensagem vazia");
+
+    const when = new Date(data.sendAt);
+    if (Number.isNaN(when.getTime())) throw new Error("Data inválida");
+    if (when.getTime() < Date.now() + 30_000) {
+      throw new Error("Escolha um horário no futuro (pelo menos 1 minuto à frente)");
+    }
+
+    const { data: conv } = await supabase
+      .from("wa_conversations" as never)
+      .select("id")
+      .eq("id", data.conversationId)
+      .maybeSingle();
+    if (!conv) throw new Error("Conversa não encontrada");
+
+    const { data: created, error } = await supabase
+      .from("wa_scheduled_messages" as never)
+      .insert({
+        tenant_id: profile.tenant_id,
+        conversation_id: data.conversationId,
+        body,
+        send_at: when.toISOString(),
+        created_by: userId,
+      } as never)
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+
+    return { id: (created as { id: string }).id };
+  });
+
+export const listScheduledWaMessages = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { conversationId: string }) => d)
+  .handler(async ({ data, context }) => {
+    await requireCrmAccess(context.supabase, context.userId);
+    const { data: rows, error } = await context.supabase
+      .from("wa_scheduled_messages" as never)
+      .select("id, body, send_at, status, created_at, error")
+      .eq("conversation_id", data.conversationId)
+      .eq("status", "pending")
+      .order("send_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (rows ?? []) as { id: string; body: string; send_at: string; status: string; created_at: string; error: string | null }[];
+  });
+
+export const cancelScheduledWaMessage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { id: string }) => d)
+  .handler(async ({ data, context }) => {
+    await requireCrmAccess(context.supabase, context.userId);
+    const { error } = await context.supabase
+      .from("wa_scheduled_messages" as never)
+      .update({ status: "canceled" } as never)
+      .eq("id", data.id)
+      .eq("status", "pending");
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const markWaConversationUnread = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { conversationId: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    await requireCrmAccess(supabase, userId);
+
+    const { data: conv } = await supabase
+      .from("wa_conversations" as never)
+      .select("unread_count")
+      .eq("id", data.conversationId)
+      .maybeSingle();
+    const current = (conv as { unread_count?: number } | null)?.unread_count ?? 0;
+
+    await supabase
+      .from("wa_conversations" as never)
+      .update({ unread_count: current > 0 ? current : 1 } as never)
+      .eq("id", data.conversationId);
+
+    return { ok: true };
+  });
+
 export const fetchWaMediaUrl = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: { mediaId: string; mimeType?: string }) => d)

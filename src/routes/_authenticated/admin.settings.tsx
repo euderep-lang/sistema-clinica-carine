@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Building2, Palette, DoorOpen, Stethoscope, Users, Receipt, MessageSquare, Plug, CreditCard, FolderOpen, Shield, LineChart, type LucideIcon } from "lucide-react";
+import { Building2, Palette, DoorOpen, Stethoscope, Users, Receipt, MessageSquare, Plug, CreditCard, FolderOpen, Shield, ShieldCheck, LineChart, type LucideIcon } from "lucide-react";
 import { SectionAuditoria } from "@/components/settings/section-auditoria";
 import { SectionFunilCrm } from "@/components/settings/section-funil-crm";
 import { DashboardShell } from "@/components/dashboard-shell";
@@ -10,6 +10,7 @@ import { SectionAparencia } from "@/components/settings/section-aparencia";
 import { SectionConsultorios } from "@/components/settings/section-consultorios";
 import { SectionEspecialidades } from "@/components/settings/section-especialidades";
 import { SectionUsuarios } from "@/components/settings/section-usuarios";
+import { SectionPermissoes } from "@/components/settings/section-permissoes";
 import { SectionServicos } from "@/components/settings/section-servicos";
 import { SectionMensagens } from "@/components/settings/section-mensagens";
 import { SectionIntegracoes } from "@/components/settings/section-integracoes";
@@ -23,7 +24,7 @@ export const Route = createFileRoute("/_authenticated/admin/settings")({
   component: Page,
 });
 
-type SectionId = "clinica" | "aparencia" | "consultorios" | "especialidades" | "usuarios" | "servicos" | "pagamentos" | "despesas" | "mensagens" | "funil" | "integracoes" | "auditoria";
+type SectionId = "clinica" | "aparencia" | "consultorios" | "especialidades" | "usuarios" | "permissoes" | "servicos" | "pagamentos" | "despesas" | "mensagens" | "funil" | "integracoes" | "auditoria";
 
 const SECTIONS: { id: SectionId; label: string; icon: LucideIcon }[] = [
   { id: "clinica", label: "Clínica", icon: Building2 },
@@ -31,6 +32,7 @@ const SECTIONS: { id: SectionId; label: string; icon: LucideIcon }[] = [
   { id: "consultorios", label: "Consultórios", icon: DoorOpen },
   { id: "especialidades", label: "Especialidades", icon: Stethoscope },
   { id: "usuarios", label: "Usuários", icon: Users },
+  { id: "permissoes", label: "Permissões", icon: ShieldCheck },
   { id: "servicos", label: "Serviços", icon: Receipt },
   { id: "pagamentos", label: "Pagamentos", icon: CreditCard },
   { id: "despesas", label: "Despesas", icon: FolderOpen },
@@ -49,6 +51,7 @@ function Page() {
     section === "consultorios" ||
     section === "especialidades" ||
     section === "usuarios" ||
+    section === "permissoes" ||
     section === "servicos" ||
     section === "pagamentos" ||
     section === "despesas" ||
@@ -76,6 +79,7 @@ function Page() {
           {active === "consultorios" && <SectionConsultorios />}
           {active === "especialidades" && <SectionEspecialidades />}
           {active === "usuarios" && <SectionUsuarios />}
+          {active === "permissoes" && <SectionPermissoes />}
           {active === "servicos" && <SectionServicos />}
           {active === "pagamentos" && <SectionPagamentos />}
           {active === "despesas" && <SectionDespesas />}

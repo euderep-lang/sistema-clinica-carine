@@ -67,13 +67,14 @@ export function CrmMessageBubble({
 
   return (
     <div
+      id={`msg-${message.id}`}
       className={cn(
-        "group relative max-w-[min(78%,15rem)] rounded-[10px] text-[12px] leading-snug",
+        "group relative max-w-[min(78%,15rem)] scroll-mt-20 rounded-[10px] text-[12px] leading-snug transition-shadow",
         isAudio ? "px-2 py-1.5" : "px-2.5 py-1.5",
         message.direction === "outbound"
           ? "ml-auto rounded-tr-[3px] bg-[#d9fdd3] text-zinc-900 dark:bg-emerald-900/40 dark:text-emerald-50"
           : "rounded-tl-[3px] bg-white text-zinc-900 shadow-[0_1px_0.5px_rgba(0,0,0,0.06)] dark:bg-zinc-800 dark:text-zinc-100",
-        highlighted && "ring-2 ring-amber-400/80 ring-offset-1",
+        highlighted && "ring-2 ring-amber-400/90 ring-offset-1",
       )}
     >
       {onReply ? (

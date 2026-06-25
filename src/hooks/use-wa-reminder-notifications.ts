@@ -43,6 +43,7 @@ export function useWaReminderNotifications() {
         toast.message(`Lembrete CRM · ${name}`, {
           description: row.note ?? "Hora de retornar ao paciente",
           duration: 12000,
+          closeButton: true,
         });
         await supabase
           .from("wa_reminders" as never)

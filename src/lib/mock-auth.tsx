@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { applyThemeColors, applyFont, getTenantSetting } from "@/lib/settings-helpers";
+import { PERMISSION_SETTING_KEY, type PermissionMatrix } from "@/lib/permissions";
 
 export type Role = "admin" | "receptionist" | "professional" | "financial";
 
@@ -29,10 +30,12 @@ export interface Tenant {
 interface AuthContextValue {
   profile: Profile | null;
   tenant: Tenant | null;
+  permissions: PermissionMatrix | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<Profile>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
+  reloadPermissions: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -84,6 +87,7 @@ async function loadProfileAndTenant(userId: string, email: string): Promise<{ pr
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [tenant, setTenant] = useState<Tenant | null>(null);
+  const [permissions, setPermissions] = useState<PermissionMatrix | null>(null);
   const [loading, setLoading] = useState(true);
 
   const hydrate = async () => {
@@ -92,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!session?.user) {
       setProfile(null);
       setTenant(null);
+      setPermissions(null);
       return;
     }
     const res = await loadProfileAndTenant(session.user.id, session.user.email ?? "");
@@ -100,10 +105,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setTenant(res.tenant);
       applyThemeColors(res.tenant.primary_color, res.tenant.secondary_color);
       getTenantSetting<string>(res.tenant.id, "font_preference").then((f) => f && applyFont(f));
+      getTenantSetting<PermissionMatrix>(res.tenant.id, PERMISSION_SETTING_KEY).then((p) =>
+        setPermissions(p ?? {}),
+      );
     } else {
       setProfile(null);
       setTenant(null);
+      setPermissions(null);
     }
+  };
+
+  const reloadPermissions = async () => {
+    if (!tenant) return;
+    const p = await getTenantSetting<PermissionMatrix>(tenant.id, PERMISSION_SETTING_KEY);
+    setPermissions(p ?? {});
   };
 
   useEffect(() => {
@@ -121,6 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         lastUserId = null;
         setProfile(null);
         setTenant(null);
+        setPermissions(null);
         return;
       }
       const uid = session?.user.id ?? null;
@@ -184,6 +200,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setProfile(res.profile);
     setTenant(res.tenant);
+    getTenantSetting<PermissionMatrix>(res.tenant.id, PERMISSION_SETTING_KEY).then((p) =>
+      setPermissions(p ?? {}),
+    );
     return res.profile;
   };
 
@@ -191,10 +210,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
     setProfile(null);
     setTenant(null);
+    setPermissions(null);
   };
 
   return (
-    <AuthContext.Provider value={{ profile, tenant, loading, signIn, signOut, refresh: hydrate }}>
+    <AuthContext.Provider
+      value={{ profile, tenant, permissions, loading, signIn, signOut, refresh: hydrate, reloadPermissions }}
+    >
       {children}
     </AuthContext.Provider>
   );

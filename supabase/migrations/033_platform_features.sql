@@ -164,7 +164,9 @@ CREATE TABLE IF NOT EXISTS public.appointment_confirmations (
 CREATE INDEX IF NOT EXISTS idx_appt_confirm_appt ON public.appointment_confirmations(appointment_id);
 
 -- Triggers updated_at
+DROP TRIGGER IF EXISTS patient_pre_registrations_updated_at ON public.patient_pre_registrations;
 CREATE TRIGGER patient_pre_registrations_updated_at BEFORE UPDATE ON public.patient_pre_registrations FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+DROP TRIGGER IF EXISTS exam_requests_updated_at ON public.exam_requests;
 CREATE TRIGGER exam_requests_updated_at BEFORE UPDATE ON public.exam_requests FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 -- RLS
@@ -179,43 +181,54 @@ ALTER TABLE public.patient_data_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.appointment_confirmations ENABLE ROW LEVEL SECURITY;
 
 -- Staff policies
+DROP POLICY IF EXISTS pre_reg_staff ON public.patient_pre_registrations;
 CREATE POLICY pre_reg_staff ON public.patient_pre_registrations FOR ALL TO authenticated
   USING (tenant_id = public.get_my_tenant_id() AND public.is_ops_staff())
   WITH CHECK (tenant_id = public.get_my_tenant_id() AND public.is_ops_staff());
 
+DROP POLICY IF EXISTS exam_requests_staff ON public.exam_requests;
 CREATE POLICY exam_requests_staff ON public.exam_requests FOR ALL TO authenticated
   USING (tenant_id = public.get_my_tenant_id() AND (professional_id = auth.uid() OR public.is_ops_staff()))
   WITH CHECK (tenant_id = public.get_my_tenant_id() AND (professional_id = auth.uid() OR public.is_ops_staff()));
 
+DROP POLICY IF EXISTS exam_results_staff ON public.exam_results;
 CREATE POLICY exam_results_staff ON public.exam_results FOR ALL TO authenticated
   USING (tenant_id = public.get_my_tenant_id() AND (professional_id = auth.uid() OR professional_id IS NULL OR public.is_ops_staff()))
   WITH CHECK (tenant_id = public.get_my_tenant_id());
 
+DROP POLICY IF EXISTS clinical_shares_owner ON public.clinical_record_shares;
 CREATE POLICY clinical_shares_owner ON public.clinical_record_shares FOR ALL TO authenticated
   USING (tenant_id = public.get_my_tenant_id() AND (owner_professional_id = auth.uid() OR public.get_my_role() = 'admin'))
   WITH CHECK (tenant_id = public.get_my_tenant_id() AND owner_professional_id = auth.uid());
 
+DROP POLICY IF EXISTS clinical_shares_recipient ON public.clinical_record_shares;
 CREATE POLICY clinical_shares_recipient ON public.clinical_record_shares FOR SELECT TO authenticated
   USING (tenant_id = public.get_my_tenant_id() AND shared_with_professional_id = auth.uid());
 
+DROP POLICY IF EXISTS nps_surveys_staff ON public.nps_surveys;
 CREATE POLICY nps_surveys_staff ON public.nps_surveys FOR ALL TO authenticated
   USING (tenant_id = public.get_my_tenant_id() AND public.is_ops_staff())
   WITH CHECK (tenant_id = public.get_my_tenant_id() AND public.is_ops_staff());
 
+DROP POLICY IF EXISTS nps_responses_staff ON public.nps_responses;
 CREATE POLICY nps_responses_staff ON public.nps_responses FOR SELECT TO authenticated
   USING (tenant_id = public.get_my_tenant_id());
 
+DROP POLICY IF EXISTS nps_responses_insert_anon ON public.nps_responses;
 CREATE POLICY nps_responses_insert_anon ON public.nps_responses FOR INSERT TO anon
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS patient_consents_staff ON public.patient_consents;
 CREATE POLICY patient_consents_staff ON public.patient_consents FOR ALL TO authenticated
   USING (tenant_id = public.get_my_tenant_id())
   WITH CHECK (tenant_id = public.get_my_tenant_id());
 
+DROP POLICY IF EXISTS data_requests_staff ON public.patient_data_requests;
 CREATE POLICY data_requests_staff ON public.patient_data_requests FOR ALL TO authenticated
   USING (tenant_id = public.get_my_tenant_id() AND public.is_ops_staff())
   WITH CHECK (tenant_id = public.get_my_tenant_id() AND public.is_ops_staff());
 
+DROP POLICY IF EXISTS appt_confirm_staff ON public.appointment_confirmations;
 CREATE POLICY appt_confirm_staff ON public.appointment_confirmations FOR ALL TO authenticated
   USING (tenant_id = public.get_my_tenant_id())
   WITH CHECK (tenant_id = public.get_my_tenant_id());
@@ -244,6 +257,7 @@ INSERT INTO storage.buckets (id, name, public, file_size_limit)
 VALUES ('exam-results', 'exam-results', false, 52428800)
 ON CONFLICT (id) DO NOTHING;
 
+DROP POLICY IF EXISTS exam_results_storage ON storage.objects;
 CREATE POLICY exam_results_storage ON storage.objects FOR ALL TO authenticated
   USING (bucket_id = 'exam-results' AND (storage.foldername(name))[1] = public.get_my_tenant_id()::text)
   WITH CHECK (bucket_id = 'exam-results' AND (storage.foldername(name))[1] = public.get_my_tenant_id()::text);

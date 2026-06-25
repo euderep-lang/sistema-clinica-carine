@@ -40,6 +40,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useAuth, type Role } from "@/lib/mock-auth";
+import { canAccessFeature, featureForPath } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import {
   crmHighlightButtonActive,
@@ -209,11 +210,21 @@ function SidebarCollapseButton() {
 }
 
 export function ClinicSidebar() {
-  const { profile, tenant } = useAuth();
+  const { profile, tenant, permissions } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   if (!profile) return null;
-  const groups = NAV[profile.role];
+  const role = profile.role;
+  const groups = NAV[role]
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => {
+        const feature = featureForPath(item.url);
+        if (!feature) return true;
+        return canAccessFeature(role, permissions, feature.key);
+      }),
+    }))
+    .filter((group) => group.items.length > 0);
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
