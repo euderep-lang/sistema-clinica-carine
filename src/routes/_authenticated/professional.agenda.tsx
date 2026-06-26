@@ -1,7 +1,7 @@
 import { fmtDateFull } from "@/lib/locale";
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CalendarDays, ChevronLeft, ChevronRight, Eye, LayoutGrid, List, PlayCircle, Plus } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Eye, LayoutGrid, List, MapPin, PlayCircle, Plus, Video } from "lucide-react";
 import { toast } from "sonner";
 import { NewAppointmentDialog } from "@/components/agenda/new-appointment-dialog";
 import { DashboardShell } from "@/components/dashboard-shell";
@@ -34,6 +34,8 @@ import {
   todayISO,
 } from "@/lib/agenda-utils";
 import {
+  APPOINTMENT_MODALITY_BADGE,
+  APPOINTMENT_MODALITY_SHORT,
   APPOINTMENT_STATUS_LABEL,
   APPOINTMENT_TYPE_LABEL,
   PROFESSIONAL_AGENDA_STATUS_ITEM,
@@ -69,7 +71,7 @@ function ProfessionalAgendaPage() {
     setLoading(true);
     let q = supabase
       .from("appointments")
-      .select("id,date,start_time,end_time,status,type,patient_id,patients(full_name,phone),rooms(name)")
+      .select("id,date,start_time,end_time,status,type,modality,patient_id,patients(full_name,phone),rooms(name)")
       .eq("professional_id", profile.id)
       .order("date")
       .order("start_time");
@@ -312,7 +314,18 @@ function ProfessionalAgendaPage() {
                           {a.rooms?.name ?? "—"}
                         </TableCell>
                         <TableCell className="text-center text-sm">
-                          {APPOINTMENT_TYPE_LABEL[a.type ?? ""] ?? a.type ?? "—"}
+                          <div className="flex flex-col items-center gap-1">
+                            <span>{APPOINTMENT_TYPE_LABEL[a.type ?? ""] ?? a.type ?? "—"}</span>
+                            <span
+                              className={cn(
+                                "inline-flex w-fit items-center gap-0.5 rounded border px-1.5 py-px text-[10px] font-medium",
+                                APPOINTMENT_MODALITY_BADGE[a.modality ?? "presential"],
+                              )}
+                            >
+                              {a.modality === "online" ? <Video className="size-2.5" /> : <MapPin className="size-2.5" />}
+                              {APPOINTMENT_MODALITY_SHORT[a.modality ?? "presential"]}
+                            </span>
+                          </div>
                         </TableCell>
                         <TableCell className="text-center">
                           <div className="flex justify-center">

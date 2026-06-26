@@ -2,7 +2,7 @@ import { fmtDateLong } from "@/lib/locale";
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Building2, CalendarDays, LayoutGrid, List, Plus } from "lucide-react";
+import { Building2, CalendarDays, LayoutGrid, List, MapPin, Plus, Video } from "lucide-react";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { AgendaRescheduleButton } from "@/components/agenda/agenda-appointment-actions";
@@ -26,9 +26,13 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import {
+  APPOINTMENT_MODALITY_BADGE,
+  APPOINTMENT_MODALITY_OPTIONS,
+  APPOINTMENT_MODALITY_SHORT,
   APPOINTMENT_STATUS_LABEL,
   APPOINTMENT_TYPE_LABEL,
   APPOINTMENT_TYPE_OPTIONS,
+  DEFAULT_APPOINTMENT_MODALITY,
   resolveAppointmentTypes,
 } from "@/lib/appointment-types";
 import {
@@ -44,6 +48,7 @@ import {
   triggerAppointmentFollowUp,
 } from "@/lib/whatsapp-crm.functions";
 import { AUTOMATION_QUEUED_MESSAGE } from "@/lib/automation-messages";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/reception/agenda")({
   component: AgendaPage,
@@ -58,6 +63,7 @@ type Appointment = {
   end_time: string | null;
   status: string;
   type: string | null;
+  modality: string | null;
   specialty: string | null;
   notes: string | null;
   patient_id: string | null;
@@ -104,6 +110,7 @@ function AgendaPage() {
     start_time: "09:00",
     end_time: "10:00",
     type: "consultation",
+    modality: DEFAULT_APPOINTMENT_MODALITY as string,
     specialty: "",
     notes: "",
   });
@@ -113,7 +120,7 @@ function AgendaPage() {
     setLoading(true);
     const { data, error } = await supabase
       .from("appointments")
-      .select("id,date,start_time,end_time,status,type,specialty,notes,patient_id,professional_id,room_id,patients(full_name,phone),profiles!appointments_professional_id_fkey(full_name),rooms(name,color)")
+      .select("id,date,start_time,end_time,status,type,modality,specialty,notes,patient_id,professional_id,room_id,patients(full_name,phone),profiles!appointments_professional_id_fkey(full_name),rooms(name,color)")
       .eq("tenant_id", profile.tenant_id)
       .eq("date", date)
       .order("start_time");
@@ -190,6 +197,7 @@ function AgendaPage() {
       professional_id: defaultProfId ?? "",
       specialty: patch.specialty,
       type: patch.type,
+      modality: DEFAULT_APPOINTMENT_MODALITY,
     }));
     setOpen(true);
   };
@@ -221,6 +229,7 @@ function AgendaPage() {
         start_time: form.start_time,
         end_time: form.end_time || addOneHour(form.start_time),
         type: form.type || "consultation",
+        modality: form.modality || DEFAULT_APPOINTMENT_MODALITY,
         specialty: form.specialty || null,
         notes: form.notes || null,
         status: "scheduled",
@@ -404,7 +413,21 @@ function AgendaPage() {
                           </TableCell>
                           <TableCell>{row.profiles?.full_name ?? "—"}</TableCell>
                           <TableCell>{row.rooms?.name ?? "—"}</TableCell>
-                          <TableCell>{APPOINTMENT_TYPE_LABEL[row.type ?? ""] ?? row.type ?? row.specialty ?? "Consulta"}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-col items-center gap-1">
+                              <span>{APPOINTMENT_TYPE_LABEL[row.type ?? ""] ?? row.type ?? row.specialty ?? "Consulta"}</span>
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "flex h-5 w-fit items-center gap-0.5 px-1.5 text-[10px]",
+                                  APPOINTMENT_MODALITY_BADGE[row.modality ?? "presential"],
+                                )}
+                              >
+                                {row.modality === "online" ? <Video className="size-2.5" /> : <MapPin className="size-2.5" />}
+                                {APPOINTMENT_MODALITY_SHORT[row.modality ?? "presential"]}
+                              </Badge>
+                            </div>
+                          </TableCell>
                           <TableCell>
                             <Badge className={STATUS_CLASS[row.status] ?? STATUS_CLASS.scheduled}>
                               {APPOINTMENT_STATUS_LABEL[row.status] ?? row.status}
@@ -503,6 +526,17 @@ function AgendaPage() {
                 <SelectContent>
                   {availableAppointmentTypes.map((t) => (
                     <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Modalidade</Label>
+              <Select value={form.modality} onValueChange={(value) => setForm((f) => ({ ...f, modality: value }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {APPOINTMENT_MODALITY_OPTIONS.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

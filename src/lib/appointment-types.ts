@@ -13,6 +13,36 @@ export const APPOINTMENT_TYPE_LABEL: Record<string, string> = Object.fromEntries
   APPOINTMENT_TYPE_OPTIONS.map((t) => [t.value, t.label]),
 );
 
+export const APPOINTMENT_MODALITY_OPTIONS = [
+  { value: "presential", label: "Consulta Presencial" },
+  { value: "online", label: "Consulta Online" },
+] as const;
+
+export type AppointmentModality = (typeof APPOINTMENT_MODALITY_OPTIONS)[number]["value"];
+
+export const DEFAULT_APPOINTMENT_MODALITY: AppointmentModality = "presential";
+
+export const APPOINTMENT_MODALITY_LABEL: Record<string, string> = Object.fromEntries(
+  APPOINTMENT_MODALITY_OPTIONS.map((m) => [m.value, m.label]),
+);
+
+/** Rótulo curto para badges compactas na agenda. */
+export const APPOINTMENT_MODALITY_SHORT: Record<string, string> = {
+  presential: "Presencial",
+  online: "Online",
+};
+
+/** Estilo da badge de modalidade na agenda. */
+export const APPOINTMENT_MODALITY_BADGE: Record<string, string> = {
+  presential: "border-slate-200 bg-slate-100 text-slate-700",
+  online: "border-sky-200 bg-sky-50 text-sky-700",
+};
+
+export function appointmentModalityLabel(modality: string | null | undefined): string {
+  if (!modality) return APPOINTMENT_MODALITY_LABEL[DEFAULT_APPOINTMENT_MODALITY];
+  return APPOINTMENT_MODALITY_LABEL[modality] ?? modality;
+}
+
 export const APPOINTMENT_STATUS_LABEL: Record<string, string> = {
   scheduled: "Agendado",
   confirmed: "Confirmado",

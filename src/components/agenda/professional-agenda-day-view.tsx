@@ -22,6 +22,8 @@ import {
   timeToMinutes,
 } from "@/lib/agenda-utils";
 import {
+  APPOINTMENT_MODALITY_BADGE,
+  APPOINTMENT_MODALITY_SHORT,
   APPOINTMENT_STATUS_LABEL,
   APPOINTMENT_TYPE_LABEL,
   PROFESSIONAL_AGENDA_STATUS_ITEM,
@@ -29,6 +31,7 @@ import {
   PROFESSIONAL_AGENDA_STATUS_TRIGGER,
   PROFESSIONAL_AGENDA_STATUS_VALUES,
 } from "@/lib/appointment-types";
+import { Video, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type ProfessionalAgendaAppointment = {
@@ -38,6 +41,7 @@ export type ProfessionalAgendaAppointment = {
   end_time: string | null;
   status: string;
   type: string | null;
+  modality?: string | null;
   patient_id: string | null;
   patients: { full_name: string; phone: string | null } | null;
   rooms: { name: string } | null;
@@ -131,6 +135,7 @@ export function ProfessionalAgendaDayView({
                   className={cn(
                     "absolute left-2 right-2 overflow-hidden rounded-md border border-l-4 p-2 shadow-sm",
                     STATUS_CLASS[row.status] ?? STATUS_CLASS.scheduled,
+                    row.modality === "online" && !cancelled && "ring-1 ring-sky-300",
                     cancelled && "line-through opacity-50",
                   )}
                   style={{ top: `${top}%`, height: `${height}%`, minHeight: "4.5rem" }}
@@ -155,6 +160,16 @@ export function ProfessionalAgendaDayView({
                     />
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-1">
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "flex h-5 items-center gap-0.5 px-1.5 text-[10px]",
+                        APPOINTMENT_MODALITY_BADGE[row.modality ?? "presential"],
+                      )}
+                    >
+                      {row.modality === "online" ? <Video className="size-2.5" /> : <MapPin className="size-2.5" />}
+                      {APPOINTMENT_MODALITY_SHORT[row.modality ?? "presential"]}
+                    </Badge>
                     <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
                       {APPOINTMENT_TYPE_LABEL[row.type ?? ""] ?? row.type ?? "Consulta"}
                     </Badge>

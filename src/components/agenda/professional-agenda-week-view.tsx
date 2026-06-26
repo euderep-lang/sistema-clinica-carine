@@ -24,6 +24,8 @@ import {
   weekDaysFromMonday,
 } from "@/lib/agenda-utils";
 import {
+  APPOINTMENT_MODALITY_BADGE,
+  APPOINTMENT_MODALITY_SHORT,
   APPOINTMENT_STATUS_LABEL,
   APPOINTMENT_TYPE_LABEL,
   PROFESSIONAL_AGENDA_STATUS_ITEM,
@@ -31,6 +33,7 @@ import {
   PROFESSIONAL_AGENDA_STATUS_TRIGGER,
   PROFESSIONAL_AGENDA_STATUS_VALUES,
 } from "@/lib/appointment-types";
+import { Video, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ProfessionalAgendaAppointment } from "@/components/agenda/professional-agenda-day-view";
 
@@ -175,11 +178,15 @@ export function ProfessionalAgendaWeekView({
                               className={cn(
                                 "absolute left-0.5 right-0.5 z-[1] overflow-hidden rounded border border-l-[3px] p-1 text-left shadow-sm transition hover:ring-2 hover:ring-primary/25",
                                 STATUS_CLASS[row.status] ?? STATUS_CLASS.scheduled,
+                                row.modality === "online" && row.status !== "cancelled" && "ring-1 ring-sky-300",
                                 row.status === "cancelled" && "opacity-50 line-through",
                               )}
                               style={{ top: `${top}%`, height: `${height}%`, minHeight: "2.75rem" }}
                             >
-                              <div className="text-[9px] font-semibold leading-tight text-primary">
+                              <div className="flex items-center gap-0.5 text-[9px] font-semibold leading-tight text-primary">
+                                {row.modality === "online" ? (
+                                  <Video className="size-2 text-sky-600" />
+                                ) : null}
                                 {row.start_time.slice(0, 5)}
                               </div>
                               <div className="truncate text-[10px] font-medium leading-tight">
@@ -197,6 +204,16 @@ export function ProfessionalAgendaWeekView({
                                 </p>
                               </div>
                               <div className="flex flex-wrap gap-1">
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "flex items-center gap-0.5 text-[10px]",
+                                    APPOINTMENT_MODALITY_BADGE[row.modality ?? "presential"],
+                                  )}
+                                >
+                                  {row.modality === "online" ? <Video className="size-2.5" /> : <MapPin className="size-2.5" />}
+                                  {APPOINTMENT_MODALITY_SHORT[row.modality ?? "presential"]}
+                                </Badge>
                                 <Badge variant="outline" className="text-[10px]">
                                   {APPOINTMENT_TYPE_LABEL[row.type ?? ""] ?? row.type ?? "Consulta"}
                                 </Badge>

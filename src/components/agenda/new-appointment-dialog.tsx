@@ -21,7 +21,9 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import {
+  APPOINTMENT_MODALITY_OPTIONS,
   APPOINTMENT_TYPE_OPTIONS,
+  DEFAULT_APPOINTMENT_MODALITY,
   resolveAppointmentTypes,
 } from "@/lib/appointment-types";
 import { patchFormForProfessional, type AppointmentProfessionalOption } from "@/lib/appointment-professional";
@@ -76,6 +78,7 @@ export function NewAppointmentDialog({
     start_time: "09:00",
     end_time: "10:00",
     type: "consultation",
+    modality: DEFAULT_APPOINTMENT_MODALITY as string,
     specialty: "",
     notes: "",
   });
@@ -102,6 +105,7 @@ export function NewAppointmentDialog({
       patient_id: defaultPatientId ?? "",
       date: defaultDate ?? todayISO(),
       end_time: addOneHour(f.start_time),
+      modality: DEFAULT_APPOINTMENT_MODALITY,
     }));
 
     (async () => {
@@ -155,6 +159,7 @@ export function NewAppointmentDialog({
         start_time: form.start_time,
         end_time: form.end_time || addOneHour(form.start_time),
         type: form.type || "consultation",
+        modality: form.modality || DEFAULT_APPOINTMENT_MODALITY,
         specialty: form.specialty || null,
         notes: form.notes || null,
         status: "scheduled",
@@ -300,6 +305,24 @@ export function NewAppointmentDialog({
                 {availableAppointmentTypes.map((t) => (
                   <SelectItem key={t.value} value={t.value}>
                     {t.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Modalidade</Label>
+            <Select
+              value={form.modality}
+              onValueChange={(value) => setForm((f) => ({ ...f, modality: value }))}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {APPOINTMENT_MODALITY_OPTIONS.map((m) => (
+                  <SelectItem key={m.value} value={m.value}>
+                    {m.label}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -12,7 +12,8 @@ import {
   formatTimeInterval,
   timeToMinutes,
 } from "@/lib/agenda-utils";
-import { APPOINTMENT_TYPE_LABEL } from "@/lib/appointment-types";
+import { APPOINTMENT_MODALITY_SHORT, APPOINTMENT_TYPE_LABEL } from "@/lib/appointment-types";
+import { Video, MapPin } from "lucide-react";
 import { AgendaRescheduleButton } from "@/components/agenda/agenda-appointment-actions";
 import { AgendaContactActions } from "@/components/agenda/agenda-contact-actions";
 import type { AgendaRow } from "@/components/agenda/agenda-timeline-view";
@@ -174,6 +175,7 @@ export function AgendaRoomsOverview({
                       className={cn(
                         "absolute left-1 right-1 overflow-hidden rounded-md border border-l-4 p-1.5 text-left shadow-sm",
                         STATUS_CLASS[row.status] ?? STATUS_CLASS.scheduled,
+                        row.modality === "online" && row.status !== "cancelled" && "ring-1 ring-sky-300",
                         onReschedule && "cursor-pointer transition hover:ring-2 hover:ring-primary/30",
                       )}
                       style={{ top: `${top}%`, height: `${height}%`, minHeight: "3.25rem" }}
@@ -210,8 +212,19 @@ export function AgendaRoomsOverview({
                           />
                         </div>
                       </div>
-                      <div className="truncate text-[9px] text-muted-foreground">
-                        {APPOINTMENT_TYPE_LABEL[row.type ?? ""] ?? row.type ?? "Consulta"}
+                      <div className="flex items-center gap-1 truncate text-[9px] text-muted-foreground">
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-0.5 rounded px-1 py-px font-medium",
+                            row.modality === "online"
+                              ? "bg-sky-100 text-sky-700"
+                              : "bg-slate-100 text-slate-600",
+                          )}
+                        >
+                          {row.modality === "online" ? <Video className="size-2" /> : <MapPin className="size-2" />}
+                          {APPOINTMENT_MODALITY_SHORT[row.modality ?? "presential"]}
+                        </span>
+                        <span className="truncate">{APPOINTMENT_TYPE_LABEL[row.type ?? ""] ?? row.type ?? "Consulta"}</span>
                       </div>
                     </div>
                   );

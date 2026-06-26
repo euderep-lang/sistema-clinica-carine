@@ -12,7 +12,12 @@ import {
   formatTimeInterval,
   timeToMinutes,
 } from "@/lib/agenda-utils";
-import { APPOINTMENT_TYPE_LABEL } from "@/lib/appointment-types";
+import {
+  APPOINTMENT_MODALITY_BADGE,
+  APPOINTMENT_MODALITY_SHORT,
+  APPOINTMENT_TYPE_LABEL,
+} from "@/lib/appointment-types";
+import { Video, MapPin } from "lucide-react";
 import { AgendaRescheduleButton } from "@/components/agenda/agenda-appointment-actions";
 import { AgendaContactActions } from "@/components/agenda/agenda-contact-actions";
 import type { ReactNode } from "react";
@@ -24,6 +29,7 @@ export type AgendaRow = {
   end_time: string | null;
   status: string;
   type: string | null;
+  modality?: string | null;
   specialty: string | null;
   patient_id: string | null;
   professional_id: string | null;
@@ -151,6 +157,7 @@ export function AgendaTimelineView({
               const top = Math.max(0, (startMin / totalMinutes) * 100);
               const height = Math.max(4, ((Math.max(endMin, startMin + 30) - startMin) / totalMinutes) * 100);
               const cancelled = row.status === "cancelled";
+              const isOnline = row.modality === "online";
 
               return (
                 <div
@@ -171,6 +178,7 @@ export function AgendaTimelineView({
                   className={cn(
                     "absolute left-2 right-2 overflow-hidden rounded-md border border-l-4 p-2 shadow-sm",
                     STATUS_CLASS[row.status] ?? STATUS_CLASS.scheduled,
+                    isOnline && !cancelled && "ring-1 ring-sky-300 ring-offset-0",
                     cancelled && "line-through opacity-50",
                     onReschedule && "cursor-pointer transition hover:ring-2 hover:ring-primary/30",
                   )}
@@ -209,6 +217,16 @@ export function AgendaTimelineView({
                     </div>
                   </div>
                   <div className="mt-1 flex flex-wrap gap-1">
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "flex h-5 items-center gap-0.5 px-1.5 text-[10px]",
+                        APPOINTMENT_MODALITY_BADGE[row.modality ?? "presential"],
+                      )}
+                    >
+                      {isOnline ? <Video className="size-2.5" /> : <MapPin className="size-2.5" />}
+                      {APPOINTMENT_MODALITY_SHORT[row.modality ?? "presential"]}
+                    </Badge>
                     <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
                       {APPOINTMENT_TYPE_LABEL[row.type ?? ""] ?? row.type ?? "Consulta"}
                     </Badge>
