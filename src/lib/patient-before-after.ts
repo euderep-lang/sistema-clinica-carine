@@ -60,13 +60,19 @@ export async function loadBeforeAfterDateGroups(
     if (images.length === 0) continue;
 
     const existing = byDate.get(dateLabel);
-    if (!existing || new Date(row.created_at) > new Date(existing.createdAt)) {
+    if (existing) {
+      existing.photos.push(...images);
+      if (new Date(row.created_at) > new Date(existing.createdAt)) {
+        existing.createdAt = row.created_at;
+        existing.evolutionId = row.id;
+      }
+    } else {
       byDate.set(dateLabel, {
         dateLabel,
         sortKey: parseBRDateLabel(dateLabel),
         evolutionId: row.id,
         createdAt: row.created_at,
-        photos: images.slice(0, 2),
+        photos: [...images],
       });
     }
   }

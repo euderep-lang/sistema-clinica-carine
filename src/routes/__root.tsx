@@ -14,6 +14,7 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { initMonitoring } from "../lib/monitoring";
 import { captureException } from "../lib/sentry";
 import { AuthProvider } from "../lib/mock-auth";
+import { ManifestLink } from "@/components/manifest-link";
 import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
@@ -99,7 +100,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:card", content: "summary" },
     ],
     links: [
-      { rel: "manifest", href: "/manifest.webmanifest" },
       { rel: "apple-touch-icon", href: "/icon-192.png" },
       {
         rel: "stylesheet",
@@ -141,6 +141,7 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <ManifestLink />
         {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
         <Outlet />
         <Toaster richColors position="top-right" />

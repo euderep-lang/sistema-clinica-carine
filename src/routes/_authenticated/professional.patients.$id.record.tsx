@@ -48,6 +48,7 @@ import {
   ensureTodayConsultationLinked,
   findPatientAppointmentToday,
 } from "@/lib/patient-appointment";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/professional/patients/$id/record")({
@@ -66,6 +67,8 @@ interface Patient {
 function RecordPage() {
   const { id } = Route.useParams();
   const { profile } = useAuth();
+  const isMobile = useIsMobile();
+  const [mobileTab, setMobileTab] = useState<"editor" | "history">("editor");
   const [patient, setPatient] = useState<Patient | null>(null);
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -157,7 +160,9 @@ function RecordPage() {
       const items: PendingMediaItem[] = [];
       for (const raw of Array.from(list)) {
         const { file, sizeKb } = await compressForUpload(raw);
-        const caption = options?.kind ? photoAttachmentCaption(dateLabel) : "";
+        const caption = options?.kind
+          ? photoAttachmentCaption(dateLabel, options.kind)
+          : "";
         items.push({
           id: randomUUID(),
           file,
@@ -401,6 +406,7 @@ function RecordPage() {
 
       await loadHistory();
       setHighlightKey(historyHighlightKey("evolution", evId));
+      setMobileTab("history");
       toast.success(
         appointmentId
           ? "Evolução salva e vinculada à consulta de hoje"
@@ -435,10 +441,10 @@ function RecordPage() {
 
   return (
     <DashboardShell title={`Prontuário · ${displayName}`} fullWidth>
-      <div className="flex h-[calc(100dvh-4.5rem)] min-h-[36rem] flex-col">
+      <div className="flex h-[calc(100dvh-5.25rem)] flex-col lg:h-[calc(100dvh-4.5rem)] lg:min-h-[36rem]">
         <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden pb-1">
-        <div className="flex shrink-0 items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 text-sm">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-sm">
           <span className="font-semibold text-foreground">{displayName}</span>
           {age !== null && (
             <>
@@ -471,7 +477,8 @@ function RecordPage() {
               className="gap-1 border-emerald-200 bg-emerald-50 text-emerald-800"
             >
               <CheckCircle2 className="size-3" />
-              Consulta de hoje vinculada
+              <span className="hidden sm:inline">Consulta de hoje vinculada</span>
+              <span className="sm:hidden">Vinculada</span>
             </Badge>
           )}
           </div>
@@ -479,7 +486,7 @@ function RecordPage() {
             type="button"
             variant="outline"
             size="sm"
-            className="h-8 gap-1.5"
+            className="h-8 shrink-0 gap-1.5"
             onClick={() => setSessionsOpen(true)}
           >
             <CalendarCheck className="size-4" />
@@ -487,21 +494,75 @@ function RecordPage() {
           </Button>
         </div>
 
-        <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1 gap-1">
-          <ResizablePanel defaultSize={56} minSize={30} className="min-h-0">
+        {isMobile ? (
+          <div className="flex min-h-0 flex-1 flex-col gap-2">
+            <div className="grid shrink-0 grid-cols-2 gap-1 rounded-lg border border-border/70 bg-muted/40 p-1">
+              <button
+                type="button"
+                onClick={() => setMobileTab("editor")}
+                className={cn(
+                  "rounded-md py-2 text-sm font-medium transition-colors",
+                  mobileTab === "editor"
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                Nova evolução
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileTab("history")}
+                className={cn(
+                  "rounded-md py-2 text-sm font-medium transition-colors",
+                  mobileTab === "history"
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                Histórico ({history.length})
+              </button>
+            </div>
+            <div className="min-h-0 flex-1">
+              {mobileTab === "editor" ? (
+                <EvolutionEditor saving={saving} onSave={handleSave} />
+              ) : (
+                <EvolutionHistory
+                  entries={history}
+                  loading={loading}
+                  highlightKey={highlightKey}
+                  uploading={uploading || compressing}
+                  onAddFiles={(files, category) =>
+                    void prepareMediaFiles(
+                      files,
+                      category === "photo" ? { kind: "before_after" } : undefined,
+                    )
+                  }
+                />
+              )}
+            </div>
+          </div>
+        ) : (
+          <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1 gap-1">
+            <ResizablePanel defaultSize={56} minSize={30} className="min-h-0">
             <EvolutionHistory
               entries={history}
               loading={loading}
               highlightKey={highlightKey}
               uploading={uploading || compressing}
-              onAddFiles={(files) => void prepareMediaFiles(files)}
+              onAddFiles={(files, category) =>
+                void prepareMediaFiles(
+                  files,
+                  category === "photo" ? { kind: "before_after" } : undefined,
+                )
+              }
             />
           </ResizablePanel>
-          <ResizableHandle withHandle className="mx-1 w-2 bg-border/50 transition-colors hover:bg-primary/20" />
-          <ResizablePanel defaultSize={44} minSize={28} className="min-h-0">
-            <EvolutionEditor saving={saving} onSave={handleSave} />
-          </ResizablePanel>
-        </ResizablePanelGroup>
+            <ResizableHandle withHandle className="mx-1 w-2 bg-border/50 transition-colors hover:bg-primary/20" />
+            <ResizablePanel defaultSize={44} minSize={28} className="min-h-0">
+              <EvolutionEditor saving={saving} onSave={handleSave} />
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        )}
         </div>
 
         <RecordBottomBar

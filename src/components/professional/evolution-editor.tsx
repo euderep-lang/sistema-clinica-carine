@@ -52,7 +52,7 @@ export function EvolutionEditor({ saving, onSave }: EvolutionEditorProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border-2 border-primary/25 bg-card shadow-md ring-1 ring-primary/10">
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-primary/15 bg-primary/[0.07] px-4 py-3">
+      <div className="flex shrink-0 flex-col gap-3 border-b border-primary/15 bg-primary/[0.07] px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 shadow-sm">
             <PenLine className="size-4 text-primary" />
@@ -65,18 +65,30 @@ export function EvolutionEditor({ saving, onSave }: EvolutionEditorProps) {
           </div>
         </div>
         <div className="flex shrink-0 gap-2">
-          <Button variant="outline" size="sm" onClick={clear} disabled={saving}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 sm:flex-none"
+            onClick={clear}
+            disabled={saving}
+          >
             Cancelar
           </Button>
           <Button
             variant={mode === "write" ? "secondary" : "outline"}
             size="sm"
+            className="flex-1 sm:flex-none"
             onClick={() => setMode((m) => (m === "write" ? "form" : "write"))}
             disabled={saving}
           >
             Escrever
           </Button>
-          <Button size="sm" onClick={() => void handleSave()} disabled={saving}>
+          <Button
+            size="sm"
+            className="flex-1 sm:flex-none"
+            onClick={() => void handleSave()}
+            disabled={saving}
+          >
             {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
             Salvar
           </Button>

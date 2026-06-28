@@ -1,9 +1,22 @@
 import { Fragment, useRef, useState } from "react";
 import { fmtDateTimeFromDate } from "@/lib/locale";
-import { Clock, FileText, Image as ImageIcon, Loader2, Paperclip } from "lucide-react";
+import {
+  Clock,
+  FileText,
+  Image as ImageIcon,
+  ImagePlus,
+  Loader2,
+  Paperclip,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import type { HistoryRecord, MediaHistoryEntry } from "@/lib/patient-history";
@@ -181,9 +194,19 @@ export function EvolutionHistory({
   loading: boolean;
   highlightKey?: string | null;
   uploading?: boolean;
-  onAddFiles?: (files: FileList) => void;
+  onAddFiles?: (files: FileList, category: "photo" | "document") => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const categoryRef = useRef<"photo" | "document">("document");
+
+  const pickFiles = (category: "photo" | "document") => {
+    categoryRef.current = category;
+    if (fileRef.current) {
+      fileRef.current.accept =
+        category === "photo" ? "image/*" : "image/*,application/pdf";
+      fileRef.current.click();
+    }
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border/70 bg-muted/20 shadow-sm">
@@ -201,22 +224,35 @@ export function EvolutionHistory({
         </div>
         {onAddFiles && (
           <>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 shrink-0 gap-1.5 px-2 text-xs"
-              disabled={uploading}
-              onClick={() => fileRef.current?.click()}
-              title="Anexar fotos ou PDF"
-            >
-              {uploading ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Paperclip className="size-3.5" />
-              )}
-              Anexar
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 shrink-0 gap-1.5 px-2 text-xs"
+                  disabled={uploading}
+                  title="Anexar foto ou documento"
+                >
+                  {uploading ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Paperclip className="size-3.5" />
+                  )}
+                  Anexar
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onSelect={() => pickFiles("photo")}>
+                  <ImagePlus className="mr-2 size-4 text-rose-600" />
+                  Foto
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => pickFiles("document")}>
+                  <FileText className="mr-2 size-4 text-sky-600" />
+                  Documento
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <input
               ref={fileRef}
               type="file"
@@ -224,7 +260,7 @@ export function EvolutionHistory({
               multiple
               className="hidden"
               onChange={(e) => {
-                if (e.target.files?.length) onAddFiles(e.target.files);
+                if (e.target.files?.length) onAddFiles(e.target.files, categoryRef.current);
                 e.target.value = "";
               }}
             />

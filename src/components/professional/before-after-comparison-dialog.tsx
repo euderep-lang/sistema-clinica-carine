@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeftRight, ImageOff, Loader2 } from "lucide-react";
+import { ArrowLeftRight, Download, ImageOff, Loader2, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +32,127 @@ interface BeforeAfterComparisonDialogProps {
   patientName?: string;
 }
 
+function loadImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Falha ao carregar imagem"));
+    img.src = url;
+  });
+}
+
+function drawCover(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+) {
+  const imgRatio = img.width / img.height;
+  const boxRatio = w / h;
+  let sx = 0;
+  let sy = 0;
+  let sw = img.width;
+  let sh = img.height;
+  if (imgRatio > boxRatio) {
+    sw = img.height * boxRatio;
+    sx = (img.width - sw) / 2;
+  } else {
+    sh = img.width / boxRatio;
+    sy = (img.height - sh) / 2;
+  }
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+}
+
+function drawBanner(
+  ctx: CanvasRenderingContext2D,
+  label: string,
+  y: number,
+  width: number,
+  height: number,
+  colors: [string, string],
+) {
+  const gradient = ctx.createLinearGradient(0, y, width, y);
+  gradient.addColorStop(0, colors[0]);
+  gradient.addColorStop(1, colors[1]);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, y, width, height);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = `bold ${Math.round(height * 0.4)}px system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, width / 2, y + height / 2);
+}
+
+async function buildStoryCanvas(opts: {
+  topLabel: string;
+  topUrls: [string | null, string | null];
+  bottomLabel: string;
+  bottomUrls: [string | null, string | null];
+}): Promise<HTMLCanvasElement> {
+  const W = 1080;
+  const H = 1920;
+  const rowH = H / 2;
+  const bannerH = 96;
+  const photoH = rowH - bannerH;
+  const colW = W / 2;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas não suportado");
+
+  ctx.fillStyle = "#000000";
+  ctx.fillRect(0, 0, W, H);
+
+  const drawCell = async (
+    url: string | null,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+  ) => {
+    if (!url) {
+      ctx.fillStyle = "#1f2937";
+      ctx.fillRect(x, y, w, h);
+      return;
+    }
+    try {
+      const img = await loadImage(url);
+      drawCover(ctx, img, x, y, w, h);
+    } catch {
+      ctx.fillStyle = "#1f2937";
+      ctx.fillRect(x, y, w, h);
+    }
+  };
+
+  drawBanner(ctx, opts.topLabel, 0, W, bannerH, ["#f59e0b", "#f97316"]);
+  await drawCell(opts.topUrls[0], 0, bannerH, colW, photoH);
+  await drawCell(opts.topUrls[1], colW, bannerH, colW, photoH);
+
+  drawBanner(ctx, opts.bottomLabel, rowH, W, bannerH, ["#0f766e", "#0d9488"]);
+  await drawCell(opts.bottomUrls[0], 0, rowH + bannerH, colW, photoH);
+  await drawCell(opts.bottomUrls[1], colW, rowH + bannerH, colW, photoH);
+
+  ctx.fillStyle = "rgba(255,255,255,0.4)";
+  ctx.fillRect(0, rowH - 2, W, 4);
+
+  return canvas;
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("Falha ao gerar imagem"))),
+      "image/jpeg",
+      0.92,
+    );
+  });
+}
+
 function StoryPhotoCell({
   url,
   alt,
@@ -61,6 +182,72 @@ function StoryPhotoCell({
       className={cn("size-full object-cover", className)}
       loading="lazy"
     />
+  );
+}
+
+function DatePhotoPicker({
+  title,
+  group,
+  selected,
+  urlCache,
+  onToggle,
+  accent,
+}: {
+  title: string;
+  group: BeforeAfterDateGroup;
+  selected: string[];
+  urlCache: Record<string, string>;
+  onToggle: (photoId: string) => void;
+  accent: "top" | "bottom";
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium text-muted-foreground">{title}</p>
+        <span
+          className={cn(
+            "text-[11px] font-semibold",
+            selected.length === 2 ? "text-emerald-600" : "text-amber-600",
+          )}
+        >
+          {selected.length}/2 selecionadas
+        </span>
+      </div>
+      <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-5">
+        {group.photos.map((photo) => {
+          const order = selected.indexOf(photo.id);
+          const isSelected = order !== -1;
+          const url = urlCache[photo.storage_path] ?? null;
+          return (
+            <button
+              key={photo.id}
+              type="button"
+              onClick={() => onToggle(photo.id)}
+              className={cn(
+                "relative aspect-square overflow-hidden rounded-md border-2 transition",
+                isSelected
+                  ? accent === "top"
+                    ? "border-amber-500 ring-2 ring-amber-500/30"
+                    : "border-primary ring-2 ring-primary/30"
+                  : "border-transparent hover:border-muted-foreground/40",
+              )}
+            >
+              <StoryPhotoCell url={url} alt={photo.caption ?? photo.file_name} />
+              {isSelected && (
+                <span
+                  className={cn(
+                    "absolute right-0.5 top-0.5 grid size-4 place-items-center rounded-full text-[10px] font-bold text-white",
+                    accent === "top" ? "bg-amber-500" : "bg-primary",
+                  )}
+                >
+                  {order + 1}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -108,6 +295,9 @@ export function BeforeAfterComparisonDialog({
   const [dateX, setDateX] = useState("");
   const [dateY, setDateY] = useState("");
   const [urlCache, setUrlCache] = useState<Record<string, string>>({});
+  const [topSelected, setTopSelected] = useState<string[]>([]);
+  const [bottomSelected, setBottomSelected] = useState<string[]>([]);
+  const [exporting, setExporting] = useState<"download" | "share" | null>(null);
 
   const loadGroups = useCallback(async () => {
     setLoading(true);
@@ -140,6 +330,16 @@ export function BeforeAfterComparisonDialog({
   }, [groups, dateX, dateY]);
 
   useEffect(() => {
+    if (!comparison) {
+      setTopSelected([]);
+      setBottomSelected([]);
+      return;
+    }
+    setTopSelected(comparison.top.photos.slice(0, 2).map((p) => p.id));
+    setBottomSelected(comparison.bottom.photos.slice(0, 2).map((p) => p.id));
+  }, [comparison]);
+
+  useEffect(() => {
     if (!comparison) return;
     let cancelled = false;
 
@@ -165,29 +365,131 @@ export function BeforeAfterComparisonDialog({
     };
   }, [comparison]);
 
-  const topUrls = useMemo((): [string | null, string | null] => {
-    if (!comparison) return [null, null];
-    return [
-      comparison.top.photos[0]
-        ? urlCache[comparison.top.photos[0].storage_path] ?? null
-        : null,
-      comparison.top.photos[1]
-        ? urlCache[comparison.top.photos[1].storage_path] ?? null
-        : null,
-    ];
-  }, [comparison, urlCache]);
+  const toggleSelection = (
+    photoId: string,
+    selected: string[],
+    setSelected: (next: string[]) => void,
+  ) => {
+    if (selected.includes(photoId)) {
+      setSelected(selected.filter((id) => id !== photoId));
+      return;
+    }
+    if (selected.length >= 2) {
+      setSelected([selected[1], photoId]);
+      return;
+    }
+    setSelected([...selected, photoId]);
+  };
 
-  const bottomUrls = useMemo((): [string | null, string | null] => {
-    if (!comparison) return [null, null];
-    return [
-      comparison.bottom.photos[0]
-        ? urlCache[comparison.bottom.photos[0].storage_path] ?? null
-        : null,
-      comparison.bottom.photos[1]
-        ? urlCache[comparison.bottom.photos[1].storage_path] ?? null
-        : null,
-    ];
-  }, [comparison, urlCache]);
+  const urlsForSelection = (
+    group: BeforeAfterDateGroup | undefined,
+    selected: string[],
+  ): [string | null, string | null] => {
+    const photo = (index: number) => {
+      const id = selected[index];
+      if (!id || !group) return null;
+      const found = group.photos.find((p) => p.id === id);
+      return found ? urlCache[found.storage_path] ?? null : null;
+    };
+    return [photo(0), photo(1)];
+  };
+
+  const topUrls = useMemo(
+    (): [string | null, string | null] =>
+      urlsForSelection(comparison?.top, topSelected),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [comparison, urlCache, topSelected],
+  );
+
+  const bottomUrls = useMemo(
+    (): [string | null, string | null] =>
+      urlsForSelection(comparison?.bottom, bottomSelected),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [comparison, urlCache, bottomSelected],
+  );
+
+  const exportFileName = useMemo(() => {
+    const slug = (patientName ?? "paciente")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase();
+    const dates =
+      comparison
+        ? `${comparison.top.dateLabel}_${comparison.bottom.dateLabel}`.replace(/\//g, "-")
+        : "comparacao";
+    return `antes-depois_${slug}_${dates}.jpg`;
+  }, [patientName, comparison]);
+
+  const handleDownload = async () => {
+    if (!comparison) return;
+    setExporting("download");
+    try {
+      const canvas = await buildStoryCanvas({
+        topLabel: comparison.top.dateLabel,
+        topUrls,
+        bottomLabel: comparison.bottom.dateLabel,
+        bottomUrls,
+      });
+      const blob = await canvasToBlob(canvas);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = exportFileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Imagem baixada");
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const handleShare = async () => {
+    if (!comparison) return;
+    setExporting("share");
+    try {
+      const canvas = await buildStoryCanvas({
+        topLabel: comparison.top.dateLabel,
+        topUrls,
+        bottomLabel: comparison.bottom.dateLabel,
+        bottomUrls,
+      });
+      const blob = await canvasToBlob(canvas);
+      const file = new File([blob], exportFileName, { type: "image/jpeg" });
+      const nav = navigator as Navigator & {
+        canShare?: (data?: { files?: File[] }) => boolean;
+        share?: (data: { files?: File[]; title?: string; text?: string }) => Promise<void>;
+      };
+      if (nav.share && nav.canShare?.({ files: [file] })) {
+        await nav.share({
+          files: [file],
+          title: "Comparação Antes x Depois",
+          text: patientName ? `Comparação — ${patientName}` : "Comparação Antes x Depois",
+        });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = exportFileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        toast.info("Compartilhamento direto não suportado neste dispositivo. Imagem baixada.");
+      }
+    } catch (e) {
+      if ((e as Error).name !== "AbortError") {
+        toast.error((e as Error).message);
+      }
+    } finally {
+      setExporting(null);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -257,6 +559,31 @@ export function BeforeAfterComparisonDialog({
               </p>
             ) : comparison ? (
               <div className="flex flex-col items-center gap-3">
+                <div className="w-full space-y-3 rounded-lg border bg-muted/20 p-3">
+                  <p className="text-xs font-semibold text-foreground">
+                    Escolha 2 fotos de cada data
+                  </p>
+                  <DatePhotoPicker
+                    title={`Linha de cima · ${comparison.top.dateLabel}`}
+                    group={comparison.top}
+                    selected={topSelected}
+                    urlCache={urlCache}
+                    onToggle={(id) =>
+                      toggleSelection(id, topSelected, setTopSelected)
+                    }
+                    accent="top"
+                  />
+                  <DatePhotoPicker
+                    title={`Linha de baixo · ${comparison.bottom.dateLabel}`}
+                    group={comparison.bottom}
+                    selected={bottomSelected}
+                    urlCache={urlCache}
+                    onToggle={(id) =>
+                      toggleSelection(id, bottomSelected, setBottomSelected)
+                    }
+                    accent="bottom"
+                  />
+                </div>
                 <p className="text-center text-xs text-muted-foreground">
                   Formato Stories — 2 fotos de cima ({comparison.top.dateLabel}) · 2 fotos de
                   baixo ({comparison.bottom.dateLabel})
@@ -275,6 +602,36 @@ export function BeforeAfterComparisonDialog({
                       position="bottom"
                     />
                   </div>
+                </div>
+
+                <div className="flex w-full max-w-[300px] flex-col gap-2 sm:flex-row">
+                  <Button
+                    type="button"
+                    className="flex-1 gap-2"
+                    onClick={() => void handleDownload()}
+                    disabled={exporting !== null}
+                  >
+                    {exporting === "download" ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Download className="size-4" />
+                    )}
+                    Baixar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1 gap-2"
+                    onClick={() => void handleShare()}
+                    disabled={exporting !== null}
+                  >
+                    {exporting === "share" ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Share2 className="size-4" />
+                    )}
+                    Compartilhar
+                  </Button>
                 </div>
               </div>
             ) : null}

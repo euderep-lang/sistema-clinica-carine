@@ -11,7 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as InicioRouteImport } from './routes/inicio'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as AnexarRouteImport } from './routes/anexar'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PreCadastroTokenRouteImport } from './routes/pre-cadastro.$token'
@@ -72,9 +74,19 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InicioRoute = InicioRouteImport.update({
+  id: '/inicio',
+  path: '/inicio',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   id: '/forgot-password',
   path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AnexarRoute = AnexarRouteImport.update({
+  id: '/anexar',
+  path: '/anexar',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
@@ -368,7 +380,9 @@ const AuthenticatedFinancialInventoryItemsIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/anexar': typeof AnexarRoute
   '/forgot-password': typeof ForgotPasswordRoute
+  '/inicio': typeof InicioRoute
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/nps/$token': typeof NpsTokenRoute
@@ -421,7 +435,9 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/anexar': typeof AnexarRoute
   '/forgot-password': typeof ForgotPasswordRoute
+  '/inicio': typeof InicioRoute
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/nps/$token': typeof NpsTokenRoute
@@ -471,7 +487,9 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/anexar': typeof AnexarRoute
   '/forgot-password': typeof ForgotPasswordRoute
+  '/inicio': typeof InicioRoute
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/nps/$token': typeof NpsTokenRoute
@@ -526,7 +544,9 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/anexar'
     | '/forgot-password'
+    | '/inicio'
     | '/login'
     | '/reset-password'
     | '/nps/$token'
@@ -579,7 +599,9 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/anexar'
     | '/forgot-password'
+    | '/inicio'
     | '/login'
     | '/reset-password'
     | '/nps/$token'
@@ -628,7 +650,9 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_authenticated'
+    | '/anexar'
     | '/forgot-password'
+    | '/inicio'
     | '/login'
     | '/reset-password'
     | '/nps/$token'
@@ -683,7 +707,9 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AnexarRoute: typeof AnexarRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
+  InicioRoute: typeof InicioRoute
   LoginRoute: typeof LoginRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   NpsTokenRoute: typeof NpsTokenRoute
@@ -707,11 +733,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/inicio': {
+      id: '/inicio'
+      path: '/inicio'
+      fullPath: '/inicio'
+      preLoaderRoute: typeof InicioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/forgot-password': {
       id: '/forgot-password'
       path: '/forgot-password'
       fullPath: '/forgot-password'
       preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/anexar': {
+      id: '/anexar'
+      path: '/anexar'
+      fullPath: '/anexar'
+      preLoaderRoute: typeof AnexarRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -1245,7 +1285,9 @@ const AuthenticatedRouteRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AnexarRoute: AnexarRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
+  InicioRoute: InicioRoute,
   LoginRoute: LoginRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   NpsTokenRoute: NpsTokenRoute,

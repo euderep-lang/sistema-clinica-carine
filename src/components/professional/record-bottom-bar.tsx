@@ -49,6 +49,7 @@ type ItemKey =
 type BarItem = {
   key: ItemKey;
   label: string;
+  shortLabel?: string;
   icon: LucideIcon;
   iconClass: string;
   onClick: () => void;
@@ -71,23 +72,47 @@ const CLINICAL_MODULES = [
 
 const PHOTO_OPTIONS = [
   { id: "exams", label: "Exames", icon: FlaskConical, iconClass: "text-sky-600" },
-  { id: "before_after", label: "Anexar Antes x Depois", icon: ArrowLeftRight, iconClass: "text-amber-600" },
+  { id: "before_after", label: "Fotos Antes x Depois", icon: ArrowLeftRight, iconClass: "text-amber-600" },
   { id: "compare", label: "Comparação Antes x Depois", icon: Columns2, iconClass: "text-violet-600" },
 ] as const;
 
 function BarButton({
   label,
+  shortLabel,
   icon: Icon,
   iconClass,
   onClick,
   emphasized,
+  stacked,
 }: {
   label: string;
+  shortLabel?: string;
   icon: LucideIcon;
   iconClass: string;
   onClick: () => void;
   emphasized?: boolean;
+  stacked?: boolean;
 }) {
+  const displayLabel = shortLabel ?? label;
+
+  if (stacked) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          "flex min-w-0 flex-1 flex-col items-center gap-1 rounded-md px-1 py-2 text-[10px] font-medium leading-tight transition-colors",
+          "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          emphasized && "text-foreground",
+        )}
+      >
+        <Icon className={cn("size-5 shrink-0", iconClass)} strokeWidth={2} />
+        <span className="line-clamp-2 text-center">{displayLabel}</span>
+      </button>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -156,6 +181,7 @@ export function RecordBottomBar({
     {
       key: "finish",
       label: "Finalizar Consulta",
+      shortLabel: "Finalizar",
       icon: Flag,
       iconClass: ICON_STYLES.finish,
       onClick: () => setFinishOpen(true),
@@ -184,6 +210,7 @@ export function RecordBottomBar({
     {
       key: "modules",
       label: "Todos os módulos",
+      shortLabel: "Módulos",
       icon: LayoutGrid,
       iconClass: ICON_STYLES.modules,
       onClick: () => setModulesOpen(true),
@@ -199,7 +226,21 @@ export function RecordBottomBar({
           "shadow-[0_-4px_16px_rgba(0,0,0,0.06)]",
         )}
       >
-        <div className="overflow-x-auto px-3 py-2.5">
+        <div className="flex gap-0.5 px-2 py-2 lg:hidden">
+          {actionItems.map((item) => (
+            <BarButton
+              key={item.key}
+              label={item.label}
+              shortLabel={item.shortLabel}
+              icon={item.icon}
+              iconClass={item.iconClass}
+              onClick={item.onClick}
+              emphasized={item.key === "finish" || item.key === "modules"}
+              stacked
+            />
+          ))}
+        </div>
+        <div className="hidden overflow-x-auto px-3 py-2.5 lg:block">
           <div className="mx-auto flex w-max max-w-full items-center justify-center gap-0.5">
             {actionItems.map((item) => (
               <BarButton
@@ -233,8 +274,8 @@ export function RecordBottomBar({
       <Sheet open={photosOpen} onOpenChange={setPhotosOpen}>
         <SheetContent side="bottom" className="rounded-t-xl pb-8">
           <SheetHeader>
-            <SheetTitle>Fotos</SheetTitle>
-            <SheetDescription>Escolha o tipo de foto que deseja anexar.</SheetDescription>
+            <SheetTitle>Anexos</SheetTitle>
+            <SheetDescription>Escolha o tipo de anexo que deseja adicionar.</SheetDescription>
           </SheetHeader>
           <ul className="mt-4 divide-y rounded-lg border">
             {PHOTO_OPTIONS.map((option) => {
@@ -339,7 +380,7 @@ export function RecordBottomBar({
                   className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-muted/50"
                 >
                   <Camera className={cn("size-4 shrink-0", ICON_STYLES.photos)} strokeWidth={2} />
-                  <span className="font-medium">Fotos</span>
+                  <span className="font-medium">Anexos</span>
                 </button>
               </li>
             )}

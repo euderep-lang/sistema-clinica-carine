@@ -149,52 +149,84 @@ function ProfessionalPatients() {
             </div>
           ) : (
             <>
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/40 hover:bg-muted/40">
-                    <TableHead className="w-[13rem]">Atalhos</TableHead>
-                    <TableHead className="w-28 text-center">Nº Prontuário</TableHead>
-                    <TableHead>Nome</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading && rows.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={3} className="py-10 text-center text-muted-foreground">
-                        Carregando pacientes…
-                      </TableCell>
+              <div className="hidden lg:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/40 hover:bg-muted/40">
+                      <TableHead className="w-[13rem]">Atalhos</TableHead>
+                      <TableHead className="w-28 text-center">Nº Prontuário</TableHead>
+                      <TableHead>Nome</TableHead>
                     </TableRow>
-                  ) : rows.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={3} className="py-10 text-center text-muted-foreground">
-                        Nenhum resultado para esta busca
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    rows.map((p, i) => (
-                      <TableRow
-                        key={p.id}
-                        className={i % 2 === 0 ? "bg-background" : "bg-muted/20"}
-                      >
-                        <TableCell>
-                          <PatientShortcuts
-                            variant="professional"
-                            patientId={p.id}
-                            phone={p.phone}
-                            onSessionsClick={openSessions}
-                          />
-                        </TableCell>
-                        <TableCell className="text-center font-mono text-sm tabular-nums text-muted-foreground">
-                          {p.record_number ?? "—"}
-                        </TableCell>
-                        <TableCell>
-                          <span className="font-medium text-foreground">{p.full_name}</span>
+                  </TableHeader>
+                  <TableBody>
+                    {loading && rows.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} className="py-10 text-center text-muted-foreground">
+                          Carregando pacientes…
                         </TableCell>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+                    ) : rows.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} className="py-10 text-center text-muted-foreground">
+                          Nenhum resultado para esta busca
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      rows.map((p, i) => (
+                        <TableRow
+                          key={p.id}
+                          className={i % 2 === 0 ? "bg-background" : "bg-muted/20"}
+                        >
+                          <TableCell>
+                            <PatientShortcuts
+                              variant="professional"
+                              patientId={p.id}
+                              phone={p.phone}
+                              onSessionsClick={openSessions}
+                            />
+                          </TableCell>
+                          <TableCell className="text-center font-mono text-sm tabular-nums text-muted-foreground">
+                            {p.record_number ?? "—"}
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-medium text-foreground">{p.full_name}</span>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <div className="divide-y lg:hidden">
+                {loading && rows.length === 0 ? (
+                  <p className="py-10 text-center text-sm text-muted-foreground">
+                    Carregando pacientes…
+                  </p>
+                ) : rows.length === 0 ? (
+                  <p className="py-10 text-center text-sm text-muted-foreground">
+                    Nenhum resultado para esta busca
+                  </p>
+                ) : (
+                  rows.map((p) => (
+                    <div key={p.id} className="space-y-2.5 p-4">
+                      <PatientShortcuts
+                        variant="professional"
+                        patientId={p.id}
+                        phone={p.phone}
+                        onSessionsClick={openSessions}
+                        className="flex-wrap gap-2"
+                      />
+                      <div className="flex items-baseline gap-2">
+                        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-muted-foreground">
+                          Nº {p.record_number ?? "—"}
+                        </span>
+                        <span className="font-medium text-foreground">{p.full_name}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm text-muted-foreground">
                 <span>

@@ -166,7 +166,7 @@ function ProfessionalPatientPage() {
             })
           }
         >
-          <TabsList>
+          <TabsList className="flex w-full justify-start overflow-x-auto sm:inline-flex sm:w-auto sm:justify-center">
             <TabsTrigger value="dados">Cadastro</TabsTrigger>
             <TabsTrigger value="consultas">Agendamentos</TabsTrigger>
             <TabsTrigger value="sessoes">Sessões</TabsTrigger>
@@ -233,7 +233,7 @@ function ProfessionalPatientPage() {
               <CardHeader>
                 <CardTitle className="text-base">Agendamentos deste paciente</CardTitle>
               </CardHeader>
-              <CardContent className="p-0">
+              <CardContent className="overflow-x-auto p-0">
                 <Table>
                   <TableHeader>
                     <TableRow>
