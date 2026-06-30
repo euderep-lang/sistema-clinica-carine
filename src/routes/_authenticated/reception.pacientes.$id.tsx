@@ -1,8 +1,19 @@
 import { useEffect, useState } from "react";
 import { fmtDateFromDate } from "@/lib/locale";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Calendar as CalIcon, MessageCircle, Pencil, Upload, Download, Trash2, FileText } from "lucide-react";
+import { Calendar as CalIcon, MessageCircle, Pencil, Upload, Download, Trash2, FileText, UserX } from "lucide-react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { softDeactivate } from "@/lib/trash";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,6 +74,8 @@ function PatientProfile() {
   const [appts, setAppts] = useState<AppointmentRow[]>([]);
   const [docs, setDocs] = useState<DocFile[]>([]);
   const [editOpen, setEditOpen] = useState(false);
+  const [deactivateOpen, setDeactivateOpen] = useState(false);
+  const [deactivating, setDeactivating] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -121,6 +134,27 @@ function PatientProfile() {
     openCrmInbox(navigate, { patientId: id, phone: patient.phone });
   };
 
+  const confirmDeactivate = async () => {
+    if (!patient?.active) return;
+    setDeactivating(true);
+    try {
+      await softDeactivate({
+        entityType: "patient",
+        table: "patients",
+        id: patient.id,
+        label: patient.full_name,
+        summary: patient.cpf ? `CPF ${maskCPF(patient.cpf)}` : null,
+      });
+      toast.success("Paciente movido para a lixeira");
+      setDeactivateOpen(false);
+      await load();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setDeactivating(false);
+    }
+  };
+
   if (loading) return <DashboardShell title="Paciente"><div className="text-muted-foreground">Carregando...</div></DashboardShell>;
   if (!patient) return <DashboardShell title="Paciente"><div>Paciente não encontrado</div></DashboardShell>;
 
@@ -164,6 +198,11 @@ function PatientProfile() {
               <Button onClick={openWhats}>
                 <MessageCircle className="h-4 w-4 mr-2" /> CRM WhatsApp
               </Button>
+              {patient.active && (
+                <Button variant="destructive" onClick={() => setDeactivateOpen(true)}>
+                  <UserX className="h-4 w-4 mr-2" /> Inativar
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -295,6 +334,31 @@ function PatientProfile() {
       </div>
 
       <PatientFormDialog open={editOpen} onOpenChange={setEditOpen} initial={patient} onSaved={() => load()} />
+
+      <AlertDialog open={deactivateOpen} onOpenChange={setDeactivateOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Inativar paciente?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {patient.full_name} será inativado e ficará na lixeira por 30 dias. Um administrador
+              pode restaurar o cadastro em Configurações → Lixeira.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deactivating}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deactivating}
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmDeactivate();
+              }}
+            >
+              Inativar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardShell>
   );
 }

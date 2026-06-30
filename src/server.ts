@@ -2,7 +2,9 @@ import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import { handleBudgetChat } from "./lib/budget-chat.server";
 import { verifyInternalApiAuth } from "./lib/internal-api-auth.server";
+import { handleMealPlanChat } from "./lib/meal-plan-chat.server";
 import { getPublicHealthStatus } from "./lib/production-env.server";
 import { handleWaFollowUpsCron } from "./lib/wa-cron.server";
 import { handleWhatsAppWebhook } from "./lib/whatsapp-webhook.server";
@@ -62,6 +64,12 @@ export default {
       }
       if (pathname === "/api/cron/wa-follow-ups") {
         return handleWaFollowUpsCron(request);
+      }
+      if (pathname === "/api/meal-plan/chat") {
+        return handleMealPlanChat(request);
+      }
+      if (pathname === "/api/budget/chat") {
+        return handleBudgetChat(request);
       }
 
       const handler = await getServerEntry();

@@ -12,10 +12,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
-import { PAYMENT_METHODS, parseBRLInput, fmt, fmtDate } from "@/lib/currency";
+import { parseBRLInput, fmt, fmtDate } from "@/lib/currency";
 import { generateReceiptPDF } from "@/lib/financial-pdf";
 import { loadLetterheadForPdf, resolveLetterheadProfessionalId, DEFAULT_LETTERHEAD_MARGINS } from "@/lib/letterhead";
 import { receiveBillPayment } from "@/lib/sales";
+import { activePaymentMethods, getCachedPaymentMethodConfigs, loadPaymentMethodConfigs, paymentLabel } from "@/lib/payment-methods";
 
 interface Patient { id: string; full_name: string; }
 interface Bill {
@@ -48,14 +49,25 @@ export function ReceivePaymentDialog({ open, onOpenChange, onSaved, defaultPatie
   const [partial, setPartial] = useState(false);
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState<{ pdfUrl: string } | null>(null);
+  const [methods, setMethods] = useState(() =>
+    activePaymentMethods(getCachedPaymentMethodConfigs()),
+  );
+  const [installments, setInstallments] = useState("1");
+  const selectedMethod = methods.find((m) => m.value === method);
 
   useEffect(() => {
     if (!open) return;
-    setStep(1); setSelected({}); setAmount(""); setNotes(""); setPartial(false); setDone(null);
+    setStep(1); setSelected({}); setAmount(""); setNotes(""); setPartial(false); setDone(null); setInstallments("1");
     if (defaultPatientId) setPatientId(defaultPatientId);
     (async () => {
       const { data } = await supabase.from("patients").select("id, full_name").eq("active", true).order("full_name");
       setPatients((data ?? []) as Patient[]);
+      try {
+        const configs = await loadPaymentMethodConfigs();
+        setMethods(activePaymentMethods(configs));
+      } catch (e) {
+        toast.error((e as Error).message);
+      }
     })();
   }, [open, defaultPatientId]);
 
@@ -87,7 +99,15 @@ export function ReceivePaymentDialog({ open, onOpenChange, onSaved, defaultPatie
         const outstanding = Number(b.amount) - Number(b.paid_amount);
         const pay = partial ? Math.min(remaining, outstanding) : outstanding;
         if (pay <= 0) continue;
-        await receiveBillPayment(b.id, pay, method, paidDate, notes || undefined);
+        await receiveBillPayment(
+          b.id,
+          pay,
+          method,
+          paidDate,
+          notes || undefined,
+          0,
+          selectedMethod?.supports_installments ? Number(installments) || 1 : 1,
+        );
         remaining -= pay;
         if (partial && remaining <= 0) break;
       }
@@ -156,14 +176,27 @@ export function ReceivePaymentDialog({ open, onOpenChange, onSaved, defaultPatie
             <div><Label>Valor recebido</Label><Input value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
             <div><Label>Forma de pagamento</Label>
               <div className="grid grid-cols-3 gap-2">
-                {PAYMENT_METHODS.filter((m) => m.value !== "other").map((m) => (
-                  <button key={m.value} type="button" onClick={() => setMethod(m.value)}
+                {methods.map((m) => (
+                  <button key={m.value} type="button" onClick={() => { setMethod(m.value); if (!m.supports_installments) setInstallments("1"); }}
                     className={`p-2 rounded-md border-2 text-sm ${method === m.value ? "border-primary bg-primary/5" : "border-border"}`}>
                     <div className="text-lg">{m.icon}</div>{m.label}
                   </button>
                 ))}
               </div>
             </div>
+            {selectedMethod?.supports_installments && (
+              <div>
+                <Label>Parcelamento</Label>
+                <div className="grid grid-cols-6 gap-1 mt-1">
+                  {Array.from({ length: Math.max(1, selectedMethod.max_installments ?? 12) }, (_, i) => i + 1).map((n) => (
+                    <button key={n} type="button" onClick={() => setInstallments(String(n))}
+                      className={`p-1.5 rounded-md border text-xs ${Number(installments) === n ? "border-primary bg-primary/5 font-medium" : "border-border"}`}>
+                      {n}x
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div><Label>Data do pagamento</Label><Input type="date" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} /></div>
             <div className="flex items-center gap-2"><Switch checked={partial} onCheckedChange={setPartial} /><Label>Pagamento parcial</Label></div>
             <div><Label>Observações</Label><Input value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
@@ -180,7 +213,7 @@ export function ReceivePaymentDialog({ open, onOpenChange, onSaved, defaultPatie
               <div className="space-y-2 text-sm">
                 <p><strong>{selectedBills.length}</strong> cobrança(s) selecionada(s)</p>
                 <p>Valor a receber: <strong>{fmt(parseBRLInput(amount))}</strong></p>
-                <p>Forma: <strong>{PAYMENT_METHODS.find((m) => m.value === method)?.label}</strong></p>
+                <p>Forma: <strong>{paymentLabel(method)}</strong></p>
                 <p>Data: <strong>{fmtDate(paidDate)}</strong></p>
                 {partial && <p className="text-orange-600">Pagamento parcial — saldo remanescente continuará em aberto.</p>}
               </div>

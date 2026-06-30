@@ -19,6 +19,7 @@ import {
   Activity,
   CalendarCheck,
   ClipboardList,
+  Salad,
   ChevronLeft,
   ChevronRight,
   type LucideIcon,
@@ -105,11 +106,13 @@ const NAV: Record<Role, { label: string; items: NavItem[] }[]> = {
         { title: "Prontuários", url: "/professional/prontuarios", icon: FileText },
         { title: "Receituário", url: "/professional/prescriptions", icon: FileText },
         { title: "Sessões", url: "/professional/sessions", icon: CalendarCheck },
+        { title: "Plano Terapêutico", url: "/professional/plano-alimentar", icon: Salad },
       ],
     },
     {
       label: "Administrativo",
       items: [
+        { title: "Orçamento (IA)", url: "/professional/orcamento", icon: Receipt },
         { title: "Orçamentos", url: "/professional/budgets", icon: Receipt },
         { title: "Procedimentos", url: "/professional/procedimentos", icon: ClipboardList },
         { title: "Financeiro", url: "/professional/financial", icon: Wallet },

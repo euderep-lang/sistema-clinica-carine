@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { softDelete } from "@/lib/trash";
 
 export interface ExpenseRow {
   id: string;
@@ -155,8 +156,22 @@ export async function updateProfessionalExpense(id: string, input: Partial<Expen
 }
 
 export async function deleteProfessionalExpense(id: string) {
-  const { error } = await supabase.from("bills_payable" as never).delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  const { data: row } = await supabase
+    .from("bills_payable" as never)
+    .select("description, amount")
+    .eq("id", id)
+    .maybeSingle();
+  const r = row as { description?: string | null; amount?: number | null } | null;
+  await softDelete({
+    entityType: "expense",
+    table: "bills_payable",
+    id,
+    label: r?.description?.trim() || "Despesa",
+    summary:
+      r?.amount != null
+        ? `R$ ${Number(r.amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+        : null,
+  });
 }
 
 export async function markExpensePaid(

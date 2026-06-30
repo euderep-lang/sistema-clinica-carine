@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
-import { fmt, fmtDate, BILL_STATUS_LABEL, BILL_STATUS_CLASS, PAYMENT_LABEL, isOverdue } from "@/lib/currency";
+import { fmt, fmtDate, BILL_STATUS_LABEL, BILL_STATUS_CLASS, isOverdue } from "@/lib/currency";
+import { paymentLabel } from "@/lib/payment-methods";
 import { NewBillReceivableDialog } from "@/components/bill-receivable-dialog";
 import { ReceivePaymentDialog } from "@/components/receive-payment-dialog";
 
@@ -89,7 +90,7 @@ export function Page() {
                     <TableCell className="text-sm">{r.description}</TableCell>
                     <TableCell className="font-medium">{fmt(r.amount)}</TableCell>
                     <TableCell>{fmtDate(r.due_date)}</TableCell>
-                    <TableCell className="text-sm">{r.payment_method ? PAYMENT_LABEL[r.payment_method] : "—"}</TableCell>
+                    <TableCell className="text-sm">{r.payment_method ? paymentLabel(r.payment_method) : "—"}</TableCell>
                     <TableCell><Badge className={BILL_STATUS_CLASS[eff]}>{BILL_STATUS_LABEL[eff]}</Badge></TableCell>
                   </TableRow>
                 );

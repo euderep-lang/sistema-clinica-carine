@@ -9,7 +9,7 @@ import {
   updateMessageStatus,
   upsertConversation,
 } from "@/lib/whatsapp-crm-storage.server";
-import { getInboundPushUserIds, sendPushToUsers } from "@/lib/web-push.server";
+import { getInboundPushUserIds, getTenantWaUnreadBadgeCount, sendPushToUsers } from "@/lib/web-push.server";
 import { getZApiConfig } from "@/lib/whatsapp-zapi.server";
 import { isValidContactPhotoUrl } from "@/lib/wa-contact-photo";
 
@@ -332,12 +332,14 @@ async function processZApiReceived(tenantId: string, payload: ZApiReceivedPayloa
   if (direction === "inbound") {
     try {
       const userIds = await getInboundPushUserIds(tenantId);
+      const unreadCount = await getTenantWaUnreadBadgeCount(tenantId);
       await sendPushToUsers(userIds, {
         title: `WhatsApp · ${contactName?.trim() || phone}`,
         body: preview || "Nova mensagem",
         conversationId: convId,
         tag: `wa-${convId}`,
         url: `/crm/inbox?conversation=${convId}`,
+        unreadCount,
       });
     } catch (e) {
       console.error("[Z-API webhook] push falhou (mensagem já gravada):", e);

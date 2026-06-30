@@ -51,7 +51,15 @@ export const APPOINTMENT_STATUS_LABEL: Record<string, string> = {
   no_show: "Faltou",
   in_progress: "Em atendimento",
   rescheduled: "Remarcado",
+  blocked: "Bloqueado",
 };
+
+/** Tipo especial de agendamento usado para bloquear horários na agenda. */
+export const APPOINTMENT_BLOCK_TYPE = "block";
+
+export function isBlockAppointment(row: { type?: string | null; status?: string | null } | null | undefined): boolean {
+  return row?.type === APPOINTMENT_BLOCK_TYPE || row?.status === "blocked";
+}
 
 /** Situações editáveis pelo profissional na Minha Agenda */
 export const PROFESSIONAL_AGENDA_STATUS_OPTIONS = [

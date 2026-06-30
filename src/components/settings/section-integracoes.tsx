@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { WhatsAppIntegrationDiagnostics } from "@/components/settings/whatsapp-integration-diagnostics";
+import { SectionNfseConfig } from "@/components/settings/section-nfse-config";
 import { getPublicAppUrl } from "@/lib/app-url";
 
 const INTEGRATIONS = [
@@ -12,7 +13,7 @@ const INTEGRATIONS = [
   { id: "mercadopago", name: "Mercado Pago", desc: "Receba pagamentos online e gere links de cobrança", icon: CreditCard, color: "#3b82f6", active: false },
   { id: "gcal", name: "Google Agenda", desc: "Sincronize a agenda com o Google Calendar", icon: Calendar, color: "#ef4444", active: false },
   { id: "gdrive", name: "Google Drive", desc: "Armazene documentos na nuvem automaticamente", icon: Cloud, color: "#eab308", active: false },
-  { id: "nfse", name: "Nota Fiscal", desc: "Emissão automática de NFS-e", icon: Receipt, color: "#8b5cf6", active: false },
+  { id: "nfse", name: "Nota Fiscal (Focus NFe)", desc: "Emissão de NFS-e direto pelo financeiro", icon: Receipt, color: "#8b5cf6", active: true },
 ];
 
 const WEBHOOK_URL = `${getPublicAppUrl()}/api/whatsapp/webhook`;
@@ -35,7 +36,18 @@ export function SectionIntegracoes() {
               </div>
             </div>
             <p className="text-xs text-muted-foreground min-h-[2.5rem]">{i.desc}</p>
-            {i.id === "whatsapp" ? (
+            {i.id === "nfse" ? (
+              <div className="space-y-2 text-[11px] text-muted-foreground">
+                <p>
+                  Variáveis na Vercel:{" "}
+                  <code className="rounded bg-muted px-1">FOCUS_NFE_TOKEN</code>,{" "}
+                  <code className="rounded bg-muted px-1">FOCUS_NFE_ENV</code>.
+                </p>
+                <SectionNfseConfig
+                  trigger={<Button size="sm" variant="outline" className="w-full">Configurar prestador</Button>}
+                />
+              </div>
+            ) : i.id === "whatsapp" ? (
               <div className="space-y-2 text-[11px] text-muted-foreground">
                 <p>
                   Webhook:{" "}

@@ -8,6 +8,7 @@ import {
   Receipt,
   Send,
   ShoppingCart,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { BudgetFormDialog } from "@/components/professional/budget-form-dialog";
@@ -44,7 +45,18 @@ import {
 } from "@/lib/currency";
 import { generateBudgetPDF, type BudgetPDFData } from "@/lib/financial-pdf";
 import { loadLetterheadForPdf } from "@/lib/letterhead";
+import { deleteBudgetWithTrash } from "@/lib/trash";
 import { formatClinicAddress, getTenantSetting, type ClinicAddress } from "@/lib/settings-helpers";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export const Route = createFileRoute("/_authenticated/professional/budgets")({
   component: ProfessionalBudgetsPage,
@@ -83,6 +95,8 @@ function ProfessionalBudgetsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [convertingId, setConvertingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<BudgetRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     if (!profile) return;
@@ -104,11 +118,13 @@ function ProfessionalBudgetsPage() {
     if (ids.length) {
       const { data: bills } = await supabase
         .from("bills_receivable")
-        .select("id, budget_id")
+        .select("id, budget_id, status")
         .in("budget_id", ids);
       const converted = new Set<string>();
       for (const b of bills ?? []) {
-        if (b.budget_id) converted.add(b.budget_id);
+        // Faturas com status 'budget' são apenas o orçamento no financeiro,
+        // ainda não uma venda. Só contam como "vendido" faturas reais.
+        if (b.budget_id && b.status !== "budget") converted.add(b.budget_id);
       }
       setConvertedIds(converted);
     } else {
@@ -158,6 +174,21 @@ function ProfessionalBudgetsPage() {
     }
     toast.success(`Orçamento marcado como ${BUDGET_STATUS_LABEL[next] ?? next}`);
     void load();
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteBudgetWithTrash(deleteTarget.id);
+      setDeleteTarget(null);
+      toast.success("Orçamento movido para a lixeira");
+      void load();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const exportPdf = async (row: BudgetRow) => {
@@ -391,6 +422,17 @@ function ProfessionalBudgetsPage() {
                                 Ver paciente
                               </Button>
                             )}
+                            {!converted && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                onClick={() => setDeleteTarget(r)}
+                                title="Excluir orçamento"
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -409,6 +451,31 @@ function ProfessionalBudgetsPage() {
         budgetId={editId}
         onSaved={() => void load()}
       />
+
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir orçamento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O orçamento #{deleteTarget?.number} será movido para a lixeira por 30 dias. Um
+              administrador pode restaurá-lo em Configurações → Lixeira.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleting}
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmDelete();
+              }}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardShell>
   );
 }

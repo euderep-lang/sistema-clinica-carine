@@ -6,7 +6,8 @@ import {
   pdfContentX,
   resolvePdfPadding,
 } from "@/lib/letterhead-pdf";
-import { fmt, fmtDate, PAYMENT_LABEL } from "./currency";
+import { fmt, fmtDate } from "./currency";
+import { paymentLabel } from "./payment-methods";
 
 export interface ClinicHeader {
   name: string;
@@ -100,7 +101,7 @@ export function generateReceiptPDF(r: ReceiptData): Blob {
   y += lines.length * 5 + 4;
   doc.setFontSize(9);
   doc.text(
-    `Forma de pagamento: ${r.paymentMethod ? (PAYMENT_LABEL[r.paymentMethod] ?? r.paymentMethod) : "—"}`,
+    `Forma de pagamento: ${r.paymentMethod ? paymentLabel(r.paymentMethod) : "—"}`,
     x,
     y,
   );

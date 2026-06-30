@@ -18,6 +18,13 @@ export async function handleWaFollowUpsCron(request: Request): Promise<Response>
     const queue = await processAppointmentNotifyQueue(25);
     const followUps = await processDueFollowUps(50);
     const scheduled = await processScheduledMessages(25);
+    // Limpeza da lixeira: remove itens com mais de 30 dias (ou já restaurados).
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      await supabaseAdmin.rpc("purge_expired_trash" as never);
+    } catch (e) {
+      console.error("[cron purge_expired_trash]", e);
+    }
     console.info("[cron wa-follow-ups]", { queue, followUps, scheduled });
     return Response.json({ ok: true, queue, followUps, scheduled });
   } catch (e) {

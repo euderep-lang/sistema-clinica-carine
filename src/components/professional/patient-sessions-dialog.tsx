@@ -19,6 +19,7 @@ import {
 } from "@/components/professional/session-history-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { fmt } from "@/lib/currency";
+import { cn } from "@/lib/utils";
 
 export interface PatientPackageRow {
   id: string;
@@ -80,12 +81,44 @@ function PatientPackagesList({ packages, onCheckoff, onHistory }: PatientPackage
               </Badge>
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-2">
               <Progress value={pct} className="h-1.5" />
-              <p className="text-xs text-muted-foreground">
-                {pkg.used_sessions}/{pkg.total_sessions} realizadas
-                {pkg.status === "active" && remaining > 0 && ` · ${remaining} restantes`}
-              </p>
+
+              {pkg.total_sessions <= 24 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {Array.from({ length: pkg.total_sessions }).map((_, i) => {
+                    const done = i < pkg.used_sessions;
+                    return (
+                      <span
+                        key={i}
+                        title={done ? `Sessão ${i + 1} realizada` : `Sessão ${i + 1} pendente`}
+                        className={cn(
+                          "grid size-6 place-items-center rounded-full text-[11px] font-semibold",
+                          done
+                            ? "bg-emerald-500 text-white"
+                            : "border border-dashed border-amber-400 bg-amber-50 text-amber-600",
+                        )}
+                      >
+                        {i + 1}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                <span className="inline-flex items-center gap-1.5 font-medium text-emerald-600">
+                  <span className="size-2 rounded-full bg-emerald-500" />
+                  {pkg.used_sessions} realizada{pkg.used_sessions === 1 ? "" : "s"}
+                </span>
+                {pkg.status === "active" && remaining > 0 && (
+                  <span className="inline-flex items-center gap-1.5 font-medium text-amber-600">
+                    <span className="size-2 rounded-full border border-dashed border-amber-400 bg-amber-50" />
+                    {remaining} restante{remaining === 1 ? "" : "s"}
+                  </span>
+                )}
+                <span className="text-muted-foreground">de {pkg.total_sessions} no total</span>
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-2">

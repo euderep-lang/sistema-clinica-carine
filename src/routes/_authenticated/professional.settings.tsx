@@ -1,20 +1,27 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Calendar, FileImage, Settings, ShieldCheck, type LucideIcon } from "lucide-react";
+import { Calendar, FileImage, Settings, ShieldCheck, UserCircle, type LucideIcon } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionAgendaTipos } from "@/components/professional/section-agenda-tipos";
 import { SectionCertificadoDigital } from "@/components/professional/section-certificado-digital";
 import { SectionPapelTimbrado } from "@/components/professional/section-papel-timbrado";
+import { SectionPerfilProfissional } from "@/components/professional/section-perfil-profissional";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/professional/settings")({
   component: ProfessionalSettingsPage,
 });
 
-type TabId = "agenda" | "timbrado" | "certificado";
+type TabId = "perfil" | "agenda" | "timbrado" | "certificado";
 
 const TABS: { id: TabId; label: string; icon: LucideIcon; description: string }[] = [
+  {
+    id: "perfil",
+    label: "Meu perfil",
+    icon: UserCircle,
+    description: "Nome de exibição, profissão, conselho e especialidades para receitas e documentos.",
+  },
   {
     id: "agenda",
     label: "Tipos de agendamento",
@@ -36,14 +43,14 @@ const TABS: { id: TabId; label: string; icon: LucideIcon; description: string }[
 ];
 
 function ProfessionalSettingsPage() {
-  const [tab, setTab] = useState<TabId>("agenda");
+  const [tab, setTab] = useState<TabId>("perfil");
 
   return (
     <DashboardShell title="Minhas configurações">
       <div className="space-y-6">
         <PageHeader
           title="Minhas configurações"
-          description="Tipos de agendamento, papel timbrado e certificado digital do seu consultório."
+          description="Perfil profissional, tipos de agendamento, papel timbrado e certificado digital."
         />
 
         <div className="flex flex-col gap-6 lg:flex-row">
@@ -69,6 +76,7 @@ function ProfessionalSettingsPage() {
               <Settings className="size-4" />
               {TABS.find((t) => t.id === tab)?.description}
             </div>
+            {tab === "perfil" && <SectionPerfilProfissional />}
             {tab === "agenda" && <SectionAgendaTipos />}
             {tab === "timbrado" && <SectionPapelTimbrado />}
             {tab === "certificado" && <SectionCertificadoDigital />}

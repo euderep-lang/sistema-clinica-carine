@@ -13,7 +13,7 @@ import {
 } from "@/lib/whatsapp-provider.server";
 import { sendMetaSocialText } from "@/lib/whatsapp-meta.server";
 import { normalizeOutboundMessageBody } from "@/lib/wa-automation-quick-replies.server";
-import { sendPushToUsers } from "@/lib/web-push.server";
+import { getProfessionalWaUnreadBadgeCount, sendPushToUsers } from "@/lib/web-push.server";
 import { logAuditSafe } from "@/lib/audit.server";
 
 type CrmRole = "admin" | "professional" | "receptionist";
@@ -275,6 +275,7 @@ export const transferWaConversation = createServerFn({ method: "POST" })
     // Web Push 24/7: quem recebe a transferência é notificado (inclusive profissional).
     try {
       const name = convRow?.contact_name?.trim() || convRow?.contact_phone || "Conversa";
+      const unreadCount = await getProfessionalWaUnreadBadgeCount(profile.tenant_id, data.toUserId);
       await sendPushToUsers([data.toUserId], {
         title: `WhatsApp · ${name}`,
         body: data.note?.trim()
@@ -283,6 +284,7 @@ export const transferWaConversation = createServerFn({ method: "POST" })
         conversationId: data.conversationId,
         tag: `wa-${data.conversationId}`,
         url: `/crm/inbox?conversation=${data.conversationId}`,
+        unreadCount,
       });
     } catch (e) {
       console.error("[transferWaConversation] push falhou:", e);

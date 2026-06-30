@@ -17,8 +17,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
-import { fmt, fmtDate, PAYMENT_LABEL } from "@/lib/currency";
+import { fmt, fmtDate } from "@/lib/currency";
+import { paymentLabel } from "@/lib/payment-methods";
 import { loadProfessionalExpenses, loadTenantExpenses } from "@/lib/expenses";
+import { CashSessionPanel } from "@/components/professional/cash-session-panel";
 import { FinancialProfessionalFilter } from "@/components/professional/financial-professional-filter";
 import {
   applyPaymentProfessionalFilter,
@@ -113,6 +115,7 @@ export function FinancialCaixaTab({
   }, [expenses, search]);
 
   const stats = useMemo(() => {
+    const gross = payments.reduce((s, p) => s + Number(p.amount), 0);
     const inflow = payments.reduce((s, p) => s + Number(p.net_amount ?? p.amount), 0);
     const fees = payments.reduce((s, p) => s + Number(p.fee_amount ?? 0), 0);
     const outflow = expenses.reduce((s, e) => s + Number(e.amount), 0);
@@ -121,11 +124,13 @@ export function FinancialCaixaTab({
       const k = p.payment_method;
       byMethod.set(k, (byMethod.get(k) ?? 0) + Number(p.net_amount ?? p.amount));
     }
-    return { inflow, fees, outflow, balance: inflow - outflow, byMethod };
+    return { gross, inflow, fees, outflow, balance: inflow - outflow, byMethod };
   }, [payments, expenses]);
 
   return (
     <div className="space-y-6">
+      {scope === "clinic" && <CashSessionPanel onChanged={() => void load()} />}
+
       <div className="flex flex-wrap items-end gap-4">
         {scope === "clinic" && (
           <FinancialProfessionalFilter value={professionalFilter} onChange={onProfessionalFilterChange} />
@@ -143,9 +148,10 @@ export function FinancialCaixaTab({
       </div>
 
       <PageSection title={`Caixa — ${fmtDate(date)}`}>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="Entradas (líquido)" value={fmt(stats.inflow)} icon={ArrowDownLeft} tone="success" />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <StatCard label="Entradas (bruto)" value={fmt(stats.gross)} icon={ArrowDownLeft} tone="success" />
           <StatCard label="Taxas" value={fmt(stats.fees)} icon={Landmark} tone="warning" />
+          <StatCard label="Entradas (líquido)" value={fmt(stats.inflow)} icon={ArrowDownLeft} tone="success" />
           <StatCard label="Saídas" value={fmt(stats.outflow)} icon={ArrowUpRight} tone="danger" />
           <StatCard label="Saldo do dia" value={fmt(stats.balance)} icon={Landmark} />
         </div>
@@ -159,7 +165,7 @@ export function FinancialCaixaTab({
           <CardContent className="flex flex-wrap gap-2">
             {Array.from(stats.byMethod.entries()).map(([method, value]) => (
               <Badge key={method} variant="secondary" className="px-3 py-1">
-                {PAYMENT_LABEL[method] ?? method}: {fmt(value)}
+                {paymentLabel(method)}: {fmt(value)}
               </Badge>
             ))}
           </CardContent>
@@ -178,19 +184,20 @@ export function FinancialCaixaTab({
                   <TableHead>Paciente</TableHead>
                   <TableHead>Descrição</TableHead>
                   <TableHead className="text-center">Forma</TableHead>
+                  <TableHead className="text-center">Bruto</TableHead>
                   <TableHead className="text-center">Líquido</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
                       Carregando…
                     </TableCell>
                   </TableRow>
                 ) : filteredPayments.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
                       Nenhum recebimento neste dia.
                     </TableCell>
                   </TableRow>
@@ -201,7 +208,10 @@ export function FinancialCaixaTab({
                       <TableCell className="max-w-[160px] truncate text-sm">
                         {p.bills_receivable?.description ?? "—"}
                       </TableCell>
-                      <TableCell className="text-center">{PAYMENT_LABEL[p.payment_method] ?? p.payment_method}</TableCell>
+                      <TableCell className="text-center">{paymentLabel(p.payment_method)}</TableCell>
+                      <TableCell className="text-center tabular-nums text-muted-foreground">
+                        {fmt(p.amount)}
+                      </TableCell>
                       <TableCell className="text-center font-medium tabular-nums">
                         {fmt(p.net_amount ?? p.amount)}
                       </TableCell>
@@ -245,7 +255,7 @@ export function FinancialCaixaTab({
                     <TableRow key={e.id}>
                       <TableCell>{e.description}</TableCell>
                       <TableCell>{e.category ?? "—"}</TableCell>
-                      <TableCell className="text-center">{e.payment_method ? PAYMENT_LABEL[e.payment_method] : "—"}</TableCell>
+                      <TableCell className="text-center">{e.payment_method ? paymentLabel(e.payment_method) : "—"}</TableCell>
                       <TableCell className="text-center font-medium tabular-nums">{fmt(e.amount)}</TableCell>
                     </TableRow>
                   ))

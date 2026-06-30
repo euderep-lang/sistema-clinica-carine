@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Plus, Download, ArrowDownToLine } from "lucide-react";
+import { Plus, Download, ArrowDownToLine, Trash2, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,9 +11,20 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { fmt } from "@/lib/currency";
 import { stockStatus, STATUS_LABEL, STATUS_CLASS } from "@/lib/inventory";
+import { softDeactivate } from "@/lib/trash";
 import { InventoryItemDialog } from "@/components/inventory-item-dialog";
 import { StockMovementDialog } from "@/components/stock-movement-dialog";
 
@@ -33,6 +45,8 @@ function Page() {
   const [stat, setStat] = useState("all"); const [onlyActive, setOnlyActive] = useState(true);
   const [newOpen, setNewOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Item | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = async () => {
     const { data } = await supabase.from("inventory_items" as never)
@@ -62,6 +76,31 @@ function Page() {
     const body = filtered.map((i) => [i.name, i.sku ?? "", i.unit, i.current_stock, i.min_stock, i.cost_price, i.sell_price].join(",")).join("\n");
     const blob = new Blob([head + body], { type: "text/csv" });
     window.open(URL.createObjectURL(blob), "_blank");
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await softDeactivate({
+        entityType: "inventory_item",
+        table: "inventory_items",
+        id: deleteTarget.id,
+        label: deleteTarget.name,
+        summary: deleteTarget.sku ?? null,
+        children: [
+          { table: "inventory_movements", fk: "item_id" },
+          { table: "service_inventory_items", fk: "inventory_item_id" },
+        ],
+      });
+      setDeleteTarget(null);
+      toast.success("Item movido para a lixeira");
+      await load();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -100,9 +139,10 @@ function Page() {
             <TableHead>Categoria</TableHead><TableHead>Nome</TableHead><TableHead>Código interno</TableHead>
             <TableHead>Un.</TableHead><TableHead>Atual</TableHead><TableHead>Mín.</TableHead>
             <TableHead>Custo</TableHead><TableHead>Venda</TableHead><TableHead>Situação</TableHead>
+            <TableHead className="w-12" />
           </TableRow></TableHeader>
           <TableBody>
-            {filtered.length === 0 ? <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-10">Nenhum item</TableCell></TableRow> :
+            {filtered.length === 0 ? <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-10">Nenhum item</TableCell></TableRow> :
               filtered.map((i) => {
                 const st = stockStatus(Number(i.current_stock), Number(i.min_stock));
                 return (
@@ -118,6 +158,21 @@ function Page() {
                     <TableCell>{fmt(Number(i.cost_price))}</TableCell>
                     <TableCell>{fmt(Number(i.sell_price))}</TableCell>
                     <TableCell><Badge variant="outline" className={STATUS_CLASS[st]}>{STATUS_LABEL[st]}</Badge></TableCell>
+                    <TableCell>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        title="Excluir item"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDeleteTarget(i);
+                        }}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -127,6 +182,33 @@ function Page() {
 
       <InventoryItemDialog open={newOpen} onOpenChange={setNewOpen} onSaved={load} />
       <StockMovementDialog open={moveOpen} onOpenChange={setMoveOpen} fixedType="in" onSaved={load} />
+
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir item do estoque?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget
+                ? `"${deleteTarget.name}" será inativado e movido para a lixeira por 30 dias. O histórico de movimentações é preservado para restauração.`
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleting}
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmDelete();
+              }}
+            >
+              {deleting && <Loader2 className="mr-2 size-4 animate-spin" />}
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardShell>
   );
 }

@@ -63,7 +63,7 @@ export function ExpenseDialog({ open, onOpenChange, expense, onSaved }: ExpenseD
         loadPaymentMethodConfigs(),
       ]);
       setCategories(cats.map((c) => ({ id: c.id, name: c.name })));
-      setMethods(activePaymentMethods(configs).filter((m) => m.value !== "other"));
+      setMethods(activePaymentMethods(configs));
     })();
   }, [open]);
 

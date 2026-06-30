@@ -40,6 +40,8 @@ export type PushPayload = {
   conversationId?: string;
   tag?: string;
   url?: string;
+  /** Contagem para badge no ícone do PWA. */
+  unreadCount?: number;
 };
 
 type SubscriptionRow = {
@@ -48,6 +50,47 @@ type SubscriptionRow = {
   p256dh: string;
   auth: string;
 };
+
+/** Total de mensagens não lidas no tenant (admin/recepção). */
+export async function getTenantWaUnreadBadgeCount(tenantId: string): Promise<number> {
+  const { data } = await supabaseAdmin
+    .from("wa_conversations" as never)
+    .select("unread_count")
+    .eq("tenant_id", tenantId)
+    .gt("unread_count", 0);
+
+  return ((data ?? []) as { unread_count: number }[]).reduce(
+    (sum, row) => sum + (row.unread_count ?? 0),
+    0,
+  );
+}
+
+/** Badge para profissional: conversas atribuídas + transferências pendentes. */
+export async function getProfessionalWaUnreadBadgeCount(
+  tenantId: string,
+  userId: string,
+): Promise<number> {
+  const [convRes, transferRes] = await Promise.all([
+    supabaseAdmin
+      .from("wa_conversations" as never)
+      .select("unread_count")
+      .eq("tenant_id", tenantId)
+      .eq("assigned_to", userId)
+      .gt("unread_count", 0),
+    supabaseAdmin
+      .from("wa_transfers" as never)
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("to_user_id", userId)
+      .is("seen_at", null),
+  ]);
+
+  const convUnread = ((convRes.data ?? []) as { unread_count: number }[]).reduce(
+    (sum, row) => sum + (row.unread_count ?? 0),
+    0,
+  );
+  return convUnread + (transferRes.count ?? 0);
+}
 
 /** Envia push para um conjunto de usuários. Remove assinaturas expiradas (404/410). */
 export async function sendPushToUsers(

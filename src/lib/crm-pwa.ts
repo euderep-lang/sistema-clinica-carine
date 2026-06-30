@@ -37,8 +37,17 @@ export function canAccessCrm(role: Role): boolean {
   return role === "admin" || role === "receptionist" || role === "professional";
 }
 
+/** PWA instalado ou fluxo CRM (rota /crm, source=pwa). */
+export function isCrmPwaContext(): boolean {
+  if (typeof window === "undefined") return false;
+  if (isCrmStandalone()) return true;
+  if (window.location.pathname.startsWith("/crm")) return true;
+  const params = new URLSearchParams(window.location.search);
+  return params.get("source") === "pwa" || params.get("crm") === "1";
+}
+
 export function postLoginPathForRole(role: Role): string {
-  if (canAccessCrm(role) && shouldUseCrmPwaExperience()) {
+  if (canAccessCrm(role) && (isCrmPwaContext() || shouldUseCrmPwaExperience())) {
     return "/crm/inbox";
   }
   return dashboardPathFor(role);

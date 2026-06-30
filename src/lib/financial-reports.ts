@@ -22,7 +22,7 @@ import {
   applyReceivableProfessionalFilter,
   type FinancialScope,
 } from "@/lib/financial-scope";
-import { PAYMENT_LABEL } from "@/lib/currency";
+import { paymentLabel } from "@/lib/payment-methods";
 import type { SaleBillRow } from "@/lib/sales";
 
 const BILL_SELECT =
@@ -319,7 +319,7 @@ export async function loadSalesByPaymentMethod(
     const method = row.payment_method;
     const current = map.get(method) ?? {
       method,
-      label: PAYMENT_LABEL[method] ?? method,
+      label: paymentLabel(method),
       gross: 0,
       net: 0,
       fees: 0,

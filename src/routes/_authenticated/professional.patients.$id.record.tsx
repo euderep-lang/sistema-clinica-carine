@@ -524,7 +524,14 @@ function RecordPage() {
             </div>
             <div className="min-h-0 flex-1">
               {mobileTab === "editor" ? (
-                <EvolutionEditor saving={saving} onSave={handleSave} />
+                <EvolutionEditor
+                  saving={saving}
+                  patientId={id}
+                  patientName={patient.full_name}
+                  professionalId={profile?.id}
+                  tenantId={profile?.tenant_id}
+                  onSave={handleSave}
+                />
               ) : (
                 <EvolutionHistory
                   entries={history}
@@ -559,7 +566,14 @@ function RecordPage() {
           </ResizablePanel>
             <ResizableHandle withHandle className="mx-1 w-2 bg-border/50 transition-colors hover:bg-primary/20" />
             <ResizablePanel defaultSize={44} minSize={28} className="min-h-0">
-              <EvolutionEditor saving={saving} onSave={handleSave} />
+              <EvolutionEditor
+                saving={saving}
+                patientId={id}
+                patientName={patient.full_name}
+                professionalId={profile?.id}
+                tenantId={profile?.tenant_id}
+                onSave={handleSave}
+              />
             </ResizablePanel>
           </ResizablePanelGroup>
         )}

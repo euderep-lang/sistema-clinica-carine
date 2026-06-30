@@ -1,9 +1,10 @@
 import { fmtDateFull } from "@/lib/locale";
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CalendarDays, ChevronLeft, ChevronRight, Eye, LayoutGrid, List, MapPin, PlayCircle, Plus, Video } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Eye, LayoutGrid, List, Lock, MapPin, PlayCircle, Plus, Video } from "lucide-react";
 import { toast } from "sonner";
 import { NewAppointmentDialog } from "@/components/agenda/new-appointment-dialog";
+import { ScheduleBlockDialog } from "@/components/agenda/schedule-block-dialog";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { AgendaContactActions } from "@/components/agenda/agenda-contact-actions";
@@ -62,6 +63,7 @@ function ProfessionalAgendaPage() {
   const [rows, setRows] = useState<ProfessionalAgendaAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [newApptOpen, setNewApptOpen] = useState(false);
+  const [blockOpen, setBlockOpen] = useState(false);
 
   const weekStart = useMemo(() => startOfWeekMonday(date), [date]);
   const weekEnd = useMemo(() => shiftDate(weekStart, 6), [weekStart]);
@@ -172,10 +174,16 @@ function ProfessionalAgendaPage() {
           title="Minha Agenda"
           description="Consultas do seu consultório. Atualize a situação e acesse prontuários."
           actions={
-            <Button onClick={() => setNewApptOpen(true)}>
-              <Plus className="mr-2 size-4" />
-              Novo agendamento
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setBlockOpen(true)}>
+                <Lock className="mr-2 size-4" />
+                Bloquear horário
+              </Button>
+              <Button onClick={() => setNewApptOpen(true)}>
+                <Plus className="mr-2 size-4" />
+                Novo agendamento
+              </Button>
+            </div>
           }
         />
 
@@ -422,6 +430,17 @@ function ProfessionalAgendaPage() {
         defaultProfessionalId={profile?.role === "professional" ? profile.id : undefined}
         defaultDate={date}
         appointmentSource="professional"
+        onSaved={(savedDate) => {
+          setDate(savedDate);
+          void load();
+        }}
+      />
+
+      <ScheduleBlockDialog
+        open={blockOpen}
+        onOpenChange={setBlockOpen}
+        defaultProfessionalId={profile?.role === "professional" ? profile.id : undefined}
+        defaultDate={date}
         onSaved={(savedDate) => {
           setDate(savedDate);
           void load();

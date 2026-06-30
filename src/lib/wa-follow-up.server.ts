@@ -80,6 +80,13 @@ type TemplateContext = {
   appointmentAt?: Date | null;
 };
 
+/** Nome para mensagens: usa o nome de exibição (como gostaria de ser chamado) e cai para o nome completo. */
+function professionalDisplayName(
+  professional?: { full_name?: string | null; display_name?: string | null } | null,
+): string | null {
+  return professional?.display_name?.trim() || professional?.full_name || null;
+}
+
 export function buildFollowUpVars(ctx: TemplateContext): Record<string, string> {
   const appt = ctx.appointmentAt ?? null;
   return {
@@ -1200,7 +1207,7 @@ export async function onAppointmentBooked(input: {
 }) {
   const [{ data: patient }, { data: professional }] = await Promise.all([
     supabaseAdmin.from("patients").select("full_name, phone, phone_ddi").eq("id", input.patientId).maybeSingle(),
-    supabaseAdmin.from("profiles").select("full_name").eq("id", input.professionalId).maybeSingle(),
+    supabaseAdmin.from("profiles").select("full_name, display_name").eq("id", input.professionalId).maybeSingle(),
   ]);
 
   const conv = await ensureOutboundConversationForPatient(input.tenantId, input.patientId);
@@ -1245,7 +1252,7 @@ export async function onAppointmentBooked(input: {
     baseTime: new Date(),
     templateContext: {
       patientName: patient?.full_name ?? conv?.contact_name,
-      professionalName: professional?.full_name,
+      professionalName: professionalDisplayName(professional),
       appointmentAt: input.startsAt,
     },
   });
@@ -1275,7 +1282,7 @@ export async function onAppointmentStatusChange(input: {
     const conv = await ensureOutboundConversationForPatient(input.tenantId, input.patientId);
     const { data: professional } = await supabaseAdmin
       .from("profiles")
-      .select("full_name")
+      .select("full_name, display_name")
       .eq("id", input.professionalId)
       .maybeSingle();
     const { data: patient } = await supabaseAdmin
@@ -1303,7 +1310,7 @@ export async function onAppointmentStatusChange(input: {
         baseTime: new Date(),
         templateContext: {
           patientName: patient?.full_name ?? conv?.contact_name,
-          professionalName: professional?.full_name,
+          professionalName: professionalDisplayName(professional),
         },
       });
     }
@@ -1348,7 +1355,7 @@ export async function onAppointmentStatusChange(input: {
         baseTime: new Date(),
         templateContext: {
           patientName: patient?.full_name ?? conv?.contact_name,
-          professionalName: professional?.full_name,
+          professionalName: professionalDisplayName(professional),
         },
       });
     }
@@ -1416,7 +1423,7 @@ export async function setupProfessionalPostConsultFollowUp(input: {
     .maybeSingle();
   const { data: professional } = await supabaseAdmin
     .from("profiles")
-    .select("full_name")
+    .select("full_name, display_name")
     .eq("id", input.professionalId)
     .maybeSingle();
 
@@ -1447,7 +1454,7 @@ export async function setupProfessionalPostConsultFollowUp(input: {
       baseTime: new Date(),
       templateContext: {
         patientName: patient?.full_name ?? conv.contact_name,
-        professionalName: professional?.full_name,
+        professionalName: professionalDisplayName(professional),
       },
     });
   }

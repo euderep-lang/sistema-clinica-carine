@@ -36,7 +36,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { fmt, fmtDate, PAYMENT_LABEL } from "@/lib/currency";
+import { fmt, fmtDate } from "@/lib/currency";
+import { paymentLabel } from "@/lib/payment-methods";
 import {
   loadBillPayments,
   paymentCanReverse,
@@ -97,7 +98,7 @@ export function PaymentHistoryDialog({
       return (
         (r.patients?.full_name?.toLowerCase().includes(q) ?? false) ||
         (r.bills_receivable?.description?.toLowerCase().includes(q) ?? false) ||
-        PAYMENT_LABEL[r.payment_method]?.toLowerCase().includes(q)
+        paymentLabel(r.payment_method)?.toLowerCase().includes(q)
       );
     });
   }, [rows, search, statusFilter]);
@@ -196,7 +197,7 @@ export function PaymentHistoryDialog({
                       </TableCell>
                       <TableCell className="font-medium">{fmt(r.amount)}</TableCell>
                       <TableCell className="text-sm">
-                        {PAYMENT_LABEL[r.payment_method] ?? r.payment_method}
+                        {paymentLabel(r.payment_method)}
                       </TableCell>
                       <TableCell>
                         {r.status === "active" ? (

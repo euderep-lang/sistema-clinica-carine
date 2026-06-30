@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
+import { softDelete } from "@/lib/trash";
 import { useAuth } from "@/lib/mock-auth";
 import { renderTemplate, SAMPLE_VARS, TEMPLATE_VARS } from "@/lib/settings-helpers";
 import { DEFAULT_BIRTHDAY_MESSAGE } from "@/lib/messaging";
@@ -84,8 +85,18 @@ export function SectionMensagens() {
   };
 
   const remove = async (t: Tpl) => {
-    await supabase.from("message_templates" as never).delete().eq("id", t.id);
-    toast.success("Removido"); load();
+    try {
+      await softDelete({
+        entityType: "message_template",
+        table: "message_templates",
+        id: t.id,
+        label: t.name,
+      });
+      toast.success("Movido para a lixeira");
+      load();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
   };
 
   const toggle = async (t: Tpl) => {

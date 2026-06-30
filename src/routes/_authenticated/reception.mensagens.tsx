@@ -264,7 +264,7 @@ function EnviarTab({ tenantId, tenantName, userId }: { tenantId: string; tenantN
   );
 }
 
-interface ApptRow { id: string; date: string; start_time: string; patient_id: string; professional_id: string | null; status: string; patients?: { id: string; full_name: string; phone: string | null } | null; profiles?: { full_name: string } | null; }
+interface ApptRow { id: string; date: string; start_time: string; patient_id: string; professional_id: string | null; status: string; patients?: { id: string; full_name: string; phone: string | null } | null; profiles?: { full_name: string; display_name?: string | null } | null; }
 
 function RemindersTab({ tenantId, tenantName, userId }: { tenantId: string; tenantName: string; userId: string }) {
   const navigate = useNavigate();
@@ -279,7 +279,7 @@ function RemindersTab({ tenantId, tenantName, userId }: { tenantId: string; tena
     try { setSentMap(JSON.parse(localStorage.getItem(storageKey) ?? "{}")); } catch { /* ignore */ }
     (async () => {
       const { data } = await supabase.from("appointments")
-        .select("id, date, start_time, patient_id, professional_id, status, patients(id, full_name, phone), profiles!appointments_professional_id_fkey(full_name)")
+        .select("id, date, start_time, patient_id, professional_id, status, patients(id, full_name, phone), profiles!appointments_professional_id_fkey(full_name, display_name)")
         .eq("date", tomorrow).in("status", ["scheduled", "confirmed"]).order("start_time");
       setAppts((data ?? []) as unknown as ApptRow[]);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -296,7 +296,7 @@ function RemindersTab({ tenantId, tenantName, userId }: { tenantId: string; tena
   async function sendOne(a: ApptRow) {
     if (!a.patients?.phone) { toast.error("Paciente sem telefone"); return; }
     const patient: PatientLite = { id: a.patients.id, full_name: a.patients.full_name, phone: a.patients.phone };
-    const extras = { data_consulta: fmtDate(a.date), hora_consulta: a.start_time.slice(0, 5), nome_profissional: a.profiles?.full_name ?? "" };
+    const extras = { data_consulta: fmtDate(a.date), hora_consulta: a.start_time.slice(0, 5), nome_profissional: a.profiles?.display_name?.trim() || a.profiles?.full_name || "" };
     const fallback = `Olá ${patient.full_name}, lembrando da sua consulta amanhã às ${extras.hora_consulta} em ${tenantName}.`;
     const content = template ? applyVars(template.content, patient, tenantName, extras) : fallback;
     openCrmInbox(navigate, { patientId: patient.id, phone: patient.phone, draft: content });

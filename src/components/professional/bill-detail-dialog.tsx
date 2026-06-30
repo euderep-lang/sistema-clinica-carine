@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { todayISO } from "@/lib/locale";
-import { Loader2, RotateCcw, ShoppingBag } from "lucide-react";
+import { Loader2, Plus, RotateCcw, Search, ShoppingBag, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -38,13 +38,14 @@ import {
   fmt,
   fmtDate,
   isOverdue,
-  PAYMENT_LABEL,
   parseBRLInput,
 } from "@/lib/currency";
 import {
   activePaymentMethods,
   calculatePaymentFee,
   loadPaymentMethodConfigs,
+  getCachedPaymentMethodConfigs,
+  paymentLabel,
   type PaymentMethodConfig,
 } from "@/lib/payment-methods";
 import {
@@ -56,14 +57,17 @@ import {
   type BillPaymentRow,
 } from "@/lib/payments";
 import {
+  addSaleItems,
   billCanReceive,
   loadSaleChargeItems,
   receiveBillPayment,
+  removeSaleItem,
+  updateSaleItem,
   type SaleBillRow,
   type SaleChargeItem,
 } from "@/lib/sales";
-
-const CREDIT_INSTALLMENTS = Array.from({ length: 12 }, (_, i) => i + 1);
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/mock-auth";
 
 function formatBRLInput(value: number): string {
   if (value <= 0) return "";
@@ -71,6 +75,13 @@ function formatBRLInput(value: number): string {
 }
 
 type DiscountMode = "amount" | "percent";
+
+interface PickerService {
+  id: string;
+  name: string;
+  default_price: number;
+  session_count: number;
+}
 
 function resolveDiscountValue(
   mode: DiscountMode,
@@ -88,16 +99,13 @@ function resolveDiscountValue(
 
 function buildPaymentNotes(
   userNotes: string,
-  method: string,
-  creditInstallments: number,
+  methodLabel: string | undefined,
+  supportsInstallments: boolean,
+  installments: number,
 ): string | undefined {
   const parts: string[] = [];
-  if (method === "credit_card") {
-    parts.push(
-      creditInstallments === 1
-        ? "Crédito à vista"
-        : `Crédito em ${creditInstallments}x`,
-    );
+  if (supportsInstallments && installments > 1) {
+    parts.push(`${methodLabel ?? "Parcelado"} em ${installments}x`);
   }
   const trimmed = userNotes.trim();
   if (trimmed) parts.push(trimmed);
@@ -121,7 +129,9 @@ export function BillDetailDialog({
   const [items, setItems] = useState<SaleChargeItem[]>([]);
   const [payments, setPayments] = useState<BillPaymentRow[]>([]);
   const [discounts, setDiscounts] = useState<BillDiscountRow[]>([]);
-  const [methodConfigs, setMethodConfigs] = useState<PaymentMethodConfig[]>([]);
+  const [methodConfigs, setMethodConfigs] = useState<PaymentMethodConfig[]>(
+    () => getCachedPaymentMethodConfigs(),
+  );
 
   const [payAmount, setPayAmount] = useState("");
   const [payDiscount, setPayDiscount] = useState("");
@@ -135,6 +145,17 @@ export function BillDetailDialog({
 
   const [reversePaymentTarget, setReversePaymentTarget] = useState<BillPaymentRow | null>(null);
   const [reversingPayment, setReversingPayment] = useState(false);
+
+  const { profile } = useAuth();
+  const [addingItems, setAddingItems] = useState(false);
+  const [services, setServices] = useState<PickerService[]>([]);
+  const [serviceSearch, setServiceSearch] = useState("");
+  const [addQuantities, setAddQuantities] = useState<Record<string, number>>({});
+  const [addSaving, setAddSaving] = useState(false);
+  const [itemQty, setItemQty] = useState<Record<string, string>>({});
+  const [savingItemId, setSavingItemId] = useState<string | null>(null);
+  const [removeItemTarget, setRemoveItemTarget] = useState<SaleChargeItem | null>(null);
+  const [removingItem, setRemovingItem] = useState(false);
 
   const discountTotal = Number(bill?.discount_value ?? 0);
   const originalAmount = bill ? Number(bill.amount) + discountTotal : 0;
@@ -150,33 +171,69 @@ export function BillDetailDialog({
   const settlementTotal = payValue + discountValue;
   const remainingAfterSettlement = Math.max(0, outstanding - settlementTotal);
   const installmentCount = Number(creditInstallments) || 1;
-  const installmentValue = useMemo(() => {
-    if (payMethod !== "credit_card" || payValue <= 0 || installmentCount <= 1) return 0;
-    return payValue / installmentCount;
-  }, [payMethod, payValue, installmentCount]);
 
   const paymentMethods = useMemo(() => activePaymentMethods(methodConfigs), [methodConfigs]);
+
+  const selectedMethod = useMemo(
+    () => paymentMethods.find((m) => m.value === payMethod),
+    [paymentMethods, payMethod],
+  );
+  const supportsInstallments = selectedMethod?.supports_installments ?? false;
+  const maxInstallments = Math.max(1, selectedMethod?.max_installments ?? 12);
+
+  const installmentValue = useMemo(() => {
+    if (!supportsInstallments || payValue <= 0 || installmentCount <= 1) return 0;
+    return payValue / installmentCount;
+  }, [supportsInstallments, payValue, installmentCount]);
 
   const feePreview = useMemo(() => {
     const config = methodConfigs.find((c) => c.method === payMethod && c.active);
     if (!config || payValue <= 0) return null;
-    return calculatePaymentFee(payValue, config);
-  }, [methodConfigs, payMethod, payValue]);
+    return calculatePaymentFee(payValue, config, supportsInstallments ? installmentCount : 1);
+  }, [methodConfigs, payMethod, payValue, supportsInstallments, installmentCount]);
+
+  useEffect(() => {
+    if (!open) return;
+    loadPaymentMethodConfigs()
+      .then(setMethodConfigs)
+      .catch((e) => toast.error((e as Error).message));
+  }, [open]);
 
   const loadDetails = useCallback(async () => {
     if (!bill) return;
     setLoading(true);
     try {
-      const [chargeItems, billPayments, billDiscounts, configs] = await Promise.all([
+      const isOps = profile?.role !== "professional";
+      let serviceQuery = supabase
+        .from("services")
+        .select("id, name, default_price, session_count")
+        .eq("active", true)
+        .order("name");
+      if (profile?.tenant_id) serviceQuery = serviceQuery.eq("tenant_id", profile.tenant_id);
+      if (!isOps && profile?.id) {
+        serviceQuery = serviceQuery.or(`professional_id.eq.${profile.id},professional_id.is.null`);
+      }
+
+      const [chargeItems, billPayments, billDiscounts, svcRes] = await Promise.all([
         loadSaleChargeItems(bill.id),
         loadBillPayments({ billId: bill.id, limit: 50 }),
         loadBillDiscounts({ billId: bill.id, limit: 50 }),
-        loadPaymentMethodConfigs(),
+        serviceQuery,
       ]);
       setItems(chargeItems);
+      setItemQty(
+        Object.fromEntries(chargeItems.map((it) => [it.id, String(it.quantity)])),
+      );
       setPayments(billPayments);
       setDiscounts(billDiscounts);
-      setMethodConfigs(configs);
+      setServices(
+        (svcRes.data ?? []).map((s) => ({
+          id: s.id as string,
+          name: s.name as string,
+          default_price: Number(s.default_price),
+          session_count: Number(s.session_count ?? 1),
+        })),
+      );
       setPayAmount("");
       setPayDiscount("");
       setPayDiscountPercent("");
@@ -185,12 +242,15 @@ export function BillDetailDialog({
       setPayMethod("pix");
       setCreditInstallments("1");
       setPayNotes("");
+      setAddingItems(false);
+      setServiceSearch("");
+      setAddQuantities({});
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
       setLoading(false);
     }
-  }, [bill]);
+  }, [bill, profile]);
 
   const syncPaymentToSettlement = (discount: number) => {
     const pay = parseBRLInput(payAmount);
@@ -265,6 +325,84 @@ export function BillDetailDialog({
     });
   }, [payments, discounts]);
 
+  const canAddItems = bill ? bill.status !== "cancelled" && !bill.budget_id : false;
+
+  const filteredServices = useMemo(() => {
+    const q = serviceSearch.trim().toLowerCase();
+    if (!q) return services;
+    return services.filter((s) => s.name.toLowerCase().includes(q));
+  }, [services, serviceSearch]);
+
+  const addSelection = useMemo(
+    () => services.filter((s) => (addQuantities[s.id] ?? 0) > 0),
+    [services, addQuantities],
+  );
+
+  const addTotal = addSelection.reduce(
+    (sum, s) => sum + s.default_price * (addQuantities[s.id] ?? 0),
+    0,
+  );
+
+  const setAddQty = (id: string, value: string) => {
+    const n = Math.max(0, parseInt(value, 10) || 0);
+    setAddQuantities((prev) => ({ ...prev, [id]: n }));
+  };
+
+  const submitAddItems = async () => {
+    if (!bill || addSelection.length === 0) return;
+    setAddSaving(true);
+    try {
+      const result = await addSaleItems(
+        bill.id,
+        addSelection.map((s) => ({ service_id: s.id, quantity: addQuantities[s.id] ?? 1 })),
+      );
+      toast.success(`${fmt(result.added_total)} adicionado(s) à conta`);
+      setAddingItems(false);
+      setServiceSearch("");
+      setAddQuantities({});
+      await refreshAll();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setAddSaving(false);
+    }
+  };
+
+  const commitItemQty = async (item: SaleChargeItem) => {
+    const raw = itemQty[item.id];
+    const next = Math.max(1, parseInt(raw ?? "", 10) || 0);
+    if (next === item.quantity) {
+      setItemQty((prev) => ({ ...prev, [item.id]: String(item.quantity) }));
+      return;
+    }
+    setSavingItemId(item.id);
+    try {
+      await updateSaleItem(item.id, next);
+      toast.success("Quantidade atualizada");
+      await refreshAll();
+    } catch (e) {
+      toast.error((e as Error).message);
+      setItemQty((prev) => ({ ...prev, [item.id]: String(item.quantity) }));
+    } finally {
+      setSavingItemId(null);
+    }
+  };
+
+  const confirmRemoveItem = async () => {
+    if (!removeItemTarget) return;
+    setRemovingItem(true);
+    try {
+      await removeSaleItem(removeItemTarget.id);
+      toast.success("Item removido da conta");
+      setRemoveItemTarget(null);
+      await refreshAll();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setRemovingItem(false);
+    }
+  };
+
   const submitPayment = async () => {
     if (!bill) return;
     const value = parseBRLInput(payAmount);
@@ -277,13 +415,18 @@ export function BillDetailDialog({
       toast.error(`Recebido + desconto (${fmt(settlementTotal)}) não pode passar de ${fmt(outstanding)} em aberto`);
       return;
     }
-    if (value > 0 && payMethod === "credit_card" && (!creditInstallments || installmentCount < 1)) {
-      toast.error("Informe o parcelamento no cartão");
+    if (value > 0 && supportsInstallments && (!creditInstallments || installmentCount < 1)) {
+      toast.error("Informe o parcelamento");
       return;
     }
     setPaySaving(true);
     try {
-      let notes = buildPaymentNotes(payNotes, payMethod, installmentCount);
+      let notes = buildPaymentNotes(
+        payNotes,
+        selectedMethod?.label,
+        supportsInstallments,
+        installmentCount,
+      );
       if (discount > 0 && discountMode === "percent") {
         const pct = Number(payDiscountPercent.replace(",", ".")) || 0;
         const discountLabel = `Desconto ${pct}% (${fmt(discount)})`;
@@ -296,6 +439,7 @@ export function BillDetailDialog({
         payDate,
         notes,
         discount,
+        supportsInstallments ? installmentCount : 1,
       );
       toast.success(
         value > 0 && discount > 0
@@ -392,31 +536,170 @@ export function BillDetailDialog({
             <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 lg:grid-cols-2">
               <div className="flex min-h-0 flex-col border-b lg:border-b-0 lg:border-r">
                 <section className="shrink-0 border-b p-5">
-                  <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
-                    <ShoppingBag className="size-4 text-primary" />
-                    O que comprou nesta conta
-                  </h3>
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <h3 className="flex items-center gap-2 text-sm font-semibold">
+                      <ShoppingBag className="size-4 text-primary" />
+                      O que comprou nesta conta
+                    </h3>
+                    {canAddItems && !addingItems && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8"
+                        onClick={() => setAddingItems(true)}
+                      >
+                        <Plus className="mr-1 size-4" />
+                        Adicionar itens
+                      </Button>
+                    )}
+                  </div>
                   {items.length > 0 ? (
                     <ul className="space-y-2">
                       {items.map((item) => (
                         <li
                           key={item.id}
-                          className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-sm"
+                          className="flex items-center gap-2 rounded-md bg-muted/40 px-3 py-2 text-sm"
                         >
-                          <span>
-                            {item.quantity}x {item.services?.name ?? "Procedimento"}
-                            {item.services && item.services.session_count > 1 && (
-                              <span className="ml-1 text-xs text-muted-foreground">
-                                ({item.services.session_count} sessões/un)
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate">
+                              {item.services?.name ?? "Procedimento"}
+                              {item.services && item.services.session_count > 1 && (
+                                <span className="ml-1 text-xs text-muted-foreground">
+                                  ({item.services.session_count} sessões/un)
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {fmt(item.unit_price)} / un
+                            </p>
+                          </div>
+                          {canAddItems ? (
+                            <>
+                              <Input
+                                type="number"
+                                min={1}
+                                value={itemQty[item.id] ?? String(item.quantity)}
+                                disabled={savingItemId === item.id}
+                                onChange={(e) =>
+                                  setItemQty((prev) => ({ ...prev, [item.id]: e.target.value }))
+                                }
+                                onBlur={() => void commitItemQty(item)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") e.currentTarget.blur();
+                                }}
+                                className="h-8 w-14 shrink-0 text-center"
+                              />
+                              <span className="w-20 shrink-0 text-right font-medium tabular-nums">
+                                {fmt(item.total_price)}
                               </span>
-                            )}
-                          </span>
-                          <span className="font-medium">{fmt(item.total_price)}</span>
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className="size-8 shrink-0 text-destructive hover:text-destructive"
+                                title="Remover item"
+                                disabled={savingItemId === item.id}
+                                onClick={() => setRemoveItemTarget(item)}
+                              >
+                                {savingItemId === item.id ? (
+                                  <Loader2 className="size-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="size-4" />
+                                )}
+                              </Button>
+                            </>
+                          ) : (
+                            <span className="font-medium">
+                              {item.quantity}x · {fmt(item.total_price)}
+                            </span>
+                          )}
                         </li>
                       ))}
                     </ul>
                   ) : (
                     <p className="text-sm text-muted-foreground">{bill.description}</p>
+                  )}
+
+                  {addingItems && (
+                    <div className="mt-4 rounded-lg border bg-muted/20 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold">Fazer uma venda</p>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="size-7"
+                          onClick={() => {
+                            setAddingItems(false);
+                            setAddQuantities({});
+                            setServiceSearch("");
+                          }}
+                        >
+                          <X className="size-4" />
+                        </Button>
+                      </div>
+                      <div className="relative mb-2">
+                        <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={serviceSearch}
+                          onChange={(e) => setServiceSearch(e.target.value)}
+                          placeholder="Buscar procedimento ou produto"
+                          className="h-9 pl-9"
+                        />
+                      </div>
+                      <ScrollArea className="h-44 rounded-md border bg-background">
+                        {filteredServices.length === 0 ? (
+                          <p className="py-10 text-center text-sm text-muted-foreground">
+                            Nenhum item encontrado.
+                          </p>
+                        ) : (
+                          <ul className="divide-y">
+                            {filteredServices.map((svc) => (
+                              <li
+                                key={svc.id}
+                                className="flex items-center gap-3 px-3 py-2 hover:bg-muted/40"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-medium">{svc.name}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {fmt(svc.default_price)}
+                                    {svc.session_count > 1 && ` · ${svc.session_count} sessões`}
+                                  </p>
+                                </div>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  value={addQuantities[svc.id] ?? 0}
+                                  onChange={(e) => setAddQty(svc.id, e.target.value)}
+                                  className="h-8 w-16 shrink-0 text-center"
+                                />
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </ScrollArea>
+                      <div className="mt-3 flex items-center justify-between gap-3">
+                        <span className="text-sm text-muted-foreground">
+                          {addTotal > 0 ? (
+                            <>
+                              Total: <span className="font-semibold text-foreground">{fmt(addTotal)}</span>
+                            </>
+                          ) : (
+                            "Selecione a quantidade"
+                          )}
+                        </span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => void submitAddItems()}
+                          disabled={addSaving || addSelection.length === 0}
+                        >
+                          {addSaving && <Loader2 className="mr-2 size-4 animate-spin" />}
+                          Adicionar à conta
+                        </Button>
+                      </div>
+                    </div>
                   )}
                 </section>
 
@@ -441,7 +724,7 @@ export function BillDetailDialog({
                                   <div className="min-w-0">
                                     <div className="font-medium">{fmt(p.amount)}</div>
                                     <div className="text-xs text-muted-foreground">
-                                      {fmtDate(p.paid_date)} · {PAYMENT_LABEL[p.payment_method]}
+                                      {fmtDate(p.paid_date)} · {paymentLabel(p.payment_method)}
                                       {p.fee_amount != null && Number(p.fee_amount) > 0 && (
                                         <> · Líquido {fmt(p.net_amount ?? p.amount)}</>
                                       )}
@@ -614,14 +897,14 @@ export function BillDetailDialog({
                     <div className="space-y-2">
                       <Label className="text-xs">Forma de pagamento</Label>
                       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                        {paymentMethods.filter((m) => m.value !== "other").map((m) => (
+                        {paymentMethods.map((m) => (
                           <button
                             key={m.value}
                             type="button"
                             disabled={payValue <= 0}
                             onClick={() => {
                               setPayMethod(m.value);
-                              if (m.value !== "credit_card") setCreditInstallments("1");
+                              if (!m.supports_installments) setCreditInstallments("1");
                             }}
                             className={`flex h-10 items-center justify-center gap-1 rounded-md border px-2 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                               payMethod === m.value
@@ -635,9 +918,9 @@ export function BillDetailDialog({
                         ))}
                       </div>
                     </div>
-                    {payMethod === "credit_card" && payValue > 0 && (
+                    {supportsInstallments && payValue > 0 && (
                       <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
-                        <Label className="text-xs">Parcelamento no cartão</Label>
+                        <Label className="text-xs">Parcelamento</Label>
                         <Select
                           value={creditInstallments}
                           onValueChange={setCreditInstallments}
@@ -646,9 +929,9 @@ export function BillDetailDialog({
                             <SelectValue placeholder="Selecione as parcelas" />
                           </SelectTrigger>
                           <SelectContent>
-                            {CREDIT_INSTALLMENTS.map((n) => (
+                            {Array.from({ length: maxInstallments }, (_, i) => i + 1).map((n) => (
                               <SelectItem key={n} value={String(n)}>
-                                {n === 1 ? "À vista (1x)" : `${n}x no cartão`}
+                                {n === 1 ? "À vista (1x)" : `${n}x`}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -700,6 +983,42 @@ export function BillDetailDialog({
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={Boolean(removeItemTarget)}
+        onOpenChange={(o) => !o && setRemoveItemTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover item da conta?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {removeItemTarget && (
+                <>
+                  <strong>
+                    {removeItemTarget.quantity}x{" "}
+                    {removeItemTarget.services?.name ?? "Procedimento"}
+                  </strong>{" "}
+                  ({fmt(removeItemTarget.total_price)}) será removido e o total da fatura será
+                  recalculado. O estoque dos insumos será devolvido.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removingItem}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={removingItem}
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmRemoveItem();
+              }}
+            >
+              Remover item
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={Boolean(reversePaymentTarget)}

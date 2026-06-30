@@ -1,10 +1,19 @@
 import type { ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
-import { ArrowLeft, BarChart3, MessageCircle, MoreVertical, Users } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft, BarChart3, LogOut, MessageCircle, MoreVertical, Users } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/mock-auth";
 import { CRM_PWA_THEME } from "@/lib/crm-pwa";
+import { performAppSignOut } from "@/lib/crm-sign-out";
 
 export type CrmPwaTab = "inbox" | "pipeline" | "analytics";
 
@@ -42,8 +51,14 @@ const TAB_ITEMS: {
 ];
 
 export function CrmPwaShell({ children, activeTab, hideBottomNav, header }: CrmPwaShellProps) {
-  const { profile, tenant } = useAuth();
+  const { profile, tenant, signOut } = useAuth();
+  const navigate = useNavigate();
   const role = profile?.role;
+
+  const handleLogout = async () => {
+    await performAppSignOut(signOut);
+    navigate({ to: "/crm/login", replace: true });
+  };
 
   const tabs = TAB_ITEMS.filter(
     (t) => !t.roles || (role && t.roles.includes(role as "admin")),
@@ -85,13 +100,30 @@ export function CrmPwaShell({ children, activeTab, hideBottomNav, header }: CrmP
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
             {header?.right ?? (
-              <button
-                type="button"
-                aria-label="Menu"
-                className="flex size-10 items-center justify-center rounded-full transition-colors active:bg-white/10"
-              >
-                <MoreVertical className="size-5" />
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className="flex size-10 items-center justify-center rounded-full transition-colors active:bg-white/10"
+                  aria-label="Menu"
+                >
+                  <MoreVertical className="size-5" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-medium">{profile?.full_name}</span>
+                      <span className="text-xs font-normal text-muted-foreground">{profile?.email}</span>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => void handleLogout()}
+                    className="cursor-pointer text-destructive focus:text-destructive"
+                  >
+                    <LogOut className="mr-2 size-4" />
+                    Sair
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
         </div>

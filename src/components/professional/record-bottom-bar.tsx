@@ -4,9 +4,12 @@ import {
   ArrowLeftRight,
   CalendarCheck,
   Camera,
+  ClipboardList,
   Columns2,
   DollarSign,
+  FileCheck2,
   FilePenLine,
+  FileText,
   Flag,
   FlaskConical,
   LayoutGrid,
@@ -14,10 +17,10 @@ import {
   Salad,
   type LucideIcon,
 } from "lucide-react";
-import { toast } from "sonner";
-import { BudgetFormDialog } from "@/components/professional/budget-form-dialog";
+import { ClinicalDocumentDialog } from "@/components/professional/clinical-document-dialog";
 import { FinishConsultationDialog } from "@/components/professional/finish-consultation-dialog";
 import { useClinicalTools } from "@/components/professional/use-clinical-tools";
+import type { ClinicalDocType } from "@/lib/clinical-document-pdf";
 import {
   Sheet,
   SheetContent,
@@ -41,6 +44,7 @@ type ItemKey =
   | "rx"
   | "financeiro"
   | "budget"
+  | "exames"
   | "modules"
   | "sessions"
   | "nutro"
@@ -60,14 +64,15 @@ const ICON_STYLES: Record<ItemKey, string> = {
   rx: "text-primary",
   financeiro: "text-sky-600",
   budget: "text-amber-600",
+  exames: "text-violet-600",
   modules: "text-primary",
-  sessions: "text-violet-600",
+  sessions: "text-teal-600",
   nutro: "text-lime-600",
   photos: "text-rose-600",
 };
 
 const CLINICAL_MODULES = [
-  { id: "nutrologia", label: "Nutrologia", icon: Salad, iconClass: ICON_STYLES.nutro },
+  { id: "plano-alimentar", label: "Plano Terapêutico", icon: Salad, iconClass: ICON_STYLES.nutro },
 ] as const;
 
 const PHOTO_OPTIONS = [
@@ -101,14 +106,14 @@ function BarButton({
         type="button"
         onClick={onClick}
         className={cn(
-          "flex min-w-0 flex-1 flex-col items-center gap-1 rounded-md px-1 py-2 text-[10px] font-medium leading-tight transition-colors",
-          "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+          "flex w-full min-w-0 flex-col items-center gap-1 rounded-lg px-1 py-2.5 text-[11px] font-medium leading-tight transition-colors",
+          "text-muted-foreground hover:bg-muted/60 hover:text-foreground active:bg-muted",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          emphasized && "text-foreground",
+          emphasized && "bg-muted/40 text-foreground",
         )}
       >
         <Icon className={cn("size-5 shrink-0", iconClass)} strokeWidth={2} />
-        <span className="line-clamp-2 text-center">{displayLabel}</span>
+        <span className="w-full truncate text-center">{displayLabel}</span>
       </button>
     );
   }
@@ -144,9 +149,14 @@ export function RecordBottomBar({
     patientName,
   );
   const [finishOpen, setFinishOpen] = useState(false);
-  const [budgetOpen, setBudgetOpen] = useState(false);
   const [modulesOpen, setModulesOpen] = useState(false);
   const [photosOpen, setPhotosOpen] = useState(false);
+  const [docType, setDocType] = useState<ClinicalDocType | null>(null);
+
+  const openDoc = (type: ClinicalDocType) => {
+    setModulesOpen(false);
+    setDocType(type);
+  };
 
   const openPhotoOption = (id: (typeof PHOTO_OPTIONS)[number]["id"]) => {
     setPhotosOpen(false);
@@ -162,6 +172,20 @@ export function RecordBottomBar({
     });
   };
 
+  const openMealPlan = () => {
+    navigate({
+      to: "/professional/plano-alimentar",
+      search: { patient_id: patientId },
+    });
+  };
+
+  const openBudgetChat = () => {
+    navigate({
+      to: "/professional/orcamento",
+      search: { patient_id: patientId },
+    });
+  };
+
   const openFinancial = () => {
     navigate({
       to: "/professional/patients/$id",
@@ -171,9 +195,9 @@ export function RecordBottomBar({
   };
 
   const openModule = (moduleId: string) => {
-    if (moduleId === "nutrologia") {
+    if (moduleId === "plano-alimentar") {
       setModulesOpen(false);
-      toast.info("Módulo de nutrologia em desenvolvimento.");
+      openMealPlan();
     }
   };
 
@@ -205,7 +229,34 @@ export function RecordBottomBar({
       label: "Orçamento",
       icon: Receipt,
       iconClass: ICON_STYLES.budget,
-      onClick: () => setBudgetOpen(true),
+      onClick: openBudgetChat,
+    },
+    {
+      key: "exames",
+      label: "Solicitar pedido",
+      shortLabel: "Pedido",
+      icon: ClipboardList,
+      iconClass: ICON_STYLES.exames,
+      onClick: () => openDoc("exames"),
+    },
+    ...(onSessionsClick
+      ? [
+          {
+            key: "sessions" as ItemKey,
+            label: "Sessões",
+            icon: CalendarCheck,
+            iconClass: ICON_STYLES.sessions,
+            onClick: () => onSessionsClick(),
+          },
+        ]
+      : []),
+    {
+      key: "nutro",
+      label: "Plano Terapêutico",
+      shortLabel: "Plano",
+      icon: Salad,
+      iconClass: ICON_STYLES.nutro,
+      onClick: openMealPlan,
     },
     {
       key: "modules",
@@ -226,7 +277,7 @@ export function RecordBottomBar({
           "shadow-[0_-4px_16px_rgba(0,0,0,0.06)]",
         )}
       >
-        <div className="flex gap-0.5 px-2 py-2 lg:hidden">
+        <div className="grid grid-cols-4 gap-1 px-2 py-2 lg:hidden">
           {actionItems.map((item) => (
             <BarButton
               key={item.key}
@@ -264,12 +315,15 @@ export function RecordBottomBar({
         patientId={patientId}
       />
 
-      <BudgetFormDialog
-        open={budgetOpen}
-        onOpenChange={setBudgetOpen}
-        defaultPatientId={patientId}
-        onSaved={() => setBudgetOpen(false)}
-      />
+      {docType && (
+        <ClinicalDocumentDialog
+          open={Boolean(docType)}
+          onOpenChange={(o) => !o && setDocType(null)}
+          docType={docType}
+          patientId={patientId}
+          patientName={patientName}
+        />
+      )}
 
       <Sheet open={photosOpen} onOpenChange={setPhotosOpen}>
         <SheetContent side="bottom" className="rounded-t-xl pb-8">
@@ -338,6 +392,32 @@ export function RecordBottomBar({
           </ul>
 
           <p className="mt-4 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Documentos
+          </p>
+          <ul className="mt-2 divide-y rounded-lg border">
+            <li>
+              <button
+                type="button"
+                onClick={() => openDoc("atestado")}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-muted/50"
+              >
+                <FileCheck2 className="size-4 shrink-0 text-emerald-600" strokeWidth={2} />
+                <span className="font-medium">Atestado médico</span>
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                onClick={() => openDoc("declaracao")}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-muted/50"
+              >
+                <FileText className="size-4 shrink-0 text-sky-600" strokeWidth={2} />
+                <span className="font-medium">Declaração de comparecimento</span>
+              </button>
+            </li>
+          </ul>
+
+          <p className="mt-4 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Módulos clínicos
           </p>
           <ul className="mt-2 divide-y rounded-lg border">
@@ -381,24 +461,6 @@ export function RecordBottomBar({
                 >
                   <Camera className={cn("size-4 shrink-0", ICON_STYLES.photos)} strokeWidth={2} />
                   <span className="font-medium">Anexos</span>
-                </button>
-              </li>
-            )}
-            {onSessionsClick && (
-              <li>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setModulesOpen(false);
-                    onSessionsClick();
-                  }}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-muted/50"
-                >
-                  <CalendarCheck
-                    className={cn("size-4 shrink-0", ICON_STYLES.sessions)}
-                    strokeWidth={2}
-                  />
-                  <span className="font-medium">Dar baixa em sessões</span>
                 </button>
               </li>
             )}

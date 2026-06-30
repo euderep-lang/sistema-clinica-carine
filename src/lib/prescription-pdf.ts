@@ -42,6 +42,7 @@ export interface RxData {
     full_name: string;
     crm?: string | null;
     specialty?: string | null;
+    profession?: string | null;
     cpf?: string | null;
   };
   items: RxItem[];
@@ -184,10 +185,10 @@ function drawSimpleHeaderNoLetterhead(doc: jsPDF, rx: RxData, cx: number, y: num
   doc.setFontSize(15);
   doc.text(rx.professional.full_name.toUpperCase(), cx, y, { align: "center" });
   y += 6;
-  if (rx.professional.specialty || rx.professional.crm) {
+  if (rx.professional.profession || rx.professional.crm) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(6.5);
-    const sub = [rx.professional.specialty, rx.professional.crm].filter(Boolean).join(" · ").toUpperCase();
+    const sub = [rx.professional.profession, rx.professional.crm].filter(Boolean).join(" · ").toUpperCase();
     doc.text(sub, cx, y, { align: "center" });
     y += 4;
   }
@@ -478,7 +479,7 @@ function drawStandardPrescription(
   doc.text(rx.professional.full_name, x + padL + contentW / 2, fy + 5, { align: "center" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
-  const cf = [rx.professional.crm, rx.professional.specialty].filter(Boolean).join(" · ");
+  const cf = [rx.professional.crm, rx.professional.profession].filter(Boolean).join(" · ");
   if (cf) doc.text(cf, x + padL + contentW / 2, fy + 9, { align: "center" });
   doc.text("Assinatura: _____________________________", x + padL + contentW / 2, fy + 16, {
     align: "center",
@@ -520,7 +521,7 @@ function drawEmitterIdentificationBox(
 
   doc.setFontSize(9);
   const detailLines = [
-    rx.professional.specialty?.trim() || null,
+    rx.professional.profession?.trim() || null,
     rx.professional.crm?.trim() || null,
     rx.clinic.address_line1?.trim() || null,
     rx.clinic.address_line2?.trim() || null,

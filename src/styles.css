@@ -235,3 +235,9 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+.rich-text-editor-content:empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted-foreground);
+  pointer-events: none;
+}

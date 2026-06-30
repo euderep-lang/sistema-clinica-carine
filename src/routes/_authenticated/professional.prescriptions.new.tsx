@@ -368,9 +368,10 @@ function NewPrescription() {
       address: patient ? formatPatientAddress(patient) || null : null,
     },
     professional: {
-      full_name: profile?.full_name ?? "",
+      full_name: profile?.display_name?.trim() || profile?.full_name || "",
       crm: profile?.crm ?? null,
       specialty: profile?.specialty ?? null,
+      profession: profile?.profession ?? null,
       cpf: profile?.cpf ?? null,
     },
     items: items.map((it, idx) => ({
@@ -871,7 +872,7 @@ function SpecialControlPreview({ data }: { data: RxData }) {
           <div className="mt-3 w-[52%] rounded border border-black px-3 py-2.5 text-center">
             <p className="text-[9px] font-bold">IDENTIFICAÇÃO DO EMITENTE</p>
             <p className="mt-1.5 text-[13px] font-bold leading-tight">{data.professional.full_name}</p>
-            {data.professional.specialty && <p className="mt-1 text-[11px] font-bold">{data.professional.specialty}</p>}
+            {data.professional.profession && <p className="mt-1 text-[11px] font-bold">{data.professional.profession}</p>}
             {data.professional.crm && <p className="text-[11px] font-bold">{data.professional.crm}</p>}
             {data.clinic.address_line1 && <p className="text-[10px] font-bold">{data.clinic.address_line1}</p>}
             {data.clinic.address_line2 && <p className="text-[10px] font-bold">{data.clinic.address_line2}</p>}
@@ -963,9 +964,9 @@ function SimplePreviewPanel({ data }: { data: RxData }) {
           <p className="font-serif text-lg font-bold tracking-wide text-[#C5B358]">
             {data.professional.full_name.toUpperCase()}
           </p>
-          {(data.professional.specialty || data.professional.crm) && (
+          {(data.professional.profession || data.professional.crm) && (
             <p className="mt-1 text-[9px] uppercase tracking-widest text-[#C5B358]/90">
-              {[data.professional.specialty, data.professional.crm].filter(Boolean).join(" · ")}
+              {[data.professional.profession, data.professional.crm].filter(Boolean).join(" · ")}
             </p>
           )}
         </div>
@@ -1100,7 +1101,7 @@ function StandardPreviewPanel({ data }: { data: RxData }) {
         <div className="border-t pt-3 text-center">
           <div className="font-bold">{data.professional.full_name}</div>
           <div className="text-[10px]">
-            {[data.professional.crm, data.professional.specialty].filter(Boolean).join(" · ")}
+            {[data.professional.crm, data.professional.profession].filter(Boolean).join(" · ")}
           </div>
           <div className="mt-3 text-[10px]">Assinatura: ______________________________</div>
         </div>

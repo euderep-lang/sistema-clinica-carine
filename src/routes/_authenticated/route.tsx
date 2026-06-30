@@ -1,6 +1,7 @@
 import { createFileRoute, Navigate, useRouterState } from "@tanstack/react-router";
 import { KeepAliveOutlet } from "@/components/keep-alive-outlet";
 import { useWaMessageNotifications } from "@/hooks/use-wa-message-notifications";
+import { useWaUnreadBadge } from "@/hooks/use-wa-unread-badge";
 import { useWaReminderNotifications } from "@/hooks/use-wa-reminder-notifications";
 import { dashboardPathFor, useAuth, type Role } from "@/lib/mock-auth";
 import { isPathAllowedByPermissions, type PermissionMatrix } from "@/lib/permissions";
@@ -51,6 +52,7 @@ function AuthGate() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useWaMessageNotifications();
+  useWaUnreadBadge();
   useWaReminderNotifications();
 
   if (loading) {
@@ -60,7 +62,12 @@ function AuthGate() {
       </div>
     );
   }
-  if (!profile) return <Navigate to="/login" />;
+  if (!profile) {
+    if (pathname.startsWith("/crm")) {
+      return <Navigate to="/crm/login" search={{ redirect: pathname }} />;
+    }
+    return <Navigate to="/login" />;
+  }
   if (!canAccessPath(profile.role, pathname, permissions)) {
     return <Navigate to={dashboardPathFor(profile.role)} />;
   }

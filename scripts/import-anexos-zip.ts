@@ -38,6 +38,7 @@ type AttachmentEntry = {
   fileName: string;
   date: string;
   sourceKey: string;
+  caption: string;
   sizeBytes: number;
 };
 
@@ -119,17 +120,26 @@ function mimeFromExt(ext: string): string {
   }
 }
 
-function parseFileName(fileName: string): { date: string; sourceKey: string } | null {
-  const match = fileName.match(/^(\d{4}-\d{2}-\d{2})_(.+)$/);
-  if (!match) return null;
-  return { date: match[1], sourceKey: match[2] };
+function parseFileName(fileName: string): { date: string; sourceKey: string; caption: string } | null {
+  const iso = fileName.match(/^(\d{4}-\d{2}-\d{2})_(.+)$/);
+  if (iso) {
+    return { date: iso[1], sourceKey: iso[2], caption: `Importado · ${iso[1]}` };
+  }
+  const compact = fileName.match(/^(\d{4})(\d{2})(\d{2})_(.+)$/);
+  if (compact) {
+    const date = `${compact[1]}-${compact[2]}-${compact[3]}`;
+    const title = basename(compact[4], extname(compact[4])).replace(/_/g, " ").trim();
+    return { date, sourceKey: compact[4], caption: title || `Documento · ${date}` };
+  }
+  return null;
 }
 
 function extractZip(zipPath: string): string {
   const dir = mkdtempSync(join(tmpdir(), "prontuarios-anexos-"));
-  execSync(`unzip -q -o ${JSON.stringify(zipPath)} -d ${JSON.stringify(dir)}`, {
-    stdio: "inherit",
-  });
+  execSync(
+    `python3 -c 'import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' ${JSON.stringify(zipPath)} ${JSON.stringify(dir)}`,
+    { stdio: "inherit" },
+  );
   return dir;
 }
 
@@ -156,6 +166,7 @@ function collectAttachments(rootDir: string): AttachmentEntry[] {
         fileName: name,
         date: parsed.date,
         sourceKey: parsed.sourceKey,
+        caption: parsed.caption,
         sizeBytes: st.size,
       });
     }
@@ -383,7 +394,7 @@ async function main() {
           file_name: att.fileName,
           mime_type: mimeFromExt(ext),
           file_size_kb: Math.round((att.sizeBytes / 1024) * 100) / 100,
-          caption: `Importado · ${att.date}`,
+          caption: att.caption,
         });
         if (attErr) throw new Error(attErr.message);
 

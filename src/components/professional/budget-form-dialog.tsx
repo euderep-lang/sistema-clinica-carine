@@ -149,10 +149,12 @@ export function BudgetFormDialog({
 
         const { data: bill } = await supabase
           .from("bills_receivable")
-          .select("id")
+          .select("id, status")
           .eq("budget_id", budgetId)
           .maybeSingle();
-        setConverted(Boolean(bill));
+        // Uma fatura com status 'budget' é apenas o orçamento no financeiro,
+        // não uma venda. Só consideramos "convertido" quando virou venda real.
+        setConverted(Boolean(bill) && bill?.status !== "budget");
 
         const { data: budgetItems } = await supabase
           .from("budget_items")
@@ -278,6 +280,12 @@ export function BudgetFormDialog({
       }));
       const { error: itemsErr } = await supabase.from("budget_items").insert(rows);
       if (itemsErr) throw itemsErr;
+
+      // Reflete o orçamento no financeiro como uma fatura com status "Orçamento".
+      const { error: billErr } = await supabase.rpc("upsert_budget_bill" as never, {
+        p_budget_id: id!,
+      } as never);
+      if (billErr) throw new Error(billErr.message);
 
       toast.success(budgetId ? "Orçamento atualizado" : "Orçamento criado");
       onOpenChange(false);

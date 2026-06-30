@@ -1,5 +1,6 @@
 import { addMonthsISO } from "@/lib/locale";
 import { supabase } from "@/integrations/supabase/client";
+import { archiveEntity, fetchRowForTrash } from "@/lib/trash";
 
 export interface SaleItemInput {
   service_id: string;
@@ -129,6 +130,42 @@ export async function updateStandaloneSale(
   return data as { bill_id: string; amount: number; installment_count: number };
 }
 
+export async function addSaleItems(billId: string, items: SaleItemInput[]) {
+  const { data, error } = await supabase.rpc("add_sale_items" as never, {
+    p_bill_id: billId,
+    p_items: items,
+  } as never);
+  if (error) throw new Error(error.message);
+  return data as {
+    bill_id: string;
+    added_total: number;
+    amount: number;
+    status: string;
+  };
+}
+
+export async function updateSaleItem(itemId: string, quantity: number) {
+  const { data, error } = await supabase.rpc("update_sale_item" as never, {
+    p_item_id: itemId,
+    p_quantity: quantity,
+  } as never);
+  if (error) throw new Error(error.message);
+  return data as { bill_id: string; amount: number; status: string };
+}
+
+export async function removeSaleItem(itemId: string) {
+  const { data, error } = await supabase.rpc("remove_sale_item" as never, {
+    p_item_id: itemId,
+  } as never);
+  if (error) throw new Error(error.message);
+  return data as {
+    bill_id: string;
+    amount: number;
+    status: string;
+    remaining_items: number;
+  };
+}
+
 export async function reverseSale(billId: string, reason?: string) {
   const { data, error } = await supabase.rpc("reverse_sale" as never, {
     p_bill_id: billId,
@@ -138,7 +175,40 @@ export async function reverseSale(billId: string, reason?: string) {
   return data;
 }
 
+/**
+ * Estorna apenas as sessões restantes (não realizadas) de um pacote, ajustando
+ * o valor da cobrança proporcionalmente às sessões já utilizadas.
+ */
+export async function reverseRemainingSessions(billId: string, reason?: string) {
+  const { data, error } = await supabase.rpc("reverse_remaining_sessions" as never, {
+    p_bill_id: billId,
+    p_reason: reason ?? null,
+  } as never);
+  if (error) throw new Error(error.message);
+  return data as {
+    bill_id: string;
+    new_amount: number;
+    removed_amount: number;
+    sessions_cancelled: number;
+  };
+}
+
 export async function deleteBill(billId: string) {
+  const row = await fetchRowForTrash("bills_receivable", billId);
+  if (!row) throw new Error("Cobrança não encontrada");
+
+  await archiveEntity({
+    entityType: row.status === "budget" ? "budget" : "bill",
+    table: "bills_receivable",
+    id: billId,
+    label: (row.description as string)?.trim() || "Cobrança",
+    summary:
+      row.amount != null
+        ? `R$ ${Number(row.amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+        : null,
+    tenantId: row.tenant_id as string,
+  });
+
   const { data, error } = await supabase.rpc("delete_bill" as never, {
     p_bill_id: billId,
   } as never);
@@ -153,6 +223,7 @@ export async function receiveBillPayment(
   paidDate: string,
   notes?: string,
   discount = 0,
+  installments = 1,
 ) {
   const { data, error } = await supabase.rpc("receive_bill_payment" as never, {
     p_bill_id: billId,
@@ -161,9 +232,17 @@ export async function receiveBillPayment(
     p_paid_date: paidDate,
     p_notes: notes ?? null,
     p_discount: discount > 0 ? discount : 0,
+    p_installments: installments > 1 ? installments : 1,
   } as never);
   if (error) throw new Error(error.message);
-  return data as { bill_id: string; paid_amount: number; status: string };
+  return data as {
+    bill_id: string;
+    paid_amount: number;
+    status: string;
+    fee_amount?: number;
+    net_amount?: number;
+    installments?: number;
+  };
 }
 
 export function billHasSaleItems(row: SaleBillRow) {
@@ -172,6 +251,10 @@ export function billHasSaleItems(row: SaleBillRow) {
 
 export function billIsInstallment(row: SaleBillRow) {
   return row.installment_count != null && row.installment_count > 1;
+}
+
+export function billIsBudget(row: SaleBillRow) {
+  return row.status === "budget";
 }
 
 export function billIsEditable(row: SaleBillRow) {
@@ -184,12 +267,13 @@ export function billIsEditable(row: SaleBillRow) {
 }
 
 export function billCanReverse(row: SaleBillRow) {
-  return row.status !== "cancelled" && Number(row.paid_amount) === 0;
+  return row.status !== "cancelled" && !billIsBudget(row) && Number(row.paid_amount) === 0;
 }
 
 export function billCanDelete(row: SaleBillRow) {
   return (
     row.status !== "cancelled" &&
+    !billIsBudget(row) &&
     Number(row.paid_amount) === 0 &&
     !billHasSaleItems(row)
   );
@@ -198,9 +282,23 @@ export function billCanDelete(row: SaleBillRow) {
 export function billCanReceive(row: SaleBillRow) {
   return (
     row.status !== "cancelled" &&
+    !billIsBudget(row) &&
     row.status !== "paid" &&
     Number(row.amount) > Number(row.paid_amount)
   );
+}
+
+export async function convertBudgetToSale(budgetId: string) {
+  const { data, error } = await supabase.rpc("convert_budget_to_sale" as never, {
+    p_budget_id: budgetId,
+  } as never);
+  if (error) throw new Error(error.message);
+  return data as {
+    bill_id: string;
+    charge_id: string;
+    patient_id: string;
+    amount: number;
+  };
 }
 
 export async function loadSaleChargeItems(billId: string): Promise<SaleChargeItem[]> {
@@ -240,6 +338,7 @@ export interface BillSessionPackage {
   used_sessions: number;
   total_sessions: number;
   status: string;
+  unit_price: number;
   services: { name: string } | null;
 }
 
@@ -265,11 +364,17 @@ export async function loadBillSessionPackages(billId: string): Promise<BillSessi
 
   const { data, error } = await supabase
     .from("patient_session_packages")
-    .select("id, used_sessions, total_sessions, status, services(name)")
+    .select("id, used_sessions, total_sessions, status, unit_price, services(name)")
     .or(filters.join(","))
     .eq("status", "active")
     .order("purchased_at", { ascending: false });
 
   if (error) throw new Error(error.message);
-  return (data ?? []) as BillSessionPackage[];
+  const rows = (data ?? []) as unknown as Array<
+    Omit<BillSessionPackage, "unit_price"> & { unit_price: number | string }
+  >;
+  return rows.map((row) => ({
+    ...row,
+    unit_price: Number(row.unit_price ?? 0),
+  }));
 }

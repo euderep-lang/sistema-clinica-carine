@@ -18,6 +18,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PreCadastroTokenRouteImport } from './routes/pre-cadastro.$token'
 import { Route as NpsTokenRouteImport } from './routes/nps.$token'
+import { Route as CrmLoginRouteImport } from './routes/crm.login'
 import { Route as ProfessionalSafeidCallbackRouteImport } from './routes/professional.safeid.callback'
 import { Route as AuthenticatedReceptionPaymentsRouteImport } from './routes/_authenticated/reception.payments'
 import { Route as AuthenticatedReceptionPacientesRouteImport } from './routes/_authenticated/reception.pacientes'
@@ -31,7 +32,9 @@ import { Route as AuthenticatedProfessionalSessionsRouteImport } from './routes/
 import { Route as AuthenticatedProfessionalProntuariosRouteImport } from './routes/_authenticated/professional.prontuarios'
 import { Route as AuthenticatedProfessionalProcedimentosRouteImport } from './routes/_authenticated/professional.procedimentos'
 import { Route as AuthenticatedProfessionalPrescriptionsRouteImport } from './routes/_authenticated/professional.prescriptions'
+import { Route as AuthenticatedProfessionalPlanoAlimentarRouteImport } from './routes/_authenticated/professional.plano-alimentar'
 import { Route as AuthenticatedProfessionalPatientsRouteImport } from './routes/_authenticated/professional.patients'
+import { Route as AuthenticatedProfessionalOrcamentoRouteImport } from './routes/_authenticated/professional.orcamento'
 import { Route as AuthenticatedProfessionalInventoryRouteImport } from './routes/_authenticated/professional.inventory'
 import { Route as AuthenticatedProfessionalFinancialRouteImport } from './routes/_authenticated/professional.financial'
 import { Route as AuthenticatedProfessionalDashboardRouteImport } from './routes/_authenticated/professional.dashboard'
@@ -106,6 +109,11 @@ const PreCadastroTokenRoute = PreCadastroTokenRouteImport.update({
 const NpsTokenRoute = NpsTokenRouteImport.update({
   id: '/nps/$token',
   path: '/nps/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CrmLoginRoute = CrmLoginRouteImport.update({
+  id: '/crm/login',
+  path: '/crm/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProfessionalSafeidCallbackRoute =
@@ -186,10 +194,22 @@ const AuthenticatedProfessionalPrescriptionsRoute =
     path: '/professional/prescriptions',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedProfessionalPlanoAlimentarRoute =
+  AuthenticatedProfessionalPlanoAlimentarRouteImport.update({
+    id: '/professional/plano-alimentar',
+    path: '/professional/plano-alimentar',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedProfessionalPatientsRoute =
   AuthenticatedProfessionalPatientsRouteImport.update({
     id: '/professional/patients',
     path: '/professional/patients',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedProfessionalOrcamentoRoute =
+  AuthenticatedProfessionalOrcamentoRouteImport.update({
+    id: '/professional/orcamento',
+    path: '/professional/orcamento',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedProfessionalInventoryRoute =
@@ -385,6 +405,7 @@ export interface FileRoutesByFullPath {
   '/inicio': typeof InicioRoute
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/crm/login': typeof CrmLoginRoute
   '/nps/$token': typeof NpsTokenRoute
   '/pre-cadastro/$token': typeof PreCadastroTokenRoute
   '/admin/dashboard': typeof AuthenticatedAdminDashboardRoute
@@ -405,7 +426,9 @@ export interface FileRoutesByFullPath {
   '/professional/dashboard': typeof AuthenticatedProfessionalDashboardRoute
   '/professional/financial': typeof AuthenticatedProfessionalFinancialRoute
   '/professional/inventory': typeof AuthenticatedProfessionalInventoryRoute
+  '/professional/orcamento': typeof AuthenticatedProfessionalOrcamentoRoute
   '/professional/patients': typeof AuthenticatedProfessionalPatientsRouteWithChildren
+  '/professional/plano-alimentar': typeof AuthenticatedProfessionalPlanoAlimentarRoute
   '/professional/prescriptions': typeof AuthenticatedProfessionalPrescriptionsRouteWithChildren
   '/professional/procedimentos': typeof AuthenticatedProfessionalProcedimentosRoute
   '/professional/prontuarios': typeof AuthenticatedProfessionalProntuariosRoute
@@ -440,6 +463,7 @@ export interface FileRoutesByTo {
   '/inicio': typeof InicioRoute
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/crm/login': typeof CrmLoginRoute
   '/nps/$token': typeof NpsTokenRoute
   '/pre-cadastro/$token': typeof PreCadastroTokenRoute
   '/admin/dashboard': typeof AuthenticatedAdminDashboardRoute
@@ -459,6 +483,8 @@ export interface FileRoutesByTo {
   '/professional/dashboard': typeof AuthenticatedProfessionalDashboardRoute
   '/professional/financial': typeof AuthenticatedProfessionalFinancialRoute
   '/professional/inventory': typeof AuthenticatedProfessionalInventoryRoute
+  '/professional/orcamento': typeof AuthenticatedProfessionalOrcamentoRoute
+  '/professional/plano-alimentar': typeof AuthenticatedProfessionalPlanoAlimentarRoute
   '/professional/procedimentos': typeof AuthenticatedProfessionalProcedimentosRoute
   '/professional/prontuarios': typeof AuthenticatedProfessionalProntuariosRoute
   '/professional/sessions': typeof AuthenticatedProfessionalSessionsRoute
@@ -492,6 +518,7 @@ export interface FileRoutesById {
   '/inicio': typeof InicioRoute
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/crm/login': typeof CrmLoginRoute
   '/nps/$token': typeof NpsTokenRoute
   '/pre-cadastro/$token': typeof PreCadastroTokenRoute
   '/_authenticated/admin/dashboard': typeof AuthenticatedAdminDashboardRoute
@@ -512,7 +539,9 @@ export interface FileRoutesById {
   '/_authenticated/professional/dashboard': typeof AuthenticatedProfessionalDashboardRoute
   '/_authenticated/professional/financial': typeof AuthenticatedProfessionalFinancialRoute
   '/_authenticated/professional/inventory': typeof AuthenticatedProfessionalInventoryRoute
+  '/_authenticated/professional/orcamento': typeof AuthenticatedProfessionalOrcamentoRoute
   '/_authenticated/professional/patients': typeof AuthenticatedProfessionalPatientsRouteWithChildren
+  '/_authenticated/professional/plano-alimentar': typeof AuthenticatedProfessionalPlanoAlimentarRoute
   '/_authenticated/professional/prescriptions': typeof AuthenticatedProfessionalPrescriptionsRouteWithChildren
   '/_authenticated/professional/procedimentos': typeof AuthenticatedProfessionalProcedimentosRoute
   '/_authenticated/professional/prontuarios': typeof AuthenticatedProfessionalProntuariosRoute
@@ -549,6 +578,7 @@ export interface FileRouteTypes {
     | '/inicio'
     | '/login'
     | '/reset-password'
+    | '/crm/login'
     | '/nps/$token'
     | '/pre-cadastro/$token'
     | '/admin/dashboard'
@@ -569,7 +599,9 @@ export interface FileRouteTypes {
     | '/professional/dashboard'
     | '/professional/financial'
     | '/professional/inventory'
+    | '/professional/orcamento'
     | '/professional/patients'
+    | '/professional/plano-alimentar'
     | '/professional/prescriptions'
     | '/professional/procedimentos'
     | '/professional/prontuarios'
@@ -604,6 +636,7 @@ export interface FileRouteTypes {
     | '/inicio'
     | '/login'
     | '/reset-password'
+    | '/crm/login'
     | '/nps/$token'
     | '/pre-cadastro/$token'
     | '/admin/dashboard'
@@ -623,6 +656,8 @@ export interface FileRouteTypes {
     | '/professional/dashboard'
     | '/professional/financial'
     | '/professional/inventory'
+    | '/professional/orcamento'
+    | '/professional/plano-alimentar'
     | '/professional/procedimentos'
     | '/professional/prontuarios'
     | '/professional/sessions'
@@ -655,6 +690,7 @@ export interface FileRouteTypes {
     | '/inicio'
     | '/login'
     | '/reset-password'
+    | '/crm/login'
     | '/nps/$token'
     | '/pre-cadastro/$token'
     | '/_authenticated/admin/dashboard'
@@ -675,7 +711,9 @@ export interface FileRouteTypes {
     | '/_authenticated/professional/dashboard'
     | '/_authenticated/professional/financial'
     | '/_authenticated/professional/inventory'
+    | '/_authenticated/professional/orcamento'
     | '/_authenticated/professional/patients'
+    | '/_authenticated/professional/plano-alimentar'
     | '/_authenticated/professional/prescriptions'
     | '/_authenticated/professional/procedimentos'
     | '/_authenticated/professional/prontuarios'
@@ -712,6 +750,7 @@ export interface RootRouteChildren {
   InicioRoute: typeof InicioRoute
   LoginRoute: typeof LoginRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  CrmLoginRoute: typeof CrmLoginRoute
   NpsTokenRoute: typeof NpsTokenRoute
   PreCadastroTokenRoute: typeof PreCadastroTokenRoute
   ProfessionalSafeidCallbackRoute: typeof ProfessionalSafeidCallbackRoute
@@ -780,6 +819,13 @@ declare module '@tanstack/react-router' {
       path: '/nps/$token'
       fullPath: '/nps/$token'
       preLoaderRoute: typeof NpsTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/crm/login': {
+      id: '/crm/login'
+      path: '/crm/login'
+      fullPath: '/crm/login'
+      preLoaderRoute: typeof CrmLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/professional/safeid/callback': {
@@ -873,11 +919,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProfessionalPrescriptionsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/professional/plano-alimentar': {
+      id: '/_authenticated/professional/plano-alimentar'
+      path: '/professional/plano-alimentar'
+      fullPath: '/professional/plano-alimentar'
+      preLoaderRoute: typeof AuthenticatedProfessionalPlanoAlimentarRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/professional/patients': {
       id: '/_authenticated/professional/patients'
       path: '/professional/patients'
       fullPath: '/professional/patients'
       preLoaderRoute: typeof AuthenticatedProfessionalPatientsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/professional/orcamento': {
+      id: '/_authenticated/professional/orcamento'
+      path: '/professional/orcamento'
+      fullPath: '/professional/orcamento'
+      preLoaderRoute: typeof AuthenticatedProfessionalOrcamentoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/professional/inventory': {
@@ -1218,7 +1278,9 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedProfessionalDashboardRoute: typeof AuthenticatedProfessionalDashboardRoute
   AuthenticatedProfessionalFinancialRoute: typeof AuthenticatedProfessionalFinancialRoute
   AuthenticatedProfessionalInventoryRoute: typeof AuthenticatedProfessionalInventoryRoute
+  AuthenticatedProfessionalOrcamentoRoute: typeof AuthenticatedProfessionalOrcamentoRoute
   AuthenticatedProfessionalPatientsRoute: typeof AuthenticatedProfessionalPatientsRouteWithChildren
+  AuthenticatedProfessionalPlanoAlimentarRoute: typeof AuthenticatedProfessionalPlanoAlimentarRoute
   AuthenticatedProfessionalPrescriptionsRoute: typeof AuthenticatedProfessionalPrescriptionsRouteWithChildren
   AuthenticatedProfessionalProcedimentosRoute: typeof AuthenticatedProfessionalProcedimentosRoute
   AuthenticatedProfessionalProntuariosRoute: typeof AuthenticatedProfessionalProntuariosRoute
@@ -1257,8 +1319,12 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedProfessionalFinancialRoute,
   AuthenticatedProfessionalInventoryRoute:
     AuthenticatedProfessionalInventoryRoute,
+  AuthenticatedProfessionalOrcamentoRoute:
+    AuthenticatedProfessionalOrcamentoRoute,
   AuthenticatedProfessionalPatientsRoute:
     AuthenticatedProfessionalPatientsRouteWithChildren,
+  AuthenticatedProfessionalPlanoAlimentarRoute:
+    AuthenticatedProfessionalPlanoAlimentarRoute,
   AuthenticatedProfessionalPrescriptionsRoute:
     AuthenticatedProfessionalPrescriptionsRouteWithChildren,
   AuthenticatedProfessionalProcedimentosRoute:
@@ -1290,6 +1356,7 @@ const rootRouteChildren: RootRouteChildren = {
   InicioRoute: InicioRoute,
   LoginRoute: LoginRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  CrmLoginRoute: CrmLoginRoute,
   NpsTokenRoute: NpsTokenRoute,
   PreCadastroTokenRoute: PreCadastroTokenRoute,
   ProfessionalSafeidCallbackRoute: ProfessionalSafeidCallbackRoute,

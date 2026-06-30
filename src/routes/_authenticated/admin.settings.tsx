@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Building2, Palette, DoorOpen, Stethoscope, Users, Receipt, MessageSquare, Plug, CreditCard, FolderOpen, Shield, ShieldCheck, LineChart, type LucideIcon } from "lucide-react";
+import { Building2, Palette, DoorOpen, Stethoscope, Users, Receipt, MessageSquare, Plug, CreditCard, FolderOpen, Shield, ShieldCheck, LineChart, Trash2, type LucideIcon } from "lucide-react";
 import { SectionAuditoria } from "@/components/settings/section-auditoria";
 import { SectionFunilCrm } from "@/components/settings/section-funil-crm";
 import { DashboardShell } from "@/components/dashboard-shell";
@@ -16,6 +16,7 @@ import { SectionMensagens } from "@/components/settings/section-mensagens";
 import { SectionIntegracoes } from "@/components/settings/section-integracoes";
 import { SectionPagamentos } from "@/components/settings/section-pagamentos";
 import { SectionDespesas } from "@/components/settings/section-despesas";
+import { SectionLixeira } from "@/components/settings/section-lixeira";
 
 export const Route = createFileRoute("/_authenticated/admin/settings")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -24,7 +25,7 @@ export const Route = createFileRoute("/_authenticated/admin/settings")({
   component: Page,
 });
 
-type SectionId = "clinica" | "aparencia" | "consultorios" | "especialidades" | "usuarios" | "permissoes" | "servicos" | "pagamentos" | "despesas" | "mensagens" | "funil" | "integracoes" | "auditoria";
+type SectionId = "clinica" | "aparencia" | "consultorios" | "especialidades" | "usuarios" | "permissoes" | "servicos" | "pagamentos" | "despesas" | "mensagens" | "funil" | "integracoes" | "auditoria" | "lixeira";
 
 const SECTIONS: { id: SectionId; label: string; icon: LucideIcon }[] = [
   { id: "clinica", label: "Clínica", icon: Building2 },
@@ -40,6 +41,7 @@ const SECTIONS: { id: SectionId; label: string; icon: LucideIcon }[] = [
   { id: "funil", label: "Funil de vendas", icon: LineChart },
   { id: "integracoes", label: "Integrações", icon: Plug },
   { id: "auditoria", label: "Auditoria", icon: Shield },
+  { id: "lixeira", label: "Lixeira", icon: Trash2 },
 ];
 
 function Page() {
@@ -57,7 +59,8 @@ function Page() {
     section === "despesas" ||
     section === "mensagens" ||
     section === "integracoes" ||
-    section === "auditoria"
+    section === "auditoria" ||
+    section === "lixeira"
       ? section
       : "clinica";
   const [active, setActive] = useState<SectionId>(initial);
@@ -87,6 +90,7 @@ function Page() {
           {active === "funil" && <SectionFunilCrm />}
           {active === "integracoes" && <SectionIntegracoes />}
           {active === "auditoria" && <SectionAuditoria />}
+          {active === "lixeira" && <SectionLixeira />}
         </div>
       </div>
     </DashboardShell>

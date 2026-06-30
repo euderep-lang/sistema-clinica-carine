@@ -7,6 +7,7 @@ import {
   Plus,
   Receipt,
   RotateCcw,
+  ShoppingCart,
   Trash2,
   TrendingDown,
   TrendingUp,
@@ -81,7 +82,9 @@ import {
   billCanDelete,
   billCanReverse,
   billHasSaleItems,
+  billIsBudget,
   billIsEditable,
+  convertBudgetToSale,
   deleteBill,
   reverseSale,
   type SaleBillRow,
@@ -130,17 +133,33 @@ export function FinancialCobrancasTab({
       .eq("id", profile.id)
       .maybeSingle();
     setCommissionPct(Number(prof?.commission_pct ?? 0));
-    let q = applyReceivableProfessionalFilter(
-      supabase
-        .from("bills_receivable")
-        .select(RECEIVABLE_BILL_SELECT)
-        .order("due_date", { ascending: false })
-        .limit(scope === "clinic" ? 500 : 200),
-      { scope, profileId: profile.id, professionalFilter },
-    );
-    const { data, error } = await q;
-    if (error) toast.error(error.message);
-    setRows((data ?? []) as SaleBillRow[]);
+    // Carrega TODAS as faturas via paginação. Um teto fixo (ex.: 200) escondia
+    // faturas antigas — inclusive faturas legítimas de pacientes com saldo/recebimento
+    // dentro do período. A paginação mantém a tela correta conforme o histórico cresce.
+    const PAGE = 1000;
+    const all: SaleBillRow[] = [];
+    let fetchError: string | null = null;
+    for (let offset = 0; ; offset += PAGE) {
+      const q = applyReceivableProfessionalFilter(
+        supabase
+          .from("bills_receivable")
+          .select(RECEIVABLE_BILL_SELECT)
+          .order("due_date", { ascending: false })
+          .order("id", { ascending: false })
+          .range(offset, offset + PAGE - 1),
+        { scope, profileId: profile.id, professionalFilter },
+      );
+      const { data, error } = await q;
+      if (error) {
+        fetchError = error.message;
+        break;
+      }
+      const batch = (data ?? []) as SaleBillRow[];
+      all.push(...batch);
+      if (batch.length < PAGE) break;
+    }
+    if (fetchError) toast.error(fetchError);
+    setRows(all);
     setLoading(false);
   }, [profile, scope, professionalFilter]);
 
@@ -232,8 +251,25 @@ export function FinancialCobrancasTab({
     setActionLoading(true);
     try {
       await deleteBill(deleteTarget.id);
-      toast.success("Cobrança excluída");
+      toast.success("Cobrança movida para a lixeira");
       setDeleteTarget(null);
+      await load();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const convertBudget = async (row: SaleBillRow) => {
+    if (!row.budget_id) {
+      toast.error("Orçamento sem vínculo");
+      return;
+    }
+    setActionLoading(true);
+    try {
+      const result = await convertBudgetToSale(row.budget_id);
+      toast.success(`Orçamento convertido em venda — ${fmt(result.amount)}`);
       await load();
     } catch (e) {
       toast.error((e as Error).message);
@@ -315,9 +351,9 @@ export function FinancialCobrancasTab({
             onClick={() => period && setSummaryKind("received")}
           />
           <StatCard
-            label="Pendente"
+            label="A receber"
             value={fmt(stats.pending)}
-            sub="Em aberto no período"
+            sub="Pendentes + vencidas do período"
             icon={TrendingDown}
             tone="warning"
             onClick={() => period && setSummaryKind("pending")}
@@ -360,7 +396,12 @@ export function FinancialCobrancasTab({
                 <TableRow><TableCell colSpan={tableColSpan} className="py-10 text-center text-muted-foreground">Nenhuma cobrança encontrada.</TableCell></TableRow>
               ) : (
                 filtered.map((r) => {
-                  const eff = isOverdue(r.due_date, r.status) ? "overdue" : r.status;
+                  const isBudget = billIsBudget(r);
+                  const eff = isBudget
+                    ? "budget"
+                    : isOverdue(r.due_date, r.status)
+                      ? "overdue"
+                      : r.status;
                   const openAmount = billOpenAmount(r.amount, r.paid_amount);
                   const nfseLabel = formatNfseLabel(r);
                   const hasNfse = Boolean(r.nfse_number);
@@ -398,14 +439,28 @@ export function FinancialCobrancasTab({
                             <Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /></Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            {isBudget && (
+                              <>
+                                <DropdownMenuItem
+                                  className="text-emerald-700 focus:text-emerald-700"
+                                  onClick={() => void convertBudget(r)}
+                                >
+                                  <ShoppingCart className="mr-2 size-4" />
+                                  Converter em venda
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                              </>
+                            )}
                             <DropdownMenuItem onClick={() => setDetailBillId(r.id)}><HandCoins className="mr-2 size-4" />Abrir conta</DropdownMenuItem>
-                            <DropdownMenuItem
-                              disabled={hasNfse}
-                              onClick={() => void emitBillNfse(r.id)}
-                            >
-                              <Receipt className="mr-2 size-4" />
-                              {hasNfse ? "NFS-e emitida" : "Emitir NFSe"}
-                            </DropdownMenuItem>
+                            {!isBudget && (
+                              <DropdownMenuItem
+                                disabled={hasNfse}
+                                onClick={() => void emitBillNfse(r.id)}
+                              >
+                                <Receipt className="mr-2 size-4" />
+                                {hasNfse ? "NFS-e emitida" : "Emitir NFSe"}
+                              </DropdownMenuItem>
+                            )}
                             {billIsEditable(r) && <DropdownMenuItem onClick={() => { setEditBillId(r.id); setSaleOpen(true); }}><Pencil className="mr-2 size-4" />Editar venda</DropdownMenuItem>}
                             {billCanReverse(r) && <DropdownMenuItem onClick={() => setReverseTarget(r)}><RotateCcw className="mr-2 size-4" />Estornar</DropdownMenuItem>}
                             {billCanDelete(r) && (
@@ -452,7 +507,7 @@ export function FinancialCobrancasTab({
       </AlertDialog>
       <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(o) => !o && setDeleteTarget(null)}>
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Excluir cobrança?</AlertDialogTitle><AlertDialogDescription>A cobrança <strong>{deleteTarget?.description}</strong> será removida permanentemente.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogHeader><AlertDialogTitle>Excluir cobrança?</AlertDialogTitle><AlertDialogDescription>A cobrança <strong>{deleteTarget?.description}</strong> será movida para a lixeira por 30 dias.</AlertDialogDescription></AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={actionLoading}>Cancelar</AlertDialogCancel>
             <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={actionLoading} onClick={(e) => { e.preventDefault(); void confirmDelete(); }}>Excluir</AlertDialogAction>

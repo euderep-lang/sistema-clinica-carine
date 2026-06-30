@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Plus, RefreshCw, Copy, Pencil } from "lucide-react";
+import { Plus, RefreshCw, Copy, Pencil, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,11 +11,22 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DEFAULT_APPOINTMENT_TYPES } from "@/lib/appointment-types";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { clearKeepAliveCache } from "@/components/keep-alive-outlet";
 import { useAuth } from "@/lib/mock-auth";
 import {
   createTenantUser,
+  deleteTenantUser,
   getTenantUserEmail,
   listTenantUsers,
   updateTenantUser,
@@ -34,6 +45,19 @@ import { toast } from "sonner";
 type Role = "admin" | "receptionist" | "professional" | "financial";
 
 const ROLE_LABEL: Record<Role, string> = { admin: "Administrador", receptionist: "Recepcionista", professional: "Profissional", financial: "Financeiro" };
+
+const PROFESSION_SUGGESTIONS = [
+  "Médico(a)",
+  "Dentista",
+  "Psicólogo(a)",
+  "Nutricionista",
+  "Fisioterapeuta",
+  "Biomédico(a)",
+  "Enfermeiro(a)",
+  "Farmacêutico(a)",
+  "Fonoaudiólogo(a)",
+  "Terapeuta Ocupacional",
+];
 const ROLE_CLASS: Record<Role, string> = {
   admin: "bg-purple-100 text-purple-700 border-purple-200",
   receptionist: "bg-blue-100 text-blue-700 border-blue-200",
@@ -47,6 +71,7 @@ export function SectionUsuarios() {
   const { profile, refresh } = useAuth();
   const create = useServerFn(createTenantUser);
   const update = useServerFn(updateTenantUser);
+  const removeUser = useServerFn(deleteTenantUser);
   const listUsers = useServerFn(listTenantUsers);
   const fetchEmail = useServerFn(getTenantUserEmail);
   const [rows, setRows] = useState<Row[]>([]);
@@ -57,14 +82,21 @@ export function SectionUsuarios() {
   const [pwdContext, setPwdContext] = useState<"created" | "reset" | null>(null);
   const [resetPwd, setResetPwd] = useState(genPassword());
   const [changePassword, setChangePassword] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Row | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // form
   const [name, setName] = useState(""); const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [profession, setProfession] = useState("");
   const [password, setPassword] = useState(genPassword());
   const [role, setRole] = useState<Role>("receptionist");
-  const [specialty, setSpecialty] = useState(""); const [crm, setCrm] = useState(""); const [cpf, setCpf] = useState("");
+  const [specialtiesSel, setSpecialtiesSel] = useState<string[]>([]); const [crm, setCrm] = useState(""); const [cpf, setCpf] = useState("");
   const [commission, setCommission] = useState(0); const [phone, setPhone] = useState("");
   const [active, setActive] = useState(true); const [busy, setBusy] = useState(false);
+
+  const toggleSpecialty = (s: string) =>
+    setSpecialtiesSel((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
 
   function genPassword() {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789abcdefghjkmnpqrstuvwxyz!@#$";
@@ -94,15 +126,16 @@ export function SectionUsuarios() {
   }, [profile]);
 
   const openNew = () => {
-    setEditing(null); setName(""); setEmail(""); setPassword(genPassword());
-    setRole("receptionist"); setSpecialty(""); setCrm(""); setCpf(""); setCommission(0); setPhone("");
+    setEditing(null); setName(""); setEmail(""); setDisplayName(""); setProfession(""); setPassword(genPassword());
+    setRole("receptionist"); setSpecialtiesSel([]); setCrm(""); setCpf(""); setCommission(0); setPhone("");
     setActive(true); setTempPwd(null); setPwdContext(null); setResetPwd(genPassword()); setChangePassword(false);
     void loadSpecialties();
     setOpen(true);
   };
   const openEdit = async (r: Row) => {
     setEditing(r); setName(r.full_name); setEmail(r.email); setRole(r.role);
-    setSpecialty(r.specialty ?? ""); setCrm(r.crm ?? ""); setCpf(r.cpf ? maskCPF(r.cpf) : "");
+    setDisplayName(r.display_name ?? ""); setProfession(r.profession ?? "");
+    setSpecialtiesSel(r.specialties ?? (r.specialty ? [r.specialty] : [])); setCrm(r.crm ?? ""); setCpf(r.cpf ? maskCPF(r.cpf) : "");
     setCommission(Number(r.commission_pct ?? 0));
     setPhone(r.phone ?? ""); setActive(r.active); setTempPwd(null); setPwdContext(null);
     setResetPwd(genPassword()); setChangePassword(false);
@@ -139,10 +172,13 @@ export function SectionUsuarios() {
           data: {
             user_id: editing.id,
             full_name: name.trim(),
+            display_name: displayName.trim() || null,
+            profession: role === "professional" ? profession.trim() || null : null,
             role,
             phone: phone || null,
             active,
-            specialty: role === "professional" ? specialty : null,
+            specialty: role === "professional" ? specialtiesSel[0] ?? null : null,
+            specialties: role === "professional" ? specialtiesSel : null,
             crm: role === "professional" ? crm : null,
             cpf: cpfToSave,
             commission_pct: commission,
@@ -166,7 +202,13 @@ export function SectionUsuarios() {
         if (!email) { toast.error("E-mail obrigatório"); setBusy(false); return; }
         await create({
           data: {
-            email, password, full_name: name, role, phone, specialty, crm, cpf,
+            email, password, full_name: name,
+            display_name: displayName.trim() || null,
+            profession: role === "professional" ? profession.trim() || null : null,
+            role, phone,
+            specialty: specialtiesSel[0] ?? null,
+            specialties: role === "professional" ? specialtiesSel : null,
+            crm, cpf,
             commission_pct: commission, active,
             appointment_types: role === "professional" ? [...DEFAULT_APPOINTMENT_TYPES] : null,
           },
@@ -185,10 +227,13 @@ export function SectionUsuarios() {
       data: {
         user_id: r.id,
         full_name: r.full_name,
+        display_name: r.display_name,
+        profession: r.profession,
         role: r.role,
         phone: r.phone,
         active: !r.active,
         specialty: r.specialty,
+        specialties: r.specialties,
         crm: r.crm,
         cpf: r.cpf,
         commission_pct: Number(r.commission_pct ?? 0),
@@ -204,6 +249,22 @@ export function SectionUsuarios() {
     }
   };
 
+  const confirmDeleteUser = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await removeUser({ data: { user_id: deleteTarget.id } });
+      setRows((prev) => prev.filter((r) => r.id !== deleteTarget.id));
+      setDeleteTarget(null);
+      clearKeepAliveCache();
+      toast.success("Usuário movido para a lixeira");
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex justify-end"><Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Novo Usuário</Button></div>
@@ -211,7 +272,7 @@ export function SectionUsuarios() {
         <Table>
           <TableHeader><TableRow>
             <TableHead></TableHead><TableHead>Nome</TableHead><TableHead>E-mail</TableHead><TableHead>Cargo</TableHead>
-            <TableHead>Especialidade</TableHead><TableHead>CRM</TableHead>
+            <TableHead>Profissão</TableHead><TableHead>Conselho</TableHead>
             <TableHead>Situação</TableHead><TableHead className="text-right">Ações</TableHead>
           </TableRow></TableHeader>
           <TableBody>
@@ -226,12 +287,23 @@ export function SectionUsuarios() {
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">{r.email || "—"}</TableCell>
                 <TableCell><Badge variant="outline" className={ROLE_CLASS[r.role]}>{ROLE_LABEL[r.role]}</Badge></TableCell>
-                <TableCell className="text-sm text-muted-foreground">{r.specialty ?? "-"}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">{r.profession ?? "-"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{r.crm ?? "-"}</TableCell>
                 <TableCell><Badge variant="outline" className={r.active ? "bg-green-100 text-green-700 border-green-200" : "bg-gray-100 text-gray-600 border-gray-200"}>{r.active ? "Ativo" : "Inativo"}</Badge></TableCell>
                 <TableCell className="text-right">
                   <Button size="icon" variant="ghost" onClick={() => openEdit(r)}><Pencil className="h-4 w-4" /></Button>
                   <Button size="sm" variant="ghost" onClick={() => toggleActive(r)}>{r.active ? "Desativar" : "Reativar"}</Button>
+                  {r.id !== profile?.id && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => setDeleteTarget(r)}
+                      title="Excluir usuário"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
@@ -264,6 +336,13 @@ export function SectionUsuarios() {
           ) : (
             <div className="space-y-3">
               <div><Label>Nome completo *</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
+              <div>
+                <Label>Como gostaria de ser chamado</Label>
+                <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Ex.: Dra. Carine" />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Nome que aparece nas mensagens de WhatsApp, receitas e documentos.
+                </p>
+              </div>
               <div>
                 <Label>E-mail *</Label>
                 <Input
@@ -331,14 +410,53 @@ export function SectionUsuarios() {
               {role === "professional" && (
                 <>
                   <div><Label>CPF *</Label><Input value={cpf} onChange={(e) => setCpf(maskCPF(e.target.value))} placeholder="000.000.000-00" maxLength={14} /></div>
-                  <div><Label>Especialidade</Label>
-                    <Select value={specialty} onValueChange={setSpecialty}>
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>{specialties.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-                    </Select>
+                  <div>
+                    <Label>Profissão</Label>
+                    <Input
+                      value={profession}
+                      onChange={(e) => setProfession(e.target.value)}
+                      placeholder="Ex.: Médica, Dentista, Nutricionista…"
+                      list="profession-suggestions"
+                    />
+                    <datalist id="profession-suggestions">
+                      {PROFESSION_SUGGESTIONS.map((p) => (
+                        <option key={p} value={p} />
+                      ))}
+                    </datalist>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Usada nas receitas e documentos (a especialidade não aparece nos documentos).
+                    </p>
+                  </div>
+                  <div>
+                    <Label>Especialidade(s) <span className="text-muted-foreground">(opcional)</span></Label>
+                    {specialties.length === 0 ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Nenhuma especialidade cadastrada. Adicione em Configurações → Especialidades.
+                      </p>
+                    ) : (
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {specialties.map((s) => {
+                          const selected = specialtiesSel.includes(s);
+                          return (
+                            <button
+                              key={s}
+                              type="button"
+                              onClick={() => toggleSpecialty(s)}
+                              className={
+                                selected
+                                  ? "rounded-full border border-teal-300 bg-teal-100 px-2.5 py-1 text-xs font-medium text-teal-800"
+                                  : "rounded-full border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted"
+                              }
+                            >
+                              {s}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div><Label>CRM</Label><Input value={crm} onChange={(e) => setCrm(e.target.value)} placeholder="CRM-MG 12345" /></div>
+                    <div><Label>Conselho</Label><Input value={crm} onChange={(e) => setCrm(e.target.value)} placeholder="Ex.: CRM-MG 12345, CRO-SP 9999, CRN…" /></div>
                     <div><Label>Comissão (%)</Label><Input type="number" min={0} max={100} value={commission} onChange={(e) => setCommission(Number(e.target.value))} /></div>
                   </div>
                   <p className="text-xs text-muted-foreground">
@@ -353,6 +471,31 @@ export function SectionUsuarios() {
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir usuário?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget?.full_name} será removido do sistema e ficará na lixeira por 30 dias.
+              Na restauração, um novo login será recriado com senha temporária.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleting}
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmDeleteUser();
+              }}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -28,6 +28,7 @@ import {
 } from "@/lib/appointment-types";
 import { patchFormForProfessional, type AppointmentProfessionalOption } from "@/lib/appointment-professional";
 import { addOneHour, todayISO } from "@/lib/agenda-utils";
+import { checkAppointmentConflicts } from "@/lib/appointment-conflicts";
 import type { AppointmentSource } from "@/lib/appointment-source";
 import { triggerAppointmentFollowUp } from "@/lib/whatsapp-crm.functions";
 import { useAuth } from "@/lib/mock-auth";
@@ -141,6 +142,27 @@ export function NewAppointmentDialog({
       return;
     }
     setSaving(true);
+
+    try {
+      const conflict = await checkAppointmentConflicts({
+        tenantId: profile.tenant_id,
+        date: form.date,
+        startTime: form.start_time,
+        endTime: form.end_time || addOneHour(form.start_time),
+        professionalId,
+        roomId: form.room_id,
+      });
+      if (conflict.hasConflict) {
+        setSaving(false);
+        toast.error(conflict.message);
+        return;
+      }
+    } catch (e) {
+      setSaving(false);
+      toast.error(`Não foi possível verificar disponibilidade: ${(e as Error).message}`);
+      return;
+    }
+
     const resolvedSource: AppointmentSource | null =
       appointmentSource ??
       (profile.role === "receptionist"

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { todayISO, shiftDateISO, firstDayOfMonthISO, addMonthsISO, fmtDateShortWeekday, fmtDate, fmtDateTime } from "@/lib/locale";
-import { Users, CreditCard, Stethoscope, CalendarRange, BanknoteArrowDown, UserPlus, Download, Star } from "lucide-react";
+import { Users, CreditCard, Stethoscope, CalendarRange, BanknoteArrowDown, UserPlus, Download, Star, AlertTriangle, Cake, MessageCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
 import { APPOINTMENT_STATUS_LABEL, APPOINTMENT_TYPE_LABEL } from "@/lib/appointment-types";
-import { fmt, PAYMENT_LABEL } from "@/lib/currency";
+import { fmt } from "@/lib/currency";
+import { paymentLabel } from "@/lib/payment-methods";
 import { chartMoneyMargin, chartMoneyYAxisProps, fmtChartMoneyTooltip } from "@/lib/chart-format";
 import { resolveLetterheadProfessionalId } from "@/lib/letterhead";
 import { printWithLetterhead } from "@/lib/letterhead-print";
@@ -27,11 +28,13 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGri
 
 const REPORTS = [
   { id: "producao", label: "Produção por Profissional", icon: Users },
+  { id: "inadimplencia", label: "Inadimplência", icon: AlertTriangle },
   { id: "pagamento", label: "Receita por Forma de Pagamento", icon: CreditCard },
   { id: "especialidade", label: "Consultas por Especialidade", icon: Stethoscope },
   { id: "agenda", label: "Relatório de Agenda", icon: CalendarRange },
   { id: "fluxo", label: "Fluxo de Caixa Detalhado", icon: BanknoteArrowDown },
   { id: "pacientes", label: "Relatório de Pacientes", icon: UserPlus },
+  { id: "aniversariantes", label: "Aniversariantes / Retorno", icon: Cake },
   { id: "nps", label: "NPS — Satisfação", icon: Star },
 ] as const;
 type ReportId = typeof REPORTS[number]["id"];
@@ -61,11 +64,13 @@ export function ReportsPage() {
       </Card>
       <div className="min-w-0">
         {active === "producao" && <ProducaoReport />}
+        {active === "inadimplencia" && <InadimplenciaReport />}
         {active === "pagamento" && <PagamentoReport />}
         {active === "especialidade" && <EspecialidadeReport />}
         {active === "agenda" && <AgendaReport />}
         {active === "fluxo" && <FluxoCashFlowReport />}
         {active === "pacientes" && <PacientesReport />}
+        {active === "aniversariantes" && <AniversariantesReport />}
         {active === "nps" && <NpsReport />}
       </div>
     </div>
@@ -176,16 +181,16 @@ function PagamentoReport() {
           <>
             <ResponsiveContainer width="100%" height={280}>
               <PieChart>
-                <Pie data={rows} dataKey="total" nameKey="method" cx="50%" cy="50%" innerRadius={60} outerRadius={100} label={(e: { method: string }) => PAYMENT_LABEL[e.method]}>
+                <Pie data={rows} dataKey="total" nameKey="method" cx="50%" cy="50%" innerRadius={60} outerRadius={100} label={(e: { method: string }) => paymentLabel(e.method)}>
                   {rows.map(r => <Cell key={r.method} fill={PAY_COLORS[r.method] ?? "#94a3b8"} />)}
                 </Pie>
                 <Tooltip formatter={(v: number) => fmt(v)} />
-                <Legend formatter={(v: string) => PAYMENT_LABEL[v] ?? v} />
+                <Legend formatter={(v: string) => paymentLabel(v)} />
               </PieChart>
             </ResponsiveContainer>
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted-foreground uppercase"><tr><th className="p-2">Forma</th><th>Quantidade</th><th>Total</th><th>%</th></tr></thead>
-              <tbody>{rows.map(r => (<tr key={r.method} className="border-t"><td className="p-2">{PAYMENT_LABEL[r.method] ?? r.method}</td><td>{r.count}</td><td>{fmt(r.total)}</td><td>{((r.total / grand) * 100).toFixed(1)}%</td></tr>))}</tbody>
+              <tbody>{rows.map(r => (<tr key={r.method} className="border-t"><td className="p-2">{paymentLabel(r.method)}</td><td>{r.count}</td><td>{fmt(r.total)}</td><td>{((r.total / grand) * 100).toFixed(1)}%</td></tr>))}</tbody>
             </table>
           </>
         )}
@@ -569,6 +574,280 @@ function PacientesReport() {
             <tbody>{topRevenue.map(r => <tr key={r.id} className="border-t"><td className="p-2">{r.name}</td><td>{fmt(r.total)}</td><td>{r.last ? fmtDate(r.last) : "—"}</td></tr>)}</tbody></table></CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function waLink(phone: string | null | undefined, text: string): string | null {
+  const digits = (phone ?? "").replace(/\D/g, "");
+  if (!digits) return null;
+  const full = digits.length <= 11 ? `55${digits}` : digits;
+  return `https://wa.me/${full}?text=${encodeURIComponent(text)}`;
+}
+
+function daysBetween(a: string, b: string): number {
+  return Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86_400_000);
+}
+
+// Inadimplência — faturas vencidas em aberto, agrupadas por paciente
+type DelinquentRow = {
+  id: string;
+  name: string;
+  phone: string | null;
+  open: number;
+  bills: number;
+  oldestDue: string;
+  daysOverdue: number;
+};
+
+function InadimplenciaReport() {
+  const { tenant } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<DelinquentRow[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const today = todayISO();
+      const PAGE = 1000;
+      type Bill = {
+        patient_id: string | null;
+        amount: number;
+        paid_amount: number;
+        status: string;
+        due_date: string;
+        patients: { full_name: string; phone: string | null } | null;
+      };
+      const all: Bill[] = [];
+      for (let offset = 0; ; offset += PAGE) {
+        const { data, error } = await supabase
+          .from("bills_receivable")
+          .select("patient_id, amount, paid_amount, status, due_date, patients(full_name, phone)")
+          .not("status", "in", "(paid,cancelled,budget)")
+          .lt("due_date", today)
+          .order("due_date", { ascending: true })
+          .range(offset, offset + PAGE - 1);
+        if (error) break;
+        const batch = (data ?? []) as unknown as Bill[];
+        all.push(...batch);
+        if (batch.length < PAGE) break;
+      }
+
+      const map = new Map<string, DelinquentRow>();
+      for (const b of all) {
+        if (!b.patient_id) continue;
+        const open = Number(b.amount) - Number(b.paid_amount);
+        if (open <= 0) continue;
+        const existing = map.get(b.patient_id);
+        if (existing) {
+          existing.open += open;
+          existing.bills += 1;
+          if (b.due_date < existing.oldestDue) existing.oldestDue = b.due_date;
+        } else {
+          map.set(b.patient_id, {
+            id: b.patient_id,
+            name: b.patients?.full_name ?? "—",
+            phone: b.patients?.phone ?? null,
+            open,
+            bills: 1,
+            oldestDue: b.due_date,
+            daysOverdue: 0,
+          });
+        }
+      }
+      const list = Array.from(map.values()).map((r) => ({
+        ...r,
+        daysOverdue: Math.max(0, daysBetween(r.oldestDue, todayISO())),
+      }));
+      list.sort((a, b) => b.open - a.open);
+      setRows(list);
+      setLoading(false);
+    })();
+  }, []);
+
+  const totalOpen = rows.reduce((s, r) => s + r.open, 0);
+  const clinicName = tenant?.name ?? "a clínica";
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Inadimplência</CardTitle>
+        <p className="text-sm text-muted-foreground">Faturas vencidas e ainda em aberto, agrupadas por paciente.</p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 grid-cols-2 md:grid-cols-3">
+          <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Total inadimplente</div><div className="text-2xl font-semibold text-red-600">{fmt(totalOpen)}</div></CardContent></Card>
+          <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Pacientes</div><div className="text-2xl font-semibold">{rows.length}</div></CardContent></Card>
+          <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Ticket médio em aberto</div><div className="text-2xl font-semibold">{fmt(rows.length ? totalOpen / rows.length : 0)}</div></CardContent></Card>
+        </div>
+        {loading ? <TableSkeleton /> : rows.length === 0 ? <EmptyState icon={AlertTriangle} title="Nenhuma fatura vencida em aberto" /> : (
+          <>
+            <div className="overflow-x-auto max-h-[28rem] overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-card text-left text-xs text-muted-foreground uppercase">
+                  <tr><th className="p-2">Paciente</th><th>Faturas</th><th>Vencida desde</th><th>Atraso</th><th>Em aberto</th><th>Cobrar</th></tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => {
+                    const link = waLink(r.phone, `Olá ${r.name}, tudo bem? Identificamos um valor em aberto de ${fmt(r.open)} referente a ${clinicName}. Podemos te ajudar a regularizar?`);
+                    return (
+                      <tr key={r.id} className="border-t">
+                        <td className="p-2 font-medium">{r.name}</td>
+                        <td>{r.bills}</td>
+                        <td className="whitespace-nowrap">{fmtDate(r.oldestDue)}</td>
+                        <td className={cn("whitespace-nowrap", r.daysOverdue > 60 ? "text-red-600 font-medium" : "text-amber-600")}>{r.daysOverdue} dias</td>
+                        <td className="font-medium tabular-nums">{fmt(r.open)}</td>
+                        <td>{link ? <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-emerald-600 hover:underline"><MessageCircle className="size-4" />WhatsApp</a> : <span className="text-muted-foreground">—</span>}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => downloadCSV("inadimplencia.csv", [["Paciente","Telefone","Faturas","Vencida desde","Dias atraso","Em aberto"], ...rows.map((r) => [r.name, r.phone ?? "", r.bills, r.oldestDue, r.daysOverdue, r.open])])}>
+              <Download className="size-4 mr-2" />Exportar planilha
+            </Button>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Aniversariantes do mês + pacientes para retorno
+type BirthdayRow = { id: string; name: string; phone: string | null; day: number; birth: string; turns: number | null };
+type ReturnRow = { id: string; name: string; phone: string | null; last: string; days: number };
+
+function AniversariantesReport() {
+  const [loading, setLoading] = useState(true);
+  const [month, setMonth] = useState(() => new Date().getMonth() + 1);
+  const [returnDays, setReturnDays] = useState(90);
+  const [birthdays, setBirthdays] = useState<BirthdayRow[]>([]);
+  const [returns, setReturns] = useState<ReturnRow[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const { data: pts } = await supabase
+        .from("patients")
+        .select("id, full_name, phone, birth_date, active")
+        .eq("active", true);
+      const { data: appts } = await supabase.from("appointments").select("patient_id, date, status");
+
+      const ps = (pts ?? []) as { id: string; full_name: string; phone: string | null; birth_date: string | null }[];
+      const as = (appts ?? []) as { patient_id: string; date: string; status: string }[];
+
+      const lastVisit: Record<string, string> = {};
+      for (const a of as) {
+        if (a.status === "cancelled") continue;
+        if (!lastVisit[a.patient_id] || a.date > lastVisit[a.patient_id]) lastVisit[a.patient_id] = a.date;
+      }
+
+      const todayY = Number(todayISO().slice(0, 4));
+      const bdays: BirthdayRow[] = [];
+      for (const p of ps) {
+        if (!p.birth_date) continue;
+        const [y, m, d] = p.birth_date.split("-").map(Number);
+        if (m === month) {
+          bdays.push({ id: p.id, name: p.full_name, phone: p.phone, day: d, birth: p.birth_date, turns: y ? todayY - y : null });
+        }
+      }
+      bdays.sort((a, b) => a.day - b.day);
+      setBirthdays(bdays);
+
+      const today = todayISO();
+      const rets: ReturnRow[] = [];
+      for (const p of ps) {
+        const last = lastVisit[p.id];
+        if (!last) continue;
+        const days = daysBetween(last, today);
+        if (days >= returnDays) rets.push({ id: p.id, name: p.full_name, phone: p.phone, last, days });
+      }
+      rets.sort((a, b) => b.days - a.days);
+      setReturns(rets.slice(0, 200));
+      setLoading(false);
+    })();
+  }, [month, returnDays]);
+
+  const MONTHS = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Cake className="size-5 text-pink-500" />Aniversariantes</CardTitle>
+          <div className="flex items-end gap-2">
+            <div>
+              <Label className="text-xs">Mês</Label>
+              <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
+                <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                <SelectContent>{MONTHS.map((m, i) => <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? <TableSkeleton /> : birthdays.length === 0 ? <EmptyState icon={Cake} title="Nenhum aniversariante neste mês" /> : (
+            <div className="overflow-x-auto max-h-80 overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-card text-left text-xs text-muted-foreground uppercase"><tr><th className="p-2">Dia</th><th>Paciente</th><th>Idade</th><th>Parabenizar</th></tr></thead>
+                <tbody>
+                  {birthdays.map((b) => {
+                    const link = waLink(b.phone, `Olá ${b.name}! 🎉 A equipe deseja um feliz aniversário e muita saúde!`);
+                    return (
+                      <tr key={b.id} className="border-t">
+                        <td className="p-2 font-medium">{String(b.day).padStart(2, "0")}/{String(month).padStart(2, "0")}</td>
+                        <td>{b.name}</td>
+                        <td>{b.turns != null ? `${b.turns} anos` : "—"}</td>
+                        <td>{link ? <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-emerald-600 hover:underline"><MessageCircle className="size-4" />WhatsApp</a> : <span className="text-muted-foreground">—</span>}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><CalendarRange className="size-5 text-sky-500" />Pacientes para retorno</CardTitle>
+          <div className="flex items-end gap-2">
+            <div>
+              <Label className="text-xs">Sem retorno há (dias)</Label>
+              <Input type="number" min={30} value={returnDays} onChange={(e) => setReturnDays(Number(e.target.value) || 90)} className="w-32" />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? <TableSkeleton /> : returns.length === 0 ? <EmptyState icon={CalendarRange} title="Nenhum paciente para retorno no critério" /> : (
+            <>
+              <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-card text-left text-xs text-muted-foreground uppercase"><tr><th className="p-2">Paciente</th><th>Última consulta</th><th>Dias</th><th>Chamar</th></tr></thead>
+                  <tbody>
+                    {returns.map((r) => {
+                      const link = waLink(r.phone, `Olá ${r.name}, sentimos sua falta! Que tal agendar seu retorno? Estamos à disposição.`);
+                      return (
+                        <tr key={r.id} className="border-t">
+                          <td className="p-2 font-medium">{r.name}</td>
+                          <td className="whitespace-nowrap">{fmtDate(r.last)}</td>
+                          <td className="text-amber-600">{r.days}</td>
+                          <td>{link ? <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-emerald-600 hover:underline"><MessageCircle className="size-4" />WhatsApp</a> : <span className="text-muted-foreground">—</span>}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <Button variant="outline" size="sm" className="mt-3" onClick={() => downloadCSV("retorno.csv", [["Paciente","Telefone","Ultima consulta","Dias"], ...returns.map((r) => [r.name, r.phone ?? "", r.last, r.days])])}>
+                <Download className="size-4 mr-2" />Exportar planilha
+              </Button>
+            </>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

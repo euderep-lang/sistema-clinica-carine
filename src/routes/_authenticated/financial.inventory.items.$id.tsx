@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { softDeactivate } from "@/lib/trash";
 import { fmtDT, MOVEMENT_CLASS, MOVEMENT_LABEL, stockStatus, STATUS_CLASS, STATUS_LABEL, UNITS, type MovementType } from "@/lib/inventory";
 import { StockMovementDialog } from "@/components/stock-movement-dialog";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from "recharts";
@@ -35,6 +36,7 @@ interface Category { id: string; name: string; }
 function Page() {
   const { id } = Route.useParams();
   const [item, setItem] = useState<Item | null>(null);
+  const [loadedActive, setLoadedActive] = useState(true);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [cats, setCats] = useState<Category[]>([]);
   const [moveOpen, setMoveOpen] = useState(false);
@@ -48,6 +50,7 @@ function Page() {
       .select("id,name,description,brand,category_id,unit,current_stock,min_stock,max_stock,cost_price,sell_price,sku,active,inventory_categories(name,color)")
       .eq("id", id).maybeSingle() as unknown as { data: Item };
     setItem(data ?? null);
+    setLoadedActive(Boolean(data?.active ?? true));
     const { data: m } = await supabase.from("inventory_movements" as never)
       .select("id,date,type,quantity,reason,notes,profiles:professional_id(full_name),patients(full_name)")
       .eq("item_id", id).order("date", { ascending: false }) as unknown as { data: Movement[] };
@@ -70,14 +73,30 @@ function Page() {
 
   const save = async () => {
     if (!item) return;
-    const { error } = await supabase.from("inventory_items" as never).update({
-      name: item.name, description: item.description, brand: item.brand,
-      category_id: item.category_id, unit: item.unit, min_stock: Number(item.min_stock),
-      max_stock: item.max_stock != null ? Number(item.max_stock) : null,
-      cost_price: Number(item.cost_price), sell_price: Number(item.sell_price),
-      sku: item.sku, active: item.active,
-    } as never).eq("id", id);
-    if (error) toast.error("Erro ao salvar"); else toast.success("Item atualizado");
+    const wasDeactivated = !item.active && loadedActive;
+    try {
+      if (wasDeactivated) {
+        await softDeactivate({
+          entityType: "inventory_item",
+          table: "inventory_items",
+          id,
+          label: item.name,
+          summary: item.sku ?? null,
+        });
+      }
+      const { error } = await supabase.from("inventory_items" as never).update({
+        name: item.name, description: item.description, brand: item.brand,
+        category_id: item.category_id, unit: item.unit, min_stock: Number(item.min_stock),
+        max_stock: item.max_stock != null ? Number(item.max_stock) : null,
+        cost_price: Number(item.cost_price), sell_price: Number(item.sell_price),
+        sku: item.sku, active: item.active,
+      } as never).eq("id", id);
+      if (error) throw error;
+      if (wasDeactivated) setLoadedActive(false);
+      toast.success(wasDeactivated ? "Item movido para a lixeira" : "Item atualizado");
+    } catch {
+      toast.error("Erro ao salvar");
+    }
   };
 
   // Charts data: last 30 days

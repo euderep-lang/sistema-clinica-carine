@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
+import { softDeactivate } from "@/lib/trash";
 import { useAuth } from "@/lib/mock-auth";
 import { fmt } from "@/lib/currency";
 
@@ -88,11 +89,25 @@ export function SectionServicos() {
 
   const toggleActive = async (item: ServiceRow) => {
     const next = !item.active;
-    const { error } = await supabase.from("services").update({ active: next }).eq("id", item.id);
-    if (error) toast.error(error.message);
-    else {
-      toast.success(next ? "Procedimento reativado" : "Procedimento desativado pelo admin");
+    try {
+      if (!next) {
+        await softDeactivate({
+          entityType: "service",
+          table: "services",
+          id: item.id,
+          label: item.name,
+          summary: item.professional?.full_name ?? "Clínica",
+          children: [{ table: "service_inventory_items", fk: "service_id" }],
+        });
+        toast.success("Procedimento movido para a lixeira");
+      } else {
+        const { error } = await supabase.from("services").update({ active: true }).eq("id", item.id);
+        if (error) throw error;
+        toast.success("Procedimento reativado");
+      }
       load();
+    } catch (e) {
+      toast.error((e as Error).message);
     }
   };
 

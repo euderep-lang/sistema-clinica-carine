@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { supabase } from "@/integrations/supabase/client";
+import { softDelete } from "@/lib/trash";
 import { useAuth } from "@/lib/mock-auth";
 import { toast } from "sonner";
 
@@ -45,8 +46,18 @@ function Page() {
 
   const remove = async (c: Category) => {
     if (c.count > 0) return;
-    const { error } = await supabase.from("inventory_categories" as never).delete().eq("id", c.id);
-    if (error) toast.error("Erro"); else { toast.success("Removida"); load(); }
+    try {
+      await softDelete({
+        entityType: "inventory_category",
+        table: "inventory_categories",
+        id: c.id,
+        label: c.name,
+      });
+      toast.success("Movida para a lixeira");
+      load();
+    } catch {
+      toast.error("Erro");
+    }
   };
 
   return (

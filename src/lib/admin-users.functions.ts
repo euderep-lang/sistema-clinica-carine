@@ -7,9 +7,12 @@ export interface CreateUserInput {
   email: string;
   password: string;
   full_name: string;
+  display_name?: string | null;
+  profession?: string | null;
   role: "admin" | "receptionist" | "professional" | "financial";
   phone?: string | null;
   specialty?: string | null;
+  specialties?: string[] | null;
   crm?: string | null;
   cpf?: string | null;
   commission_pct?: number | null;
@@ -22,9 +25,12 @@ export type TenantUserRole = CreateUserInput["role"];
 export interface UpdateUserInput {
   user_id: string;
   full_name: string;
+  display_name?: string | null;
+  profession?: string | null;
   role: TenantUserRole;
   phone?: string | null;
   specialty?: string | null;
+  specialties?: string[] | null;
   crm?: string | null;
   cpf?: string | null;
   commission_pct?: number | null;
@@ -36,8 +42,11 @@ export interface UpdateUserInput {
 export interface TenantUserRow {
   id: string;
   full_name: string;
+  display_name: string | null;
+  profession: string | null;
   role: TenantUserRole;
   specialty: string | null;
+  specialties: string[] | null;
   crm: string | null;
   cpf: string | null;
   phone: string | null;
@@ -71,7 +80,9 @@ export const listTenantUsers = createServerFn({ method: "POST" })
 
     const { data: profiles, error } = await supabaseAdmin
       .from("profiles")
-      .select("id, full_name, role, specialty, crm, cpf, phone, active, commission_pct")
+      .select(
+        "id, full_name, display_name, profession, role, specialty, specialties, crm, cpf, phone, active, commission_pct",
+      )
       .eq("tenant_id", caller.tenant_id)
       .order("full_name");
 
@@ -135,9 +146,12 @@ export const createTenantUser = createServerFn({ method: "POST" })
       id: created.user.id,
       tenant_id: caller.tenant_id,
       full_name: data.full_name,
+      display_name: data.display_name?.trim() || null,
+      profession: data.role === "professional" ? data.profession?.trim() || null : null,
       role: data.role,
       phone: data.phone ?? null,
       specialty: data.role === "professional" ? data.specialty ?? null : null,
+      specialties: data.role === "professional" ? data.specialties ?? null : null,
       crm: data.role === "professional" ? data.crm ?? null : null,
       cpf: data.role === "professional" ? data.cpf?.replace(/\D/g, "") ?? null : null,
       commission_pct: data.role === "professional" ? data.commission_pct ?? 0 : 0,
@@ -222,16 +236,21 @@ export const updateTenantUser = createServerFn({ method: "POST" })
       .from("profiles")
       .update({
         full_name: data.full_name.trim(),
+        display_name: data.display_name?.trim() || null,
+        profession: data.role === "professional" ? data.profession?.trim() || null : null,
         role: data.role,
         phone: data.phone ?? null,
         active: data.active ?? true,
         specialty: data.role === "professional" ? data.specialty ?? null : null,
+        specialties: data.role === "professional" ? data.specialties ?? null : null,
         crm: data.role === "professional" ? data.crm ?? null : null,
         cpf: cpfForSave,
         commission_pct: data.role === "professional" ? data.commission_pct ?? 0 : 0,
       })
       .eq("id", data.user_id)
-      .select("id, full_name, role, specialty, crm, cpf, phone, active, commission_pct")
+      .select(
+        "id, full_name, display_name, profession, role, specialty, specialties, crm, cpf, phone, active, commission_pct",
+      )
       .maybeSingle();
 
     if (pErr) throw new Error(pErr.message);
@@ -314,16 +333,43 @@ export const deleteTenantUser = createServerFn({ method: "POST" })
   .inputValidator((data: { user_id: string }) => data)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const { data: caller } = await supabase.from("profiles").select("role, tenant_id").eq("id", userId).maybeSingle();
+    const { data: caller } = await supabase
+      .from("profiles")
+      .select("role, tenant_id, full_name, display_name")
+      .eq("id", userId)
+      .maybeSingle();
     if (!caller || caller.role !== "admin") throw new Error("Sem permissão");
+    if (data.user_id === userId) throw new Error("Você não pode excluir seu próprio usuário");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: target } = await supabaseAdmin
       .from("profiles")
-      .select("tenant_id, full_name, role")
+      .select("*")
       .eq("id", data.user_id)
       .maybeSingle();
-    if (!target || target.tenant_id !== caller.tenant_id) throw new Error("Usuário não pertence à sua clínica");
+    if (!target || target.tenant_id !== caller.tenant_id) {
+      throw new Error("Usuário não pertence à sua clínica");
+    }
+
+    const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(data.user_id);
+    const email = authUser.user?.email?.trim().toLowerCase() ?? "";
+
+    const { error: trashErr } = await supabaseAdmin.from("trash_bin" as never).insert({
+      tenant_id: caller.tenant_id,
+      entity_type: "user",
+      entity_id: data.user_id,
+      label: (target as { full_name: string }).full_name,
+      summary: email || null,
+      snapshot: {
+        table: "profiles",
+        row: { ...(target as Record<string, unknown>), _auth_email: email },
+      },
+      deleted_by: userId,
+      deleted_by_name:
+        (caller as { display_name?: string | null; full_name: string }).display_name?.trim() ||
+        caller.full_name,
+    } as never);
+    if (trashErr) throw new Error(`Falha ao registrar na lixeira: ${trashErr.message}`);
 
     const { error } = await supabaseAdmin.auth.admin.deleteUser(data.user_id);
     if (error) throw new Error(error.message);
@@ -336,7 +382,7 @@ export const deleteTenantUser = createServerFn({ method: "POST" })
       summary: `Usuário excluído: ${(target as { full_name: string }).full_name}`,
       entityType: "user",
       entityId: data.user_id,
-      details: { role: (target as { role: string }).role },
+      details: { role: (target as { role: string }).role, email },
       source: "ui",
     });
 

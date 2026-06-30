@@ -13,12 +13,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { clearKeepAliveCache } from "@/components/keep-alive-outlet";
 import { ClinicSidebar } from "./clinic-sidebar";
 import { CommandPalette } from "./command-palette";
 import { NotificationsBell } from "./notifications-bell";
 import { useAuth } from "@/lib/mock-auth";
-import { teardownWaMessageNotifications } from "@/hooks/use-wa-message-notifications";
+import { performAppSignOut } from "@/lib/crm-sign-out";
 
 const ROLE_LABEL: Record<string, string> = {
   admin: "Administrador",
@@ -49,9 +48,7 @@ export function DashboardShell({
   const navigate = useNavigate();
 
   const handleLogout = async () => {
-    clearKeepAliveCache();
-    teardownWaMessageNotifications();
-    await signOut();
+    await performAppSignOut(signOut);
     navigate({ to: "/login", replace: true });
   };
 

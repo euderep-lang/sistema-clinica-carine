@@ -31,6 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
+import { softDeactivate } from "@/lib/trash";
 import { useAuth } from "@/lib/mock-auth";
 import { fmt, parseBRLInput } from "@/lib/currency";
 
@@ -196,11 +197,19 @@ export function SectionMeusProcedimentos() {
   };
 
   const remove = async (item: Procedure) => {
-    const { error } = await supabase.from("services").update({ active: false }).eq("id", item.id);
-    if (error) toast.error(error.message);
-    else {
-      toast.success("Procedimento desativado");
+    try {
+      await softDeactivate({
+        entityType: "service",
+        table: "services",
+        id: item.id,
+        label: item.name,
+        summary: item.category ?? null,
+        children: [{ table: "service_inventory_items", fk: "service_id" }],
+      });
+      toast.success("Procedimento movido para a lixeira");
       load();
+    } catch (e) {
+      toast.error((e as Error).message);
     }
   };
 

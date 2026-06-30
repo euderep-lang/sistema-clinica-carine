@@ -38,10 +38,15 @@ function inPeriod(date: string, from: string, to: string): boolean {
   return date >= from && date <= to;
 }
 
+/** Orçamentos (faturas ainda não convertidas em venda) não entram em cálculos financeiros. */
+export function isBudgetBill(bill: CompetenceBill): boolean {
+  return bill.status === "budget";
+}
+
 export function buildCompetenceGroups(bills: CompetenceBill[]): Map<string, CompetenceBill[]> {
   const groups = new Map<string, CompetenceBill[]>();
   for (const bill of bills) {
-    if (bill.status === "cancelled") continue;
+    if (bill.status === "cancelled" || isBudgetBill(bill)) continue;
     const key = groupKey(bill);
     const list = groups.get(key) ?? [];
     list.push(bill);
@@ -52,7 +57,7 @@ export function buildCompetenceGroups(bills: CompetenceBill[]): Map<string, Comp
 
 export function computeTotalOpenBalance(bills: CompetenceBill[]): number {
   return bills
-    .filter((bill) => bill.status !== "cancelled")
+    .filter((bill) => bill.status !== "cancelled" && !isBudgetBill(bill))
     .reduce(
       (sum, bill) => sum + Math.max(0, Number(bill.amount) - Number(bill.paid_amount)),
       0,
@@ -144,7 +149,9 @@ export function filterPendingMonthBills(
 
 /** Todas as faturas com saldo em aberto. */
 export function filterTotalOpenBills(bills: CompetenceBill[]): CompetenceBill[] {
-  return bills.filter((bill) => bill.status !== "cancelled" && openBalance(bill) > 0);
+  return bills.filter(
+    (bill) => bill.status !== "cancelled" && !isBudgetBill(bill) && openBalance(bill) > 0,
+  );
 }
 
 export type FinancialSummaryKind = "production" | "received" | "pending" | "totalOpen";
@@ -162,8 +169,8 @@ export const FINANCIAL_SUMMARY_META: Record<
     description: "Valores recebidos no período selecionado.",
   },
   pending: {
-    title: "Pendente do período",
-    description: "Saldo em aberto das vendas do período selecionado.",
+    title: "A receber do período",
+    description: "Saldo em aberto (pendentes + vencidas) das vendas do período selecionado.",
   },
   totalOpen: {
     title: "Total em aberto",
@@ -186,7 +193,7 @@ export function financialSummaryDescription(
     case "received":
       return `Valores recebidos entre ${range}.`;
     case "pending":
-      return `Saldo em aberto das vendas com competência entre ${range}.`;
+      return `Saldo em aberto (pendentes + vencidas) das vendas com competência entre ${range}.`;
     default:
       return FINANCIAL_SUMMARY_META[kind].description;
   }
@@ -281,5 +288,15 @@ export function filterBillsForCompetencePeriod(
     }
   }
 
-  return bills.filter((b) => included.has(groupKey(b)));
+  const result = bills.filter((b) => included.has(groupKey(b)));
+
+  // Orçamentos (status 'budget') não entram no agrupamento de competência, mas
+  // devem aparecer na listagem do período pela sua data de competência/vencimento.
+  for (const b of bills) {
+    if (!isBudgetBill(b)) continue;
+    const competenceDate = billCompetenceDate(b);
+    if (inPeriod(competenceDate, period.from, period.to)) result.push(b);
+  }
+
+  return result;
 }

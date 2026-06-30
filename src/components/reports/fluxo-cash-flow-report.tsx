@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
-import { fmt, PAYMENT_LABEL } from "@/lib/currency";
+import { fmt } from "@/lib/currency";
+import { paymentLabel } from "@/lib/payment-methods";
 import { resolveLetterheadProfessionalId } from "@/lib/letterhead";
 import { printWithLetterhead } from "@/lib/letterhead-print";
 import { TableSkeleton, EmptyState } from "@/components/feedback-states";
@@ -52,7 +53,7 @@ function formatDescription(description: string): { short: string; full: string }
 
 function CashFlowRow({ t }: { t: CashTx }) {
   const desc = formatDescription(t.description);
-  const payment = PAYMENT_LABEL[t.method] ?? t.method;
+  const payment = paymentLabel(t.method);
 
   return (
     <div className="grid gap-2 border-b px-3 py-2.5 last:border-b-0 sm:grid-cols-[4.75rem_minmax(0,1fr)_6.5rem] sm:items-start sm:gap-3">
@@ -205,7 +206,7 @@ export function FluxoCashFlowReport() {
                       t.type === "in" ? "Entrada" : "Saída",
                       t.description,
                       t.party,
-                      PAYMENT_LABEL[t.method] ?? t.method,
+                      paymentLabel(t.method),
                       t.amount,
                     ]),
                   ])

@@ -1,6 +1,16 @@
 /* Service Worker do CRM — cache do shell + notificações (in-app e Web Push 24/7). */
 
-const CACHE = "clinicos-crm-v3";
+const CACHE = "clinicos-crm-v4";
+
+async function setBadgeCount(count) {
+  if (!("setAppBadge" in self.registration)) return;
+  const safe = Math.max(0, Math.floor(Number(count) || 0));
+  if (safe > 0) {
+    await self.registration.setAppBadge(safe);
+  } else {
+    await self.registration.clearAppBadge();
+  }
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());
@@ -45,21 +55,32 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-/* Notificação disparada pela aba (realtime) quando o app está aberto. */
 self.addEventListener("message", (event) => {
   const data = event.data;
-  if (!data || data.type !== "wa-message") return;
+  if (!data) return;
+
+  if (data.type === "wa-badge") {
+    event.waitUntil(setBadgeCount(data.count ?? 0));
+    return;
+  }
+
+  if (data.type !== "wa-message") return;
 
   event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      tag: data.tag ?? `wa-${data.conversationId}`,
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
-      vibrate: [180, 80, 180],
-      data: { conversationId: data.conversationId },
-      requireInteraction: false,
-    }),
+    (async () => {
+      if (typeof data.unreadCount === "number") {
+        await setBadgeCount(data.unreadCount);
+      }
+      await self.registration.showNotification(data.title, {
+        body: data.body,
+        tag: data.tag ?? `wa-${data.conversationId}`,
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",
+        vibrate: [180, 80, 180],
+        data: { conversationId: data.conversationId },
+        requireInteraction: false,
+      });
+    })(),
   );
 });
 
@@ -84,11 +105,17 @@ self.addEventListener("push", (event) => {
         type: "window",
         includeUncontrolled: true,
       });
-      // App aberto e em foco: deixa a notificação in-app cuidar (evita duplicar).
       const focused = clientsArr.find((c) => c.focused && c.visibilityState === "visible");
       if (focused) {
-        focused.postMessage({ type: "wa-push", conversationId });
+        focused.postMessage({ type: "wa-push", conversationId, unreadCount: payload.unreadCount });
+        if (typeof payload.unreadCount === "number") {
+          await setBadgeCount(payload.unreadCount);
+        }
         return;
+      }
+
+      if (typeof payload.unreadCount === "number") {
+        await setBadgeCount(payload.unreadCount);
       }
 
       await self.registration.showNotification(title, {

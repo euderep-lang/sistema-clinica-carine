@@ -134,6 +134,14 @@ export const FEATURES: FeatureDef[] = [
     roles: ["professional"],
     match: ["/professional/procedimentos"],
   },
+  {
+    key: "plano_alimentar",
+    label: "Plano Terapêutico",
+    description: "Gerador de plano terapêutico com IA e PDF.",
+    group: "Clínico",
+    roles: ["professional"],
+    match: ["/professional/plano-alimentar"],
+  },
   // Administrativo / Financeiro
   {
     key: "budgets",
@@ -141,7 +149,7 @@ export const FEATURES: FeatureDef[] = [
     description: "Criação e gestão de orçamentos.",
     group: "Administrativo e Financeiro",
     roles: ["professional"],
-    match: ["/professional/budgets"],
+    match: ["/professional/budgets", "/professional/orcamento"],
   },
   {
     key: "professional_financial",

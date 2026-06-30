@@ -2,7 +2,7 @@ import { fmtDateLong } from "@/lib/locale";
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Building2, CalendarDays, LayoutGrid, List, MapPin, Plus, Video } from "lucide-react";
+import { Building2, CalendarDays, LayoutGrid, List, Lock, MapPin, Plus, Video } from "lucide-react";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { AgendaRescheduleButton } from "@/components/agenda/agenda-appointment-actions";
@@ -10,6 +10,7 @@ import { AgendaContactActions } from "@/components/agenda/agenda-contact-actions
 import { AgendaFiltersPanel } from "@/components/agenda/agenda-filters-panel";
 import { AgendaSummaryCards } from "@/components/agenda/agenda-summary-cards";
 import { AgendaRescheduleDialog } from "@/components/agenda/agenda-reschedule-dialog";
+import { ScheduleBlockDialog } from "@/components/agenda/schedule-block-dialog";
 import { AgendaRoomsOverview } from "@/components/agenda/agenda-rooms-overview";
 import { AgendaTimelineView, type AgendaRow } from "@/components/agenda/agenda-timeline-view";
 import { useAppointmentCancelConfirm } from "@/components/agenda/use-appointment-cancel-confirm";
@@ -25,6 +26,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
+import { softDelete } from "@/lib/trash";
 import {
   APPOINTMENT_MODALITY_BADGE,
   APPOINTMENT_MODALITY_OPTIONS,
@@ -33,6 +35,7 @@ import {
   APPOINTMENT_TYPE_LABEL,
   APPOINTMENT_TYPE_OPTIONS,
   DEFAULT_APPOINTMENT_MODALITY,
+  isBlockAppointment,
   resolveAppointmentTypes,
 } from "@/lib/appointment-types";
 import {
@@ -41,6 +44,7 @@ import {
   timeToMinutes,
   todayISO,
 } from "@/lib/agenda-utils";
+import { checkAppointmentConflicts } from "@/lib/appointment-conflicts";
 import { patchFormForProfessional } from "@/lib/appointment-professional";
 import { useAuth } from "@/lib/mock-auth";
 import { printWithLetterhead } from "@/lib/letterhead-print";
@@ -98,6 +102,7 @@ function AgendaPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
+  const [blockOpen, setBlockOpen] = useState(false);
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [rescheduleRow, setRescheduleRow] = useState<AgendaRow | null>(null);
   const [saving, setSaving] = useState(false);
@@ -114,6 +119,21 @@ function AgendaPage() {
     specialty: "",
     notes: "",
   });
+
+  const removeBlock = async (id: string) => {
+    try {
+      await softDelete({
+        entityType: "appointment",
+        table: "appointments",
+        id,
+        label: "Bloqueio de horário",
+      });
+      toast.success("Bloqueio removido.");
+      void load();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
 
   const load = async () => {
     if (!profile) return;
@@ -218,6 +238,27 @@ function AgendaPage() {
       return;
     }
     setSaving(true);
+
+    try {
+      const conflict = await checkAppointmentConflicts({
+        tenantId: profile.tenant_id,
+        date: form.date,
+        startTime: form.start_time,
+        endTime: form.end_time || addOneHour(form.start_time),
+        professionalId: form.professional_id,
+        roomId: form.room_id,
+      });
+      if (conflict.hasConflict) {
+        setSaving(false);
+        toast.error(conflict.message);
+        return;
+      }
+    } catch (e) {
+      setSaving(false);
+      toast.error(`Não foi possível verificar disponibilidade: ${(e as Error).message}`);
+      return;
+    }
+
     const { data: created, error } = await supabase
       .from("appointments")
       .insert({
@@ -332,13 +373,16 @@ function AgendaPage() {
                 </TabsTrigger>
               </TabsList>
             </Tabs>
+            <Button variant="outline" onClick={() => setBlockOpen(true)} className="print:hidden">
+              <Lock className="mr-2 size-4" />Bloquear horário
+            </Button>
             <Button onClick={openNew} className="print:hidden">
               <Plus className="mr-2 size-4" />Novo agendamento
             </Button>
           </div>
         </div>
 
-        <AgendaSummaryCards rows={statsRows} />
+        <AgendaSummaryCards rows={statsRows.filter((r) => !isBlockAppointment(r))} />
 
         <div className="flex flex-col gap-4 lg:flex-row-reverse">
           <div className="print:hidden">{filtersPanel}</div>
@@ -391,7 +435,26 @@ function AgendaPage() {
                         <TableRow><TableCell colSpan={8} className="py-10 text-center text-muted-foreground">Carregando agenda...</TableCell></TableRow>
                       ) : filteredRows.length === 0 ? (
                         <TableRow><TableCell colSpan={8} className="py-10 text-center text-muted-foreground">Nenhum agendamento para os filtros selecionados.</TableCell></TableRow>
-                      ) : filteredRows.map((row) => (
+                      ) : filteredRows.map((row) => isBlockAppointment(row) ? (
+                        <TableRow key={row.id} className="bg-muted/40 [&>td]:text-center">
+                          <TableCell className="whitespace-nowrap font-medium">
+                            {formatTimeInterval(row.start_time, row.end_time)}
+                          </TableCell>
+                          <TableCell colSpan={5}>
+                            <span className="inline-flex items-center gap-2 text-muted-foreground">
+                              <Lock className="size-3.5" />
+                              <span className="font-medium">{row.notes || "Horário bloqueado"}</span>
+                              {row.profiles?.full_name && <span className="text-xs">· {row.profiles.full_name}</span>}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="bg-slate-100 text-slate-700">Bloqueado</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Button variant="ghost" size="sm" onClick={() => void removeBlock(row.id)}>Remover</Button>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
                         <TableRow key={row.id} className="[&>td]:text-center">
                           <TableCell className="whitespace-nowrap font-medium">
                             {formatTimeInterval(row.start_time, row.end_time)}
@@ -568,6 +631,13 @@ function AgendaPage() {
         appointment={rescheduleRow}
         rooms={rooms}
         onSaved={handleRescheduled}
+      />
+
+      <ScheduleBlockDialog
+        open={blockOpen}
+        onOpenChange={setBlockOpen}
+        defaultDate={date}
+        onSaved={() => void load()}
       />
 
       {cancelConfirmDialog}

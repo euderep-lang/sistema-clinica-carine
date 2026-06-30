@@ -13,6 +13,10 @@ export interface Profile {
   tenant_id: string;
   crm?: string | null;
   specialty?: string | null;
+  specialties?: string[] | null;
+  profession?: string | null;
+  /** Nome de exibição (como gostaria de ser chamado) — usado em receitas, documentos e WhatsApp. */
+  display_name?: string | null;
   cpf?: string | null;
   avatar_url?: string | null;
   phone?: string | null;
@@ -47,7 +51,7 @@ export function dashboardPathFor(role: Role): string {
 async function loadProfileAndTenant(userId: string, email: string): Promise<{ profile: Profile; tenant: Tenant } | null> {
   const { data: profileRow, error } = await supabase
     .from("profiles")
-    .select("id, tenant_id, full_name, role, crm, specialty, cpf, avatar_url, phone, active")
+    .select("id, tenant_id, full_name, display_name, profession, role, crm, specialty, specialties, cpf, avatar_url, phone, active")
     .eq("id", userId)
     .maybeSingle();
   if (error || !profileRow || !profileRow.tenant_id) return null;
@@ -69,6 +73,9 @@ async function loadProfileAndTenant(userId: string, email: string): Promise<{ pr
       tenant_id: profileRow.tenant_id,
       crm: profileRow.crm,
       specialty: profileRow.specialty,
+      specialties: (profileRow as { specialties?: string[] | null }).specialties ?? null,
+      profession: (profileRow as { profession?: string | null }).profession ?? null,
+      display_name: (profileRow as { display_name?: string | null }).display_name ?? null,
       cpf: profileRow.cpf,
       avatar_url: profileRow.avatar_url,
       phone: profileRow.phone,
@@ -108,6 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       getTenantSetting<PermissionMatrix>(res.tenant.id, PERMISSION_SETTING_KEY).then((p) =>
         setPermissions(p ?? {}),
       );
+      import("@/lib/payment-methods").then((m) => m.loadPaymentMethodConfigs().catch(() => {}));
     } else {
       setProfile(null);
       setTenant(null);

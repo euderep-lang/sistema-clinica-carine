@@ -7,6 +7,7 @@ import {
   Plus,
   Receipt,
   RotateCcw,
+  ShoppingCart,
   Trash2,
   TrendingDown,
   TrendingUp,
@@ -59,8 +60,8 @@ import {
   fmt,
   fmtDate,
   isOverdue,
-  PAYMENT_LABEL,
 } from "@/lib/currency";
+import { paymentLabel } from "@/lib/payment-methods";
 import { computeTotalOpenBalance } from "@/lib/financial-competence";
 import { RECEIVABLE_BILL_SELECT } from "@/lib/financial-scope";
 import { billOpenAmount, emitBillNfse, formatNfseLabel } from "@/lib/nfse";
@@ -68,9 +69,14 @@ import {
   billCanDelete,
   billCanReverse,
   billHasSaleItems,
+  billIsBudget,
   billIsEditable,
+  convertBudgetToSale,
   deleteBill,
+  loadBillSessionPackages,
+  reverseRemainingSessions,
   reverseSale,
+  type BillSessionPackage,
   type SaleBillRow,
 } from "@/lib/sales";
 
@@ -88,6 +94,8 @@ export function PatientFinancialTab({ patientId }: PatientFinancialTabProps) {
   const [editBillId, setEditBillId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [reverseTarget, setReverseTarget] = useState<SaleBillRow | null>(null);
+  const [reversePackages, setReversePackages] = useState<BillSessionPackage[]>([]);
+  const [reversePkgsLoading, setReversePkgsLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SaleBillRow | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -126,7 +134,7 @@ export function PatientFinancialTab({ patientId }: PatientFinancialTabProps) {
   }, [rows, search, status]);
 
   const stats = useMemo(() => {
-    const active = rows.filter((r) => r.status !== "cancelled");
+    const active = rows.filter((r) => r.status !== "cancelled" && r.status !== "budget");
     const totalPaid = active.reduce((s, r) => s + Number(r.paid_amount), 0);
     const totalBilled = active.reduce((s, r) => s + Number(r.amount), 0);
     const pending = computeTotalOpenBalance(rows);
@@ -149,6 +157,91 @@ export function PatientFinancialTab({ patientId }: PatientFinancialTabProps) {
     [rows, detailBillId],
   );
 
+  const convertBudget = async (row: SaleBillRow) => {
+    if (!row.budget_id) {
+      toast.error("Orçamento sem vínculo");
+      return;
+    }
+    setActionLoading(true);
+    try {
+      const result = await convertBudgetToSale(row.budget_id);
+      toast.success(`Orçamento convertido em venda — ${fmt(result.amount)}`);
+      await load();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!reverseTarget) {
+      setReversePackages([]);
+      return;
+    }
+    let active = true;
+    setReversePkgsLoading(true);
+    (async () => {
+      try {
+        const pkgs = await loadBillSessionPackages(reverseTarget.id);
+        if (active) setReversePackages(pkgs);
+      } catch {
+        if (active) setReversePackages([]);
+      } finally {
+        if (active) setReversePkgsLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [reverseTarget]);
+
+  const reverseSessionInfo = useMemo(() => {
+    const withRemaining = reversePackages.filter((p) => p.used_sessions < p.total_sessions);
+    const usedTotal = reversePackages.reduce((s, p) => s + p.used_sessions, 0);
+    const remainingTotal = withRemaining.reduce(
+      (s, p) => s + (p.total_sessions - p.used_sessions),
+      0,
+    );
+    const anyUsed = reversePackages.some((p) => p.used_sessions > 0);
+    // Preview do novo valor (preciso quando há um único pacote no título).
+    let keptPreview: number | null = null;
+    if (reverseTarget && reversePackages.length === 1) {
+      const p = reversePackages[0];
+      if (p.total_sessions > 0) {
+        keptPreview = Math.round((p.used_sessions / p.total_sessions) * Number(reverseTarget.amount) * 100) / 100;
+      }
+    }
+    return {
+      hasPackages: reversePackages.length > 0,
+      anyUsed,
+      usedTotal,
+      remainingTotal,
+      canPartial: remainingTotal > 0,
+      keptPreview,
+    };
+  }, [reversePackages, reverseTarget]);
+
+  const confirmReverseRemaining = async () => {
+    if (!reverseTarget) return;
+    setActionLoading(true);
+    try {
+      const res = await reverseRemainingSessions(
+        reverseTarget.id,
+        "Estorno de sessões restantes",
+      );
+      toast.success(
+        `${res.sessions_cancelled} sessão(ões) restante(s) estornada(s). Cobrança ajustada para ${fmt(res.new_amount)}.`,
+      );
+      setReverseTarget(null);
+      await load();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const confirmReverse = async () => {
     if (!reverseTarget) return;
     setActionLoading(true);
@@ -169,7 +262,7 @@ export function PatientFinancialTab({ patientId }: PatientFinancialTabProps) {
     setActionLoading(true);
     try {
       await deleteBill(deleteTarget.id);
-      toast.success("Cobrança excluída");
+      toast.success("Cobrança movida para a lixeira");
       setDeleteTarget(null);
       await load();
     } catch (e) {
@@ -288,7 +381,12 @@ export function PatientFinancialTab({ patientId }: PatientFinancialTabProps) {
                 </TableRow>
               ) : (
                 filtered.map((r) => {
-                  const eff = isOverdue(r.due_date, r.status) ? "overdue" : r.status;
+                  const isBudget = billIsBudget(r);
+                  const eff = isBudget
+                    ? "budget"
+                    : isOverdue(r.due_date, r.status)
+                      ? "overdue"
+                      : r.status;
                   const openAmount = billOpenAmount(r.amount, r.paid_amount);
                   const nfseLabel = formatNfseLabel(r);
                   const hasNfse = Boolean(r.nfse_number);
@@ -302,7 +400,7 @@ export function PatientFinancialTab({ patientId }: PatientFinancialTabProps) {
                         <div className="font-medium">{r.description}</div>
                         {r.payment_method && r.status === "paid" && (
                           <div className="text-xs text-muted-foreground">
-                            {PAYMENT_LABEL[r.payment_method] ?? r.payment_method}
+                            {paymentLabel(r.payment_method)}
                           </div>
                         )}
                       </TableCell>
@@ -341,14 +439,28 @@ export function PatientFinancialTab({ patientId }: PatientFinancialTabProps) {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            {isBudget && (
+                              <>
+                                <DropdownMenuItem
+                                  className="text-emerald-700 focus:text-emerald-700"
+                                  onClick={() => void convertBudget(r)}
+                                >
+                                  <ShoppingCart className="mr-2 size-4" />
+                                  Converter em venda
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                              </>
+                            )}
                             <DropdownMenuItem onClick={() => setDetailBillId(r.id)}>
                               <HandCoins className="mr-2 size-4" />
                               Abrir conta
                             </DropdownMenuItem>
-                            <DropdownMenuItem disabled={hasNfse} onClick={() => void emitBillNfse(r.id)}>
-                              <Receipt className="mr-2 size-4" />
-                              {hasNfse ? "NFS-e emitida" : "Emitir NFSe"}
-                            </DropdownMenuItem>
+                            {!isBudget && (
+                              <DropdownMenuItem disabled={hasNfse} onClick={() => void emitBillNfse(r.id)}>
+                                <Receipt className="mr-2 size-4" />
+                                {hasNfse ? "NFS-e emitida" : "Emitir NFSe"}
+                              </DropdownMenuItem>
+                            )}
                             {billIsEditable(r) && (
                               <DropdownMenuItem
                                 onClick={() => {
@@ -414,22 +526,72 @@ export function PatientFinancialTab({ patientId }: PatientFinancialTabProps) {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Estornar cobrança?</AlertDialogTitle>
-            <AlertDialogDescription>
-              A cobrança <strong>{reverseTarget?.description}</strong> será cancelada.
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  A cobrança <strong>{reverseTarget?.description}</strong>
+                  {reverseSessionInfo.anyUsed ? " possui sessões já realizadas." : " será cancelada."}
+                </p>
+                {reversePkgsLoading && (
+                  <p className="text-xs text-muted-foreground">Verificando sessões…</p>
+                )}
+                {!reversePkgsLoading && reverseSessionInfo.anyUsed && (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    <p className="font-medium">
+                      {reverseSessionInfo.usedTotal} sessão(ões) já realizada(s)
+                      {reverseSessionInfo.remainingTotal > 0 &&
+                        ` · ${reverseSessionInfo.remainingTotal} restante(s)`}
+                    </p>
+                    {reverseSessionInfo.canPartial ? (
+                      <p className="mt-1">
+                        Não é possível estornar a venda inteira. Você pode estornar apenas as
+                        sessões <strong>restantes</strong>: as realizadas continuam cobradas
+                        {reverseSessionInfo.keptPreview != null && (
+                          <>
+                            {" "}e a cobrança passa de{" "}
+                            <strong>{fmt(Number(reverseTarget?.amount ?? 0))}</strong> para{" "}
+                            <strong>~{fmt(reverseSessionInfo.keptPreview)}</strong>
+                          </>
+                        )}
+                        .
+                      </p>
+                    ) : (
+                      <p className="mt-1">
+                        Pacote totalmente utilizado — não há sessões restantes para estornar.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={actionLoading}>Voltar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={actionLoading}
-              onClick={(e) => {
-                e.preventDefault();
-                void confirmReverse();
-              }}
-            >
-              Confirmar estorno
-            </AlertDialogAction>
+            {reverseSessionInfo.anyUsed ? (
+              reverseSessionInfo.canPartial && (
+                <AlertDialogAction
+                  className="bg-amber-600 text-white hover:bg-amber-600/90"
+                  disabled={actionLoading || reversePkgsLoading}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    void confirmReverseRemaining();
+                  }}
+                >
+                  Estornar sessões restantes
+                </AlertDialogAction>
+              )
+            ) : (
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                disabled={actionLoading || reversePkgsLoading}
+                onClick={(e) => {
+                  e.preventDefault();
+                  void confirmReverse();
+                }}
+              >
+                Confirmar estorno
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -438,7 +600,7 @@ export function PatientFinancialTab({ patientId }: PatientFinancialTabProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir cobrança?</AlertDialogTitle>
             <AlertDialogDescription>
-              A cobrança <strong>{deleteTarget?.description}</strong> será removida permanentemente.
+              A cobrança <strong>{deleteTarget?.description}</strong> será movida para a lixeira por 30 dias.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

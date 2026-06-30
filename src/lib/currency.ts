@@ -53,6 +53,7 @@ export const PAYMENT_LABEL: Record<string, string> = Object.fromEntries(
 );
 
 export const BILL_STATUS_LABEL: Record<string, string> = {
+  budget: "Orçamento",
   pending: "Pendente",
   partial: "Parcial",
   paid: "Pago",
@@ -61,6 +62,7 @@ export const BILL_STATUS_LABEL: Record<string, string> = {
 };
 
 export const BILL_STATUS_CLASS: Record<string, string> = {
+  budget: "bg-violet-100 text-violet-800",
   pending: "bg-yellow-100 text-yellow-800",
   partial: "bg-orange-100 text-orange-800",
   paid: "bg-green-100 text-green-800",

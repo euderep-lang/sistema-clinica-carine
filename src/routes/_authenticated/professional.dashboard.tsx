@@ -29,6 +29,10 @@ import {
 } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { APPOINTMENT_STATUS_LABEL } from "@/lib/appointment-types";
+import {
+  listOpenEvolutionDrafts,
+  type OpenEvolutionDraft,
+} from "@/lib/evolution-draft";
 import { useAuth } from "@/lib/mock-auth";
 import { cn } from "@/lib/utils";
 
@@ -54,6 +58,24 @@ function ProfessionalDashboard() {
   const [nextAppt, setNextAppt] = useState<TodayAppt | null>(null);
   const [newApptOpen, setNewApptOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState<"today" | "cancelled" | null>(null);
+  const [openDrafts, setOpenDrafts] = useState<OpenEvolutionDraft[]>([]);
+
+  useEffect(() => {
+    const pid = profile?.id;
+    if (!pid) return;
+    let cancelled = false;
+    const refreshDrafts = () => {
+      void listOpenEvolutionDrafts(pid).then((drafts) => {
+        if (!cancelled) setOpenDrafts(drafts);
+      });
+    };
+    refreshDrafts();
+    window.addEventListener("focus", refreshDrafts);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", refreshDrafts);
+    };
+  }, [profile?.id]);
 
   const load = async () => {
     if (!profile) return;
@@ -133,7 +155,7 @@ function ProfessionalDashboard() {
       <PageHeader
         title={`Olá, ${firstName}`}
         description={
-          [profile?.specialty, profile?.crm].filter(Boolean).join(" · ") ||
+          [profile?.profession, profile?.crm].filter(Boolean).join(" · ") ||
           "Sua agenda e pendências do dia."
         }
         actions={
@@ -143,6 +165,46 @@ function ProfessionalDashboard() {
           </Button>
         }
       />
+
+      {openDrafts.length > 0 && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+          <div className="flex items-center gap-2 text-amber-800">
+            <FileText className="size-4 shrink-0" />
+            <h2 className="text-sm font-semibold">
+              Prontuário em aberto ({openDrafts.length})
+            </h2>
+          </div>
+          <p className="mt-1 text-xs text-amber-700">
+            Há evoluções começadas e ainda não salvas. Continue de onde parou — o texto foi
+            preservado neste dispositivo.
+          </p>
+          <ul className="mt-3 space-y-2">
+            {openDrafts.map((d) => (
+              <li
+                key={d.patientId}
+                className="flex items-center justify-between gap-2 rounded-md border border-amber-200 bg-white px-3 py-2"
+              >
+                <span className="min-w-0 truncate text-sm font-medium text-foreground">
+                  {d.patientName}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 shrink-0 border-amber-300 text-amber-800 hover:bg-amber-100"
+                  onClick={() =>
+                    navigate({
+                      to: "/professional/patients/$id/record",
+                      params: { id: d.patientId },
+                    })
+                  }
+                >
+                  Continuar
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <PageSection title="Indicadores do dia">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -182,7 +244,12 @@ function ProfessionalDashboard() {
           </Button>
         }
       >
-        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        <div
+          className={cn(
+            "grid gap-4",
+            cancelled.length > 0 ? "lg:grid-cols-2 xl:grid-cols-3" : "lg:grid-cols-2",
+          )}
+        >
           <AgendaGroup
             title="A ser atendidos"
             count={upcoming.length}

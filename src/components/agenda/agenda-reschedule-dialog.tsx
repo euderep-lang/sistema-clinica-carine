@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { addOneHour, formatTimeInterval, timeToMinutes } from "@/lib/agenda-utils";
+import { checkAppointmentConflicts } from "@/lib/appointment-conflicts";
 import { APPOINTMENT_TYPE_LABEL } from "@/lib/appointment-types";
 import { useAuth } from "@/lib/mock-auth";
 import type { AgendaRow } from "@/components/agenda/agenda-timeline-view";
@@ -66,6 +67,28 @@ export function AgendaRescheduleDialog({
     }
 
     setSaving(true);
+
+    try {
+      const conflict = await checkAppointmentConflicts({
+        tenantId: profile.tenant_id,
+        date: form.date,
+        startTime: form.start_time,
+        endTime: form.end_time || addOneHour(form.start_time),
+        professionalId: appointment.professional_id,
+        roomId: form.room_id,
+        excludeAppointmentId: appointment.id,
+      });
+      if (conflict.hasConflict) {
+        setSaving(false);
+        toast.error(conflict.message);
+        return;
+      }
+    } catch (e) {
+      setSaving(false);
+      toast.error(`Não foi possível verificar disponibilidade: ${(e as Error).message}`);
+      return;
+    }
+
     const { error } = await supabase
       .from("appointments")
       .update({

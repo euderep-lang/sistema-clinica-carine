@@ -11,7 +11,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
-import { PAYMENT_METHODS, parseBRLInput, fmt } from "@/lib/currency";
+import { parseBRLInput, fmt } from "@/lib/currency";
+import { activePaymentMethods, getCachedPaymentMethodConfigs, loadPaymentMethodConfigs } from "@/lib/payment-methods";
 import { maskCPF } from "@/lib/patient-utils";
 
 interface Patient { id: string; full_name: string; cpf: string | null; }
@@ -36,6 +37,9 @@ export function NewBillReceivableDialog({ open, onOpenChange, onSaved, defaultPa
   const [patientOpen, setPatientOpen] = useState(false);
   const [psearch, setPsearch] = useState("");
   const [saving, setSaving] = useState(false);
+  const [methods, setMethods] = useState(() =>
+    activePaymentMethods(getCachedPaymentMethodConfigs()),
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -44,6 +48,12 @@ export function NewBillReceivableDialog({ open, onOpenChange, onSaved, defaultPa
       setPatients((pts ?? []) as Patient[]);
       const { data: prs } = await supabase.from("profiles").select("id, full_name").eq("role", "professional").order("full_name");
       setPros((prs ?? []) as Pro[]);
+      try {
+        const configs = await loadPaymentMethodConfigs();
+        setMethods(activePaymentMethods(configs));
+      } catch (e) {
+        toast.error((e as Error).message);
+      }
     })();
   }, [open]);
 
@@ -122,7 +132,7 @@ export function NewBillReceivableDialog({ open, onOpenChange, onSaved, defaultPa
           <div><Label>Forma de pagamento</Label>
             <Select value={method} onValueChange={setMethod}>
               <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-              <SelectContent>{PAYMENT_METHODS.map((m) => <SelectItem key={m.value} value={m.value}>{m.icon} {m.label}</SelectItem>)}</SelectContent>
+              <SelectContent>{methods.map((m) => <SelectItem key={m.value} value={m.value}>{m.icon} {m.label}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           {appts.length > 0 && (

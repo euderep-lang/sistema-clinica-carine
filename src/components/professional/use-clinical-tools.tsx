@@ -4,7 +4,6 @@ import {
   Brain,
   Download,
   FileSearch,
-  FlaskConical,
   Link2,
   Loader2,
   Share2,
@@ -19,11 +18,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  createExamRequest,
   createPreRegistrationLink,
   interpretExamText,
   requestPatientDataExport,
@@ -42,7 +39,6 @@ export type ClinicalToolBarItem = {
 
 export function useClinicalTools(patientId: string, patientName: string) {
   const summaryFn = useServerFn(summarizePatientRecord);
-  const examFn = useServerFn(createExamRequest);
   const interpretFn = useServerFn(interpretExamText);
   const exportFn = useServerFn(requestPatientDataExport);
   const shareFn = useServerFn(shareClinicalRecord);
@@ -51,9 +47,6 @@ export function useClinicalTools(patientId: string, patientName: string) {
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [summary, setSummary] = useState("");
   const [summaryLoading, setSummaryLoading] = useState(false);
-  const [examOpen, setExamOpen] = useState(false);
-  const [examList, setExamList] = useState("");
-  const [examIndication, setExamIndication] = useState("");
   const [interpretOpen, setInterpretOpen] = useState(false);
   const [interpretText, setInterpretText] = useState("");
   const [interpretResult, setInterpretResult] = useState("");
@@ -71,24 +64,6 @@ export function useClinicalTools(patientId: string, patientName: string) {
       toast.error((e as Error).message);
     } finally {
       setSummaryLoading(false);
-    }
-  };
-
-  const submitExam = async () => {
-    const exams = examList.split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
-    if (!exams.length) {
-      toast.error("Informe ao menos um exame.");
-      return;
-    }
-    try {
-      await examFn({
-        data: { patientId, exams, clinicalIndication: examIndication || undefined },
-      });
-      toast.success("Solicitação de exames registrada.");
-      setExamOpen(false);
-      setExamList("");
-    } catch (e) {
-      toast.error((e as Error).message);
     }
   };
 
@@ -161,13 +136,6 @@ export function useClinicalTools(patientId: string, patientName: string) {
       onClick: () => void loadSummary(),
     },
     {
-      key: "exam",
-      label: "Solicitar exames",
-      icon: FlaskConical,
-      iconClass: "text-sky-600",
-      onClick: () => setExamOpen(true),
-    },
-    {
       key: "interpret",
       label: "Interpretar laudo",
       icon: FileSearch,
@@ -209,27 +177,6 @@ export function useClinicalTools(patientId: string, patientName: string) {
           ) : (
             <p className="whitespace-pre-wrap text-sm">{summary}</p>
           )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={examOpen} onOpenChange={setExamOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Solicitar exames</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>Exames (separados por vírgula ou linha)</Label>
-              <Textarea value={examList} onChange={(e) => setExamList(e.target.value)} rows={3} />
-            </div>
-            <div>
-              <Label>Indicação clínica</Label>
-              <Input value={examIndication} onChange={(e) => setExamIndication(e.target.value)} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={() => void submitExam()}>Registrar solicitação</Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 

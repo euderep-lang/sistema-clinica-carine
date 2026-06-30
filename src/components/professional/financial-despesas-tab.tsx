@@ -35,8 +35,8 @@ import {
   fmt,
   fmtDate,
   isOverdue,
-  PAYMENT_LABEL,
 } from "@/lib/currency";
+import { paymentLabel } from "@/lib/payment-methods";
 import { loadExpenseCategories } from "@/lib/expense-categories";
 import {
   cancelExpense,
@@ -253,7 +253,7 @@ export function FinancialDespesasTab({
                       <TableCell className="text-center tabular-nums">{fmt(r.amount)}</TableCell>
                       <TableCell className="text-center">{fmtDate(r.due_date)}</TableCell>
                       <TableCell className="text-center">
-                        {r.payment_method ? PAYMENT_LABEL[r.payment_method] : "—"}
+                        {r.payment_method ? paymentLabel(r.payment_method) : "—"}
                       </TableCell>
                       <TableCell className="text-center">
                         <Badge className={BILL_STATUS_CLASS[eff] ?? ""}>

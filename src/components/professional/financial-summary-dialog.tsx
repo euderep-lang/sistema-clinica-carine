@@ -21,8 +21,8 @@ import {
   fmt,
   fmtDate,
   isOverdue,
-  PAYMENT_LABEL,
 } from "@/lib/currency";
+import { paymentLabel } from "@/lib/payment-methods";
 import type { FinancialSummaryKind } from "@/lib/financial-competence";
 import { billOpenAmount } from "@/lib/nfse";
 import type { SaleBillRow } from "@/lib/sales";
@@ -58,7 +58,7 @@ export function FinancialSummaryDialog({
     return Array.from(map.entries())
       .map(([method, amount]) => ({
         method,
-        label: PAYMENT_LABEL[method] ?? method,
+        label: paymentLabel(method),
         amount,
       }))
       .sort((a, b) => b.amount - a.amount);
@@ -165,7 +165,7 @@ export function FinancialSummaryDialog({
                           <TableCell className="text-center tabular-nums">{fmt(bill.paid_amount)}</TableCell>
                           <TableCell className="text-center">{bill.paid_date ? fmtDate(bill.paid_date) : "—"}</TableCell>
                           <TableCell className="text-center text-sm">
-                            {bill.payment_method ? PAYMENT_LABEL[bill.payment_method] : "—"}
+                            {bill.payment_method ? paymentLabel(bill.payment_method) : "—"}
                           </TableCell>
                         </>
                       ) : (

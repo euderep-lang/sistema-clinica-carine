@@ -1269,6 +1269,7 @@ export type Database = {
           cpf: string | null
           created_at: string | null
           crm: string | null
+          display_name: string | null
           full_name: string
           id: string
           letterhead_margin_bottom_mm: number
@@ -1277,7 +1278,9 @@ export type Database = {
           letterhead_margin_top_mm: number
           letterhead_path: string | null
           phone: string | null
+          profession: string | null
           role: string
+          specialties: string[] | null
           specialty: string | null
           tenant_id: string | null
         }
@@ -1289,6 +1292,7 @@ export type Database = {
           cpf?: string | null
           created_at?: string | null
           crm?: string | null
+          display_name?: string | null
           full_name: string
           id: string
           letterhead_margin_bottom_mm?: number
@@ -1297,7 +1301,9 @@ export type Database = {
           letterhead_margin_top_mm?: number
           letterhead_path?: string | null
           phone?: string | null
+          profession?: string | null
           role: string
+          specialties?: string[] | null
           specialty?: string | null
           tenant_id?: string | null
         }
@@ -1309,6 +1315,7 @@ export type Database = {
           cpf?: string | null
           created_at?: string | null
           crm?: string | null
+          display_name?: string | null
           full_name?: string
           id?: string
           letterhead_margin_bottom_mm?: number
@@ -1317,7 +1324,9 @@ export type Database = {
           letterhead_margin_top_mm?: number
           letterhead_path?: string | null
           phone?: string | null
+          profession?: string | null
           role?: string
+          specialties?: string[] | null
           specialty?: string | null
           tenant_id?: string | null
         }
