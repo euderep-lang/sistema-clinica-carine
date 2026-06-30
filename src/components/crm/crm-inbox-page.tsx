@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useDeferredValue } from "react";
 import { fmtDateTime } from "@/lib/locale";
 import { Link, getRouteApi } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -7,7 +7,6 @@ import {
   ArrowRightLeft,
   BarChart3,
   Bell,
-  CalendarClock,
   ClipboardList,
   ExternalLink,
   FileDown,
@@ -15,35 +14,28 @@ import {
   Loader2,
   MailOpen,
   MessageSquare,
-  Paperclip,
-  Plus,
-  FileAudio,
   Reply,
   RefreshCw,
   Search,
-  Send,
   StickyNote,
   Tag,
   Trash2,
   UserPlus,
   UserRound,
-  Video,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { CrmInboxComposer } from "@/components/crm/crm-inbox-composer";
+import { CrmInboxListPanel } from "@/components/crm/crm-inbox-list-panel";
 import { CrmContactAvatar, CrmContactAvatarFromMap, useWaContactPhotos } from "@/components/crm/crm-contact-avatar";
 import { CrmMessageBubble } from "@/components/crm/crm-message-bubble";
-import { CrmAudioRecorder } from "@/components/crm/crm-audio-recorder";
 import { CrmConnectionBadge } from "@/components/crm/crm-connection-badge";
 import { CrmMetricsStrip } from "@/components/crm/crm-metrics-strip";
-import { CrmFunnelAiSuggestion } from "@/components/crm/crm-funnel-ai-suggestion";
 import { CrmPatientPanel } from "@/components/crm/crm-patient-panel";
-import { CrmQuickReplies } from "@/components/crm/crm-quick-replies";
 import { CrmGlobalSearch } from "@/components/crm/crm-global-search";
 import { CrmBroadcastDialog } from "@/components/crm/crm-broadcast-dialog";
 import { CrmTasksPanel } from "@/components/crm/crm-tasks-panel";
 import { CrmTagRulesPanel } from "@/components/crm/crm-tag-rules-panel";
-import { CrmEmojiPicker } from "@/components/crm/crm-emoji-picker";
 import { PatientFormDialog } from "@/components/patient-form-dialog";
 import {
   CrmDetailEmpty,
@@ -61,16 +53,12 @@ import {
 import {
   crmChatBg,
   crmChatMessagesScroll,
-  crmComposerBar,
-  crmFilterPill,
-  crmListItemActive,
-  crmListItemBase,
-  crmListScrollArea,
   crmPanelShell,
-  crmWaListBg,
 } from "@/components/crm/crm-inbox-theme";
 import { CrmPageShell } from "@/components/crm/crm-pwa-shell";
 import { CrmPwaInstallBanner } from "@/components/crm/crm-pwa-install-banner";
+import { useCrmListFiltersExpanded } from "@/hooks/use-crm-list-filters-expanded";
+import { CrmInlineAlert } from "@/components/crm/crm-inline-alert";
 import { useCrmPwaMode } from "@/components/crm/use-crm-pwa-mode";
 import { PageHeader } from "@/components/layout/page-header";
 import {
@@ -95,7 +83,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -110,13 +97,18 @@ import { useAuth } from "@/lib/mock-auth";
 import { buildGenderTemplateVars } from "@/lib/wa-template-gender";
 import { normalizeMessageLineBreaks } from "@/lib/wa-automation-quick-replies";
 import { prepareAudioFileForWhatsApp } from "@/lib/wa-audio-prepare";
-import { dedupeConversationsByPhone, phonesMatch } from "@/lib/wa-phone";
+import { dedupeConversationsByPhone, phonesMatch, phoneTail11, normalizeBrazilPhone } from "@/lib/wa-phone";
+import { getCachedWaMediaUrl, setCachedWaMediaUrl } from "@/lib/wa-media-url-cache";
 import {
+  conversationAssigneeName,
   conversationDisplayName,
+  conversationHandlerSubtitle,
   conversationPrimaryTagColor,
   fileToBase64,
   formatPhoneBR,
   formatRelativeTime,
+  lastOutboundStaffName,
+  waMessagePreview,
   TAG_COLORS,
   WA_OBJECTION_LABELS,
   type WaObjectionType,
@@ -144,7 +136,10 @@ import {
   markWaObjection,
   processWaFollowUps,
   syncWaChatsFromZApi,
+  getWaQuickReplies,
+  humanizeWaQuickReply,
 } from "@/lib/whatsapp-crm.functions";
+import { fetchWaQuickRepliesCached, type WaQuickReplyRow } from "@/lib/wa-quick-replies-cache";
 import {
   cancelScheduledWaMessage,
   fetchWaMediaUrl,
@@ -153,6 +148,8 @@ import {
   markWaConversationRead,
   markWaConversationUnread,
   scheduleWaMessage,
+  sendWaContact,
+  sendWaClinicLocation,
   sendWaMedia,
   sendWaText,
   startWaConversation,
@@ -201,6 +198,8 @@ function notifyCrmQueryError(error: { message: string }, context: string) {
   toast.error(error.message);
 }
 
+const CRM_COMPOSER_MAX_LINES = 4;
+
 export function CrmInboxPage() {
   const { conversation: conversationFromUrl, patient: patientFromUrl, phone: phoneFromUrl, draft: draftFromUrl, source: sourceFromUrl } =
     crmInboxRoute.useSearch();
@@ -210,6 +209,7 @@ export function CrmInboxPage() {
   useEffect(() => {
     if (sourceFromUrl === "pwa") markCrmPwaSession();
   }, [sourceFromUrl]);
+
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
   const [conversations, setConversations] = useState<WaConversation[]>([]);
@@ -223,11 +223,13 @@ export function CrmInboxPage() {
   const [transfers, setTransfers] = useState<WaTransfer[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
   const [msgSearch, setMsgSearch] = useState("");
   const [msgSearchHits, setMsgSearchHits] = useState<{ id: string; body: string | null; created_at: string }[]>([]);
   const [filter, setFilter] = useState<"all" | "mine" | "unread" | "transferred" | "queue" | "closed">("all");
   const [channelFilter, setChannelFilter] = useState<"all" | "whatsapp" | "instagram" | "messenger">("all");
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [listFiltersOpen, setListFiltersOpen] = useCrmListFiltersExpanded();
   const [convTagsMap, setConvTagsMap] = useState<Record<string, string[]>>({});
   const [mobileView, setMobileView] = useState<"list" | "chat" | "details">("list");
   const [visibleCount, setVisibleCount] = useState(30);
@@ -239,6 +241,7 @@ export function CrmInboxPage() {
   const [loadingChat, setLoadingChat] = useState(false);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [humanizing, setHumanizing] = useState(false);
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
   const [noteText, setNoteText] = useState("");
@@ -253,6 +256,9 @@ export function CrmInboxPage() {
   const [manualConvOpen, setManualConvOpen] = useState(false);
   const [createPatientOpen, setCreatePatientOpen] = useState(false);
   const [syncConfirmOpen, setSyncConfirmOpen] = useState(false);
+  const [shareContactOpen, setShareContactOpen] = useState(false);
+  const [shareContactName, setShareContactName] = useState("");
+  const [shareContactPhone, setShareContactPhone] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleAt, setScheduleAt] = useState("");
@@ -265,8 +271,27 @@ export function CrmInboxPage() {
     getWaNotificationPermission(),
   );
   const bottomRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const pendingScrollToBottomRef = useRef(false);
+  const prevMessageCountRef = useRef(0);
+  const prevSelectedIdRef = useRef<string | null>(null);
   const listSentinelRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const adjustComposerHeight = useCallback(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const style = window.getComputedStyle(el);
+    const lineHeight = parseFloat(style.lineHeight) || 20;
+    const paddingTop = parseFloat(style.paddingTop) || 0;
+    const paddingBottom = parseFloat(style.paddingBottom) || 0;
+    const borderTop = parseFloat(style.borderTopWidth) || 0;
+    const borderBottom = parseFloat(style.borderBottomWidth) || 0;
+    const maxHeight =
+      lineHeight * CRM_COMPOSER_MAX_LINES + paddingTop + paddingBottom + borderTop + borderBottom;
+    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+    el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, []);
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const lastTypingSentRef = useRef(0);
   const typingClearTimerRef = useRef<number | null>(null);
@@ -277,12 +302,15 @@ export function CrmInboxPage() {
   const relatedConvIdsRef = useRef<string[]>([]);
   const loadConversationsRef = useRef<(opts?: { silent?: boolean }) => Promise<void>>(async () => {});
   const reloadListTimerRef = useRef<number | null>(null);
+  const listReloadInFlightRef = useRef(false);
   const initialListLoadedRef = useRef(false);
   const transferToastShown = useRef(false);
 
   const statusFn = useServerFn(getWhatsAppStatus);
   const sendTextFn = useServerFn(sendWaText);
   const sendMediaFn = useServerFn(sendWaMedia);
+  const sendContactFn = useServerFn(sendWaContact);
+  const sendClinicLocationFn = useServerFn(sendWaClinicLocation);
   const transferFn = useServerFn(transferWaConversation);
   const readFn = useServerFn(markWaConversationRead);
   const unreadFn = useServerFn(markWaConversationUnread);
@@ -297,18 +325,44 @@ export function CrmInboxPage() {
   const toggleTagFn = useServerFn(toggleWaConversationTag);
   const markObjectionFn = useServerFn(markWaObjection);
   const processFollowUpsFn = useServerFn(processWaFollowUps);
+  const quickRepliesFn = useServerFn(getWaQuickReplies);
   const searchMsgFn = useServerFn(searchWaMessages);
   const createDealFn = useServerFn(createWaDeal);
   const scheduleFn = useServerFn(scheduleWaMessage);
   const listScheduledFn = useServerFn(listScheduledWaMessages);
   const cancelScheduledFn = useServerFn(cancelScheduledWaMessage);
+  const humanizeFn = useServerFn(humanizeWaQuickReply);
+
+  /** Pré-carrega respostas rápidas antes de abrir qualquer conversa. */
+  useEffect(() => {
+    if (!tenant?.id) return;
+    void fetchWaQuickRepliesCached(tenant.id, async () => {
+      const rows = await quickRepliesFn();
+      return rows as WaQuickReplyRow[];
+    });
+  }, [tenant?.id, quickRepliesFn]);
 
   const selected = useMemo(
     () => conversations.find((c) => c.id === selectedId) ?? null,
     [conversations, selectedId],
   );
 
-  const contactPhotos = useWaContactPhotos(conversations, selectedId ? [selectedId] : []);
+  const chatHandlerInfo = useMemo(() => {
+    const assignedName = conversationAssigneeName(selected);
+    const lastOutboundStaff = lastOutboundStaffName(messages);
+    return { assignedName, lastOutboundStaff };
+  }, [selected, messages]);
+
+  const chatHandlerSubtitle = useMemo(
+    () =>
+      conversationHandlerSubtitle({
+        typingUser,
+        assignedName: chatHandlerInfo.assignedName,
+        lastOutboundStaff: chatHandlerInfo.lastOutboundStaff,
+        phone: selected ? formatPhoneBR(selected.contact_phone) : undefined,
+      }),
+    [typingUser, chatHandlerInfo, selected],
+  );
 
   const resolveTagColor = useCallback(
     (tagIds: string[] | undefined) => conversationPrimaryTagColor(tagIds, tags),
@@ -326,7 +380,7 @@ export function CrmInboxPage() {
     if (!profile) return;
     const silent = opts?.silent ?? initialListLoadedRef.current;
     if (!silent) setLoadingList(true);
-    const [convRes, transferRes, tagLinksRes] = await Promise.all([
+    const [convRes, transferRes] = await Promise.all([
       supabase
         .from("wa_conversations" as never)
         .select(
@@ -342,11 +396,21 @@ export function CrmInboxPage() {
         .eq("to_user_id", profile.id)
         .is("seen_at", null)
         .order("created_at", { ascending: false }),
-      supabase.from("wa_conversation_tags" as never).select("conversation_id, tag_id"),
     ]);
 
     if (convRes.error) notifyCrmQueryError(convRes.error, "carregar conversas");
     if (transferRes.error) notifyCrmQueryError(transferRes.error, "carregar transferências");
+
+    const convIds = ((convRes.data ?? []) as WaConversation[]).map((c) => c.id);
+    const tagLinksRes =
+      convIds.length > 0
+        ? await supabase
+            .from("wa_conversation_tags" as never)
+            .select("conversation_id, tag_id")
+            .in("conversation_id", convIds)
+        : { data: [] as { conversation_id: string; tag_id: string }[], error: null };
+
+    if (tagLinksRes.error) notifyCrmQueryError(tagLinksRes.error, "carregar tags");
 
     const tagMap: Record<string, string[]> = {};
     for (const row of (tagLinksRes.data ?? []) as { conversation_id: string; tag_id: string }[]) {
@@ -383,13 +447,41 @@ export function CrmInboxPage() {
     setLoadingList(false);
   }, [profile]);
 
-  const scheduleReloadConversations = useCallback((delayMs = 400) => {
+  const scheduleReloadConversations = useCallback((delayMs = 900) => {
     if (reloadListTimerRef.current) window.clearTimeout(reloadListTimerRef.current);
     reloadListTimerRef.current = window.setTimeout(() => {
       reloadListTimerRef.current = null;
-      void loadConversationsRef.current({ silent: true });
+      if (listReloadInFlightRef.current) return;
+      listReloadInFlightRef.current = true;
+      void loadConversationsRef.current({ silent: true }).finally(() => {
+        listReloadInFlightRef.current = false;
+      });
     }, delayMs);
   }, []);
+
+  const patchConversationPreview = useCallback(
+    (conversationId: string, row: Pick<WaMessage, "body" | "message_type" | "media_filename" | "created_at" | "direction">) => {
+      const preview = waMessagePreview(row);
+      const at = row.created_at ?? new Date().toISOString();
+      setConversations((prev) =>
+        prev.map((c) => {
+          if (c.id !== conversationId) return c;
+          return {
+            ...c,
+            last_message_at: at,
+            last_message_preview: preview.slice(0, 120),
+            unread_count:
+              row.direction === "inbound" && selectedIdRef.current !== conversationId
+                ? (c.unread_count ?? 0) + 1
+                : selectedIdRef.current === conversationId
+                  ? 0
+                  : c.unread_count,
+          };
+        }),
+      );
+    },
+    [],
+  );
 
   selectedIdRef.current = selectedId;
   waInboxFocus.selectedConversationId = selectedId;
@@ -397,6 +489,7 @@ export function CrmInboxPage() {
 
   useEffect(() => {
     if (conversationFromUrl) {
+      pendingScrollToBottomRef.current = true;
       setSelectedId(conversationFromUrl);
       setMobileView("chat");
     }
@@ -520,8 +613,12 @@ export function CrmInboxPage() {
     setTags((data ?? []) as WaTag[]);
   }, []);
 
-  const loadConversationDetails = useCallback(async (conversationId: string) => {
-    setLoadingChat(true);
+  const loadConversationDetails = useCallback(async (conversationId: string, opts?: { refresh?: boolean }) => {
+    const refresh = opts?.refresh ?? false;
+    if (!refresh) {
+      setLoadingChat(true);
+      setMessages([]);
+    }
 
     const { data: convRow } = await supabase
       .from("wa_conversations" as never)
@@ -533,13 +630,36 @@ export function CrmInboxPage() {
     let relatedIds = [conversationId];
 
     if (phone && tenant) {
-      const { data: related } = await supabase
-        .from("wa_conversations" as never)
-        .select("id, contact_phone")
-        .eq("tenant_id", tenant.id);
-      relatedIds = ((related ?? []) as { id: string; contact_phone: string }[])
+      const tail = phoneTail11(phone);
+      const normalized = normalizeBrazilPhone(phone);
+      let related: { id: string; contact_phone: string }[] = [];
+
+      if (tail) {
+        const { data } = await supabase
+          .from("wa_conversations" as never)
+          .select("id, contact_phone")
+          .eq("tenant_id", tenant.id)
+          .eq("phone_tail", tail);
+        related = (data ?? []) as { id: string; contact_phone: string }[];
+      }
+
+      if (!related.length && normalized) {
+        const { data } = await supabase
+          .from("wa_conversations" as never)
+          .select("id, contact_phone")
+          .eq("tenant_id", tenant.id)
+          .eq("contact_phone", normalized);
+        related = (data ?? []) as { id: string; contact_phone: string }[];
+      }
+
+      if (!related.length) {
+        related = [{ id: conversationId, contact_phone: phone }];
+      }
+
+      relatedIds = related
         .filter((c) => phonesMatch(c.contact_phone, phone))
         .map((c) => c.id);
+      if (!relatedIds.includes(conversationId)) relatedIds.push(conversationId);
       if (!relatedIds.length) relatedIds = [conversationId];
     }
 
@@ -549,7 +669,7 @@ export function CrmInboxPage() {
       supabase
         .from("wa_messages" as never)
         .select(
-          "id, conversation_id, direction, message_type, body, media_id, media_mime, media_filename, status, sent_by, created_at, wa_message_id, reply_to_message_id, sender_profile:sent_by(full_name)",
+          "id, conversation_id, direction, message_type, body, media_id, media_mime, media_filename, status, sent_by, created_at, wa_message_id, reply_to_message_id, raw_payload, sender_profile:sent_by(full_name)",
         )
         .in("conversation_id", relatedIds)
         .order("created_at", { ascending: true }),
@@ -603,6 +723,15 @@ export function CrmInboxPage() {
     });
   }, [readFn, tenant]);
 
+  /** Recarrega mensagens sem limpar o chat (evita salto de scroll) e vai ao fim. */
+  const reloadChatWithScroll = useCallback(
+    async (conversationId: string) => {
+      pendingScrollToBottomRef.current = true;
+      await loadConversationDetails(conversationId, { refresh: true });
+    },
+    [loadConversationDetails],
+  );
+
   useEffect(() => {
     void loadConversations();
     void loadStaff();
@@ -610,7 +739,11 @@ export function CrmInboxPage() {
   }, [loadConversations, loadStaff, loadTags]);
 
   useEffect(() => {
-    const tick = () => void processFollowUpsFn().catch(() => {});
+    const tick = () => {
+      if (document.visibilityState === "visible") {
+        void processFollowUpsFn().catch(() => {});
+      }
+    };
     tick();
     const id = window.setInterval(tick, 60_000);
     return () => window.clearInterval(id);
@@ -621,9 +754,101 @@ export function CrmInboxPage() {
     void loadConversationDetails(selectedId);
   }, [selectedId, loadConversationDetails]);
 
+  useLayoutEffect(() => {
+    adjustComposerHeight();
+  }, [text, adjustComposerHeight]);
+
+  const scrollChatToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const run = () => {
+      const el = chatScrollRef.current;
+      if (!el) return;
+      const top = el.scrollHeight;
+      if (behavior === "smooth") {
+        el.scrollTo({ top, behavior: "smooth" });
+      } else {
+        el.scrollTop = top;
+      }
+    };
+    run();
+    requestAnimationFrame(run);
+  }, []);
+
+  const isChatNearBottom = useCallback(() => {
+    const el = chatScrollRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 140;
+  }, []);
+
+  /** Ao trocar de conversa, prepara scroll instantâneo para a mensagem mais recente. */
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (selectedId === prevSelectedIdRef.current) return;
+    prevSelectedIdRef.current = selectedId;
+    pendingScrollToBottomRef.current = Boolean(selectedId);
+    prevMessageCountRef.current = 0;
+  }, [selectedId]);
+
+  /** Abertura da conversa: vai direto ao fim. Novas mensagens: suave se já estava no fim. */
+  useLayoutEffect(() => {
+    if (!selectedId || loadingChat || messages.length === 0) return;
+
+    const stick = pendingScrollToBottomRef.current;
+    const grew = messages.length > prevMessageCountRef.current;
+    prevMessageCountRef.current = messages.length;
+
+    if (stick) {
+      pendingScrollToBottomRef.current = false;
+      scrollChatToBottom("auto");
+      return;
+    }
+
+    if (grew && isChatNearBottom()) {
+      scrollChatToBottom("smooth");
+    }
+  }, [messages, loadingChat, selectedId, scrollChatToBottom, isChatNearBottom]);
+
+  const handleChatContentResize = useCallback(() => {
+    if (pendingScrollToBottomRef.current || isChatNearBottom()) {
+      scrollChatToBottom("auto");
+    }
+  }, [scrollChatToBottom, isChatNearBottom]);
+
+  /** Mídia/imagens podem aumentar a altura após o primeiro paint — garante fim da conversa visível. */
+  useEffect(() => {
+    if (!selectedId || loadingChat || messages.length === 0) return;
+
+    const t1 = window.setTimeout(() => {
+      if (pendingScrollToBottomRef.current || isChatNearBottom()) scrollChatToBottom("auto");
+    }, 120);
+    const t2 = window.setTimeout(() => {
+      if (pendingScrollToBottomRef.current || isChatNearBottom()) scrollChatToBottom("auto");
+    }, 400);
+
+    const el = chatScrollRef.current;
+    const list = el?.firstElementChild;
+    let raf = 0;
+    let observe = true;
+    const stopObserve = window.setTimeout(() => {
+      observe = false;
+    }, 1200);
+
+    const ro =
+      list &&
+      new ResizeObserver(() => {
+        if (!observe) return;
+        if (!pendingScrollToBottomRef.current && !isChatNearBottom()) return;
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(() => scrollChatToBottom("auto"));
+      });
+    if (list && ro) ro.observe(list);
+
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(stopObserve);
+      cancelAnimationFrame(raf);
+      ro?.disconnect();
+    };
+  }, [selectedId, loadingChat, messages.length, scrollChatToBottom, isChatNearBottom]);
 
   useEffect(() => {
     const tenantId = tenant?.id;
@@ -647,7 +872,11 @@ export function CrmInboxPage() {
         { event: "INSERT", schema: "public", table: "wa_messages", filter: `tenant_id=eq.${tenantId}` },
         (payload) => {
           const row = payload.new as WaMessage;
-          if (relatedConvIdsRef.current.includes(row.conversation_id)) {
+          const inActiveChat = relatedConvIdsRef.current.includes(row.conversation_id);
+          if (inActiveChat) {
+            if (row.direction === "outbound") {
+              pendingScrollToBottomRef.current = true;
+            }
             setMessages((prev) => {
               const waId = (row as WaMessage & { wa_message_id?: string }).wa_message_id;
               if (waId && prev.some((m) => (m as WaMessage & { wa_message_id?: string }).wa_message_id === waId)) {
@@ -656,8 +885,11 @@ export function CrmInboxPage() {
               if (prev.some((m) => m.id === row.id)) return prev;
               return [...prev, row];
             });
+            patchConversationPreview(row.conversation_id, row);
           }
-          scheduleReloadConversations();
+          if (!inActiveChat || row.direction === "inbound") {
+            scheduleReloadConversations();
+          }
         },
       )
       .on(
@@ -667,14 +899,16 @@ export function CrmInboxPage() {
       )
       .subscribe();
 
-    const poll = window.setInterval(() => scheduleReloadConversations(0), 60_000);
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === "visible") scheduleReloadConversations(0);
+    }, 120_000);
 
     return () => {
       window.clearInterval(poll);
       if (reloadListTimerRef.current) window.clearTimeout(reloadListTimerRef.current);
       void supabase.removeChannel(channel);
     };
-  }, [tenant?.id, scheduleReloadConversations]);
+  }, [tenant?.id, scheduleReloadConversations, patchConversationPreview]);
 
   // Indicador "digitando…" entre a equipe (Realtime broadcast por conversa).
   useEffect(() => {
@@ -737,7 +971,7 @@ export function CrmInboxPage() {
 
   const filteredConversations = useMemo(() => {
     let list = conversations;
-    const q = search.trim().toLowerCase();
+    const q = deferredSearch.trim().toLowerCase();
     if (q) {
       list = list.filter(
         (c) =>
@@ -771,16 +1005,58 @@ export function CrmInboxPage() {
         new Date(b.last_message_at ?? 0).getTime() - new Date(a.last_message_at ?? 0).getTime()
       );
     });
-  }, [conversations, search, filter, channelFilter, tagFilter, convTagsMap, profile, pendingTransfers]);
+  }, [conversations, deferredSearch, filter, channelFilter, tagFilter, convTagsMap, profile, pendingTransfers]);
+
+  const listFilterSummary = useMemo(() => {
+    const chips: { key: string; label: string; color?: string }[] = [];
+    if (filter !== "all") {
+      const labels: Record<Exclude<typeof filter, "all">, string> = {
+        queue: "Fila",
+        mine: "Minhas",
+        unread: "Não lidas",
+        transferred: "Transferidas",
+        closed: "Encerradas",
+      };
+      chips.push({ key: "status", label: labels[filter] });
+    }
+    if (channelFilter !== "all") {
+      const labels: Record<Exclude<typeof channelFilter, "all">, string> = {
+        whatsapp: "WhatsApp",
+        instagram: "Instagram",
+        messenger: "Messenger",
+      };
+      chips.push({ key: "channel", label: labels[channelFilter] });
+    }
+    if (tagFilter) {
+      const tag = tags.find((t) => t.id === tagFilter);
+      if (tag) chips.push({ key: "tag", label: tag.name, color: tag.color });
+    }
+    return chips;
+  }, [filter, channelFilter, tagFilter, tags]);
+
+  const hasActiveListFilters = listFilterSummary.length > 0;
 
   // Renderização incremental: evita montar centenas de itens de uma vez.
   useEffect(() => {
     setVisibleCount(30);
-  }, [search, filter, channelFilter, tagFilter]);
+  }, [deferredSearch, filter, channelFilter, tagFilter]);
 
   const visibleConversations = useMemo(
     () => filteredConversations.slice(0, visibleCount),
     [filteredConversations, visibleCount],
+  );
+
+  const photoConversations = useMemo(() => {
+    const ids = new Set(visibleConversations.map((c) => c.id));
+    if (selected && !ids.has(selected.id)) return [...visibleConversations, selected];
+    return visibleConversations;
+  }, [visibleConversations, selected]);
+
+  const contactPhotos = useWaContactPhotos(photoConversations, selectedId ? [selectedId] : []);
+
+  const msgSearchHighlightIds = useMemo(
+    () => new Set(msgSearchHits.map((h) => h.id)),
+    [msgSearchHits],
   );
   const hasMoreConversations = filteredConversations.length > visibleConversations.length;
 
@@ -800,6 +1076,38 @@ export function CrmInboxPage() {
     return () => observer.disconnect();
   }, [hasMoreConversations, visibleConversations.length]);
 
+  const humanizeComposer = async () => {
+    const body = normalizeMessageLineBreaks(text);
+    if (!body || humanizing || sending) return;
+
+    const contactName = composeTarget?.name ?? (selected ? conversationDisplayName(selected) : "");
+    const firstName = contactName.trim().split(/\s+/)[0] || null;
+
+    setHumanizing(true);
+    try {
+      const result = await humanizeFn({
+        data: {
+          message: body,
+          conversationId: selectedId ?? null,
+          patientFirstName: firstName,
+          contactName: contactName || null,
+        },
+      });
+      setText(result.text);
+      if (!result.configured) {
+        toast.info("Configure OPENAI_API_KEY para reformular com IA.");
+      } else if (result.usedAi) {
+        toast.success("Mensagem reformulada pela IA");
+      } else {
+        toast.info("Mensagem mantida — revise e envie quando quiser.");
+      }
+    } catch (e) {
+      toast.error((e as Error).message || "Não foi possível reformular");
+    } finally {
+      setHumanizing(false);
+    }
+  };
+
   const sendText = async () => {
     const body = normalizeMessageLineBreaks(text);
     if (!body || sending) return;
@@ -818,6 +1126,7 @@ export function CrmInboxPage() {
         setComposeTarget(null);
         setText("");
         await loadConversations({ silent: true });
+        pendingScrollToBottomRef.current = true;
         setSelectedId(res.conversationId);
         setMobileView("chat");
         toast.success("Conversa iniciada");
@@ -841,8 +1150,14 @@ export function CrmInboxPage() {
       });
       setText("");
       setReplyTo(null);
-      await loadConversationDetails(selectedId);
-      await loadConversations({ silent: true });
+      await reloadChatWithScroll(selectedId);
+      patchConversationPreview(selectedId, {
+        body,
+        message_type: "text",
+        media_filename: null,
+        created_at: new Date().toISOString(),
+        direction: "outbound",
+      });
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -855,7 +1170,13 @@ export function CrmInboxPage() {
       setMsgSearchHits([]);
       return;
     }
-    const hits = await searchMsgFn({ data: { conversationId: selectedId, query: msgSearch.trim() } });
+    const hits = await searchMsgFn({
+      data: {
+        conversationId: selectedId,
+        query: msgSearch.trim(),
+        relatedConversationIds: relatedConvIdsRef.current,
+      },
+    });
     const list = hits as { id: string; body: string | null; created_at: string }[];
     setMsgSearchHits(list);
     if (list.length > 0) {
@@ -869,9 +1190,14 @@ export function CrmInboxPage() {
   const scrollToMessage = (messageId: string) => {
     setMobileView("chat");
     requestAnimationFrame(() => {
+      const container = chatScrollRef.current;
       const el = document.getElementById(`msg-${messageId}`);
-      if (!el) return;
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (!container || !el) return;
+      const containerRect = container.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const offset = elRect.top - containerRect.top + container.scrollTop;
+      const target = offset - container.clientHeight / 2 + el.clientHeight / 2;
+      container.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
       el.classList.add("ring-2", "ring-amber-400/90", "ring-offset-1");
       window.setTimeout(() => {
         el.classList.remove("ring-2", "ring-amber-400/90", "ring-offset-1");
@@ -885,7 +1211,7 @@ export function CrmInboxPage() {
       await closeFn({ data: { conversationId: selectedId, reason: closeReason } });
       toast.success("Conversa encerrada");
       await loadConversations({ silent: true });
-      if (selectedId) await loadConversationDetails(selectedId);
+      if (selectedId) await loadConversationDetails(selectedId, { refresh: true });
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -897,7 +1223,7 @@ export function CrmInboxPage() {
       await reopenFn({ data: { conversationId: selectedId } });
       toast.success("Conversa reaberta");
       await loadConversations({ silent: true });
-      if (selectedId) await loadConversationDetails(selectedId);
+      if (selectedId) await loadConversationDetails(selectedId, { refresh: true });
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -934,6 +1260,7 @@ export function CrmInboxPage() {
 
   const selectConversation = (id: string) => {
     setComposeTarget(null);
+    pendingScrollToBottomRef.current = true;
     setSelectedId(id);
     setMobileView("chat");
     setReplyTo(null);
@@ -954,6 +1281,7 @@ export function CrmInboxPage() {
       el.focus();
       const pos = start + emoji.length;
       el.setSelectionRange(pos, pos);
+      adjustComposerHeight();
     });
   };
 
@@ -1082,6 +1410,73 @@ export function CrmInboxPage() {
     return map;
   }, [messages]);
 
+  const openShareContact = async () => {
+    if (!selected) return;
+    setShareContactName(selected.patients?.full_name ?? selected.contact_name ?? "");
+    setShareContactPhone("");
+    if (selected.patient_id) {
+      const { data } = await supabase
+        .from("patients")
+        .select("full_name, phone")
+        .eq("id", selected.patient_id)
+        .maybeSingle();
+      if (data) {
+        setShareContactName((data as { full_name: string }).full_name);
+        setShareContactPhone((data as { phone: string | null }).phone ?? "");
+      }
+    }
+    setShareContactOpen(true);
+  };
+
+  const sendShareContact = async () => {
+    if (!selectedId) return;
+    setSending(true);
+    try {
+      await sendContactFn({
+        data: {
+          conversationId: selectedId,
+          contactName: shareContactName.trim(),
+          contactPhone: shareContactPhone.trim(),
+        },
+      });
+      toast.success("Contato enviado");
+      setShareContactOpen(false);
+      await reloadChatWithScroll(selectedId);
+      patchConversationPreview(selectedId, {
+        body: `👤 Contato: ${shareContactName.trim()}`,
+        message_type: "contact",
+        media_filename: null,
+        created_at: new Date().toISOString(),
+        direction: "outbound",
+      });
+    } catch (e) {
+      toast.error((e as Error).message || "Falha ao enviar contato");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const sendClinicLocation = async () => {
+    if (!selectedId) return;
+    setSending(true);
+    try {
+      await sendClinicLocationFn({ data: { conversationId: selectedId } });
+      toast.success("Localização da clínica enviada");
+      await reloadChatWithScroll(selectedId);
+      patchConversationPreview(selectedId, {
+        body: "📍 Localização",
+        message_type: "location",
+        media_filename: null,
+        created_at: new Date().toISOString(),
+        direction: "outbound",
+      });
+    } catch (e) {
+      toast.error((e as Error).message || "Falha ao enviar localização");
+    } finally {
+      setSending(false);
+    }
+  };
+
   const sendFile = async (file: File) => {
     if (!selectedId) return;
     setSending(true);
@@ -1136,8 +1531,16 @@ export function CrmInboxPage() {
       toast.success(
         mediaType === "audio" ? "Áudio enviado" : mediaType === "image" ? "Foto enviada" : "Arquivo enviado",
       );
-      await loadConversationDetails(selectedId);
-      await loadConversations({ silent: true });
+      const preview =
+        mediaType === "audio" ? "🎤 Áudio" : mediaType === "image" ? "📷 Imagem" : `📎 ${prepared.name}`;
+      await reloadChatWithScroll(selectedId);
+      patchConversationPreview(selectedId, {
+        body: preview,
+        message_type: mediaType,
+        media_filename: prepared.name,
+        created_at: new Date().toISOString(),
+        direction: "outbound",
+      });
     } catch (e) {
       toast.error((e as Error).message || "Falha ao enviar arquivo.");
     } finally {
@@ -1207,7 +1610,7 @@ export function CrmInboxPage() {
     if (error) toast.error(error.message);
     else {
       setNoteText("");
-      await loadConversationDetails(selectedId);
+      await loadConversationDetails(selectedId, { refresh: true });
     }
   };
 
@@ -1225,14 +1628,14 @@ export function CrmInboxPage() {
     else {
       setReminderAt("");
       setReminderNote("");
-      await loadConversationDetails(selectedId);
+      await loadConversationDetails(selectedId, { refresh: true });
       toast.success("Lembrete criado");
     }
   };
 
   const completeReminder = async (id: string) => {
     await supabase.from("wa_reminders" as never).update({ completed: true } as never).eq("id", id);
-    if (selectedId) await loadConversationDetails(selectedId);
+    if (selectedId) await loadConversationDetails(selectedId, { refresh: true });
   };
 
   const doTransfer = async () => {
@@ -1242,7 +1645,7 @@ export function CrmInboxPage() {
       toast.success("Conversa transferida");
       setTransferNote("");
       await loadConversations({ silent: true });
-      if (selectedId) await loadConversationDetails(selectedId);
+      if (selectedId) await loadConversationDetails(selectedId, { refresh: true });
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -1315,7 +1718,10 @@ export function CrmInboxPage() {
 
   const resolveMediaUrl = useCallback(
     async (mediaId: string, mimeType?: string | null) => {
+      const cached = getCachedWaMediaUrl(mediaId, mimeType);
+      if (cached) return cached;
       const { url } = await mediaUrlFn({ data: { mediaId, mimeType: mimeType ?? undefined } });
+      setCachedWaMediaUrl(mediaId, mimeType, url);
       return url;
     },
     [mediaUrlFn],
@@ -1339,11 +1745,12 @@ export function CrmInboxPage() {
     const name = composeTarget?.name ?? (selected ? conversationDisplayName(selected) : "");
     if (!name) return undefined;
     const parts = name.trim().split(/\s+/);
+    const first = parts[0] ?? name;
     const gender = selected?.patients?.gender ?? null;
     return {
       ...buildGenderTemplateVars(gender),
-      primeiro_nome: parts[0] ?? name,
-      nome_paciente: name,
+      primeiro_nome: first,
+      nome_paciente: first,
       nome_clinica: tenant?.name ?? "Clínica",
     };
   }, [composeTarget, selected, tenant?.name]);
@@ -1389,7 +1796,7 @@ export function CrmInboxPage() {
                   : "Conversa",
           subtitle:
             mobileView === "chat" && selected
-              ? formatPhoneBR(selected.contact_phone)
+              ? chatHandlerSubtitle
               : undefined,
           showBack: true,
           onBack: () => setMobileView(mobileView === "details" ? "chat" : "list"),
@@ -1559,250 +1966,41 @@ export function CrmInboxPage() {
             "min-h-0 flex-1",
             pwaMode && mobileView === "chat" && "h-full",
           )}
-          style={{ gridTemplateColumns: "20% 55% 25%" }}
+          style={pwaMode ? undefined : { gridTemplateColumns: "20% 55% 25%" }}
         >
-          {/* Coluna 1 — Contatos */}
-          <aside
-            className={cn(
-              "flex min-h-0 min-w-0 flex-col overflow-hidden lg:border-r lg:border-border/60 lg:bg-muted/20",
-              crmWaListBg,
-              mobileView !== "list" && "hidden lg:flex",
-            )}
-          >
-            <div className="space-y-2 border-b border-black/[0.06] bg-[#f0f2f5] p-2 dark:border-white/10 dark:bg-[#111b21]">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar conversa…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="h-9 rounded-lg border-0 bg-white pl-9 text-sm shadow-none dark:bg-[#202c33]"
-                />
-              </div>
-              <div className="flex gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {(
-                  [
-                    ["all", "Todas"],
-                    ["queue", "Fila"],
-                    ["mine", "Minhas"],
-                    ["unread", "Não lidas"],
-                    ["transferred", "Transferidas"],
-                    ["closed", "Encerradas"],
-                  ] as const
-                ).map(([f, label]) => (
-                  <button
-                    key={f}
-                    type="button"
-                    className={cn(
-                      "shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition",
-                      crmFilterPill(filter === f),
-                      f === "transferred" && pendingTransferCount > 0 && filter !== f && "text-violet-700",
-                    )}
-                    onClick={() => setFilter(f)}
-                  >
-                    {label}
-                    {f === "transferred" && pendingTransferCount > 0 ? (
-                      <span className="ml-1 inline-flex size-4 items-center justify-center rounded-full bg-violet-600 text-[9px] text-white">
-                        {pendingTransferCount}
-                      </span>
-                    ) : null}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {(
-                  [
-                    ["all", "Todos canais"],
-                    ["whatsapp", "WhatsApp"],
-                    ["instagram", "Instagram"],
-                    ["messenger", "Messenger"],
-                  ] as const
-                ).map(([ch, label]) => (
-                  <button
-                    key={ch}
-                    type="button"
-                    className={cn(
-                      "shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium transition",
-                      crmFilterPill(channelFilter === ch),
-                    )}
-                    onClick={() => setChannelFilter(ch)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {tags.length > 0 ? (
-                <div className="flex gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  <button
-                    type="button"
-                    className={cn(
-                      "shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium transition",
-                      crmFilterPill(!tagFilter),
-                    )}
-                    onClick={() => setTagFilter(null)}
-                  >
-                    Todas tags
-                  </button>
-                  {tags.map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      className={cn(
-                        "shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium text-white transition",
-                        tagFilter === t.id ? "ring-2 ring-offset-1" : "opacity-80",
-                      )}
-                      style={{ backgroundColor: t.color }}
-                      onClick={() => setTagFilter(tagFilter === t.id ? null : t.id)}
-                    >
-                      {t.name}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-            <ScrollArea className={cn("flex-1 py-1", crmListScrollArea)}>
-              {loadingList ? (
-                <div className="flex justify-center py-10">
-                  <Loader2 className="size-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : filteredConversations.length === 0 ? (
-                <p className="p-4 text-center text-sm text-muted-foreground">Nenhuma conversa.</p>
-              ) : (
-                <div className="min-w-0 max-w-full px-2">
-                {visibleConversations.map((c) => {
-                  const name = conversationDisplayName(c);
-                  const pendingTransfer = pendingTransfers[c.id];
-                  const isPendingTransfer = !!pendingTransfer;
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => selectConversation(c.id)}
-                      className={cn(
-                        crmListItemBase,
-                        selectedId === c.id && crmListItemActive,
-                        isPendingTransfer && "ring-1 ring-violet-400/60 bg-violet-50/80 dark:bg-violet-950/20",
-                        !isPendingTransfer && c.unread_count > 0 && selectedId !== c.id && "bg-emerald-500/5",
-                      )}
-                    >
-                      <div className="flex items-start gap-2.5">
-                        <CrmContactAvatarFromMap
-                          name={name}
-                          conversationId={c.id}
-                          photos={contactPhotos}
-                          tagColor={resolveTagColor(convTagsMap[c.id])}
-                          size="sm"
-                          ringClassName={cn(
-                            isPendingTransfer && "ring-2 ring-violet-500 ring-offset-1",
-                          )}
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-2">
-                            <p
-                              className={cn(
-                                "truncate",
-                                isPendingTransfer || c.unread_count > 0 ? "font-semibold" : "font-medium",
-                              )}
-                            >
-                              {name}
-                            </p>
-                            <span className="shrink-0 text-[10px] text-muted-foreground">
-                              {isPendingTransfer
-                                ? formatRelativeTime(pendingTransfer.created_at)
-                                : formatRelativeTime(c.last_message_at)}
-                            </span>
-                          </div>
-                          {isPendingTransfer ? (
-                            <p className="truncate text-xs font-medium text-violet-700 dark:text-violet-300">
-                              <ArrowRightLeft className="mr-1 inline size-3" />
-                              Transferida por {pendingTransfer.from_profile?.full_name ?? "equipe"}
-                              {pendingTransfer.note ? ` · ${pendingTransfer.note}` : ""}
-                            </p>
-                          ) : (
-                            <p
-                              className={cn(
-                                "truncate text-xs",
-                                c.unread_count > 0 ? "font-medium text-foreground" : "text-muted-foreground",
-                              )}
-                            >
-                              {c.last_message_preview ?? "Sem mensagens"}
-                            </p>
-                          )}
-                          <div className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden">
-                            {(c.channel ?? "whatsapp") !== "whatsapp" ? (
-                              <Badge
-                                variant="secondary"
-                                className={cn("h-4 shrink-0 px-1.5 text-[9px]", CHANNEL_BADGE_CLASS[c.channel ?? "whatsapp"])}
-                              >
-                                {CHANNEL_LABEL[c.channel ?? "whatsapp"] ?? c.channel}
-                              </Badge>
-                            ) : null}
-                            {isPendingTransfer ? (
-                              <Badge className="h-4 shrink-0 bg-violet-600 px-1.5 text-[10px] hover:bg-violet-600">
-                                Nova transferência
-                              </Badge>
-                            ) : null}
-                            <p className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground">
-                              {c.patients?.full_name && c.contact_name && c.contact_name !== c.patients.full_name
-                                ? `${c.contact_name} · `
-                                : ""}
-                              {c.assigned_profile?.full_name ? (
-                                <>→ {c.assigned_profile.full_name}</>
-                              ) : (
-                                <span className="text-amber-600 dark:text-amber-400">Sem responsável</span>
-                              )}
-                            </p>
-                            {c.unread_count > 0 ? (
-                              <Badge className="h-4 shrink-0 px-1.5 text-[10px]">{c.unread_count}</Badge>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-                {hasMoreConversations ? (
-                  <div ref={listSentinelRef} className="flex justify-center py-3">
-                    <button
-                      type="button"
-                      onClick={() => setVisibleCount((c) => c + 30)}
-                      className="rounded-full bg-muted/60 px-3 py-1 text-[11px] text-muted-foreground transition hover:bg-muted"
-                    >
-                      Carregar mais ({filteredConversations.length - visibleConversations.length})
-                    </button>
-                  </div>
-                ) : null}
-                </div>
-              )}
-            </ScrollArea>
-            <div className="flex gap-2 border-t border-border/50 bg-background/50 p-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 flex-1 rounded-full text-xs"
-                onClick={() => setManualConvOpen(true)}
-              >
-                <Plus className="mr-1.5 size-3.5" />
-                Iniciar por telefone
-              </Button>
-              {provider === "zapi" ? (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-8 shrink-0 rounded-full"
-                  onClick={() => setSyncConfirmOpen(true)}
-                  disabled={syncing}
-                  title="Sincronizar conversas do WhatsApp"
-                >
-                  {syncing ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="size-3.5" />
-                  )}
-                </Button>
-              ) : null}
-            </div>
-          </aside>
+          <CrmInboxListPanel
+            hiddenOnMobile={mobileView !== "list"}
+            search={search}
+            onSearchChange={setSearch}
+            listFiltersOpen={listFiltersOpen}
+            onListFiltersOpenChange={setListFiltersOpen}
+            hasActiveListFilters={hasActiveListFilters}
+            listFilterSummary={listFilterSummary}
+            filter={filter}
+            onFilterChange={setFilter}
+            channelFilter={channelFilter}
+            onChannelFilterChange={setChannelFilter}
+            tagFilter={tagFilter}
+            onTagFilterChange={setTagFilter}
+            tags={tags}
+            pendingTransferCount={pendingTransferCount}
+            loadingList={loadingList}
+            filteredCount={filteredConversations.length}
+            visibleConversations={visibleConversations}
+            selectedId={selectedId}
+            pendingTransfers={pendingTransfers}
+            contactPhotos={contactPhotos}
+            convTagsMap={convTagsMap}
+            resolveTagColor={resolveTagColor}
+            onSelectConversation={selectConversation}
+            hasMoreConversations={hasMoreConversations}
+            listSentinelRef={listSentinelRef}
+            onLoadMore={() => setVisibleCount((c) => c + 30)}
+            onManualConvOpen={() => setManualConvOpen(true)}
+            provider={provider}
+            onSyncConfirmOpen={() => setSyncConfirmOpen(true)}
+            syncing={syncing}
+          />
 
           {/* Coluna 2 — Chat */}
           <main
@@ -1861,9 +2059,28 @@ export function CrmInboxPage() {
                           {typingUser} está digitando…
                         </p>
                       ) : (
-                        <p className="text-xs text-muted-foreground">
-                          {composeTarget ? formatPhoneBR(composeTarget.phone) : formatPhoneBR(selected!.contact_phone)}
-                        </p>
+                        <>
+                          <p className="text-xs text-muted-foreground">
+                            {composeTarget ? formatPhoneBR(composeTarget.phone) : formatPhoneBR(selected!.contact_phone)}
+                          </p>
+                          {!composeTarget && selected ? (
+                            <p
+                              className={cn(
+                                "mt-0.5 flex items-center gap-1 text-xs font-medium",
+                                chatHandlerInfo.assignedName || chatHandlerInfo.lastOutboundStaff
+                                  ? "text-emerald-700 dark:text-emerald-400"
+                                  : "text-amber-600 dark:text-amber-400",
+                              )}
+                            >
+                              <UserRound className="size-3 shrink-0" aria-hidden />
+                              {chatHandlerInfo.assignedName
+                                ? `Atendido por ${chatHandlerInfo.assignedName}`
+                                : chatHandlerInfo.lastOutboundStaff
+                                  ? `Última resposta: ${chatHandlerInfo.lastOutboundStaff}`
+                                  : "Sem responsável"}
+                            </p>
+                          ) : null}
+                        </>
                       )}
                       {!composeTarget && patientLink ? (
                         <Link
@@ -1917,19 +2134,20 @@ export function CrmInboxPage() {
                   </div>
                 </div>
                 {!composeTarget && selectedPendingTransfer ? (
-                  <div className="border-b border-violet-200 bg-violet-50 px-4 py-2.5 text-sm dark:border-violet-900 dark:bg-violet-950/40">
-                    <p className="flex items-center gap-1.5 font-medium text-violet-800 dark:text-violet-200">
-                      <ArrowRightLeft className="size-4 shrink-0" />
-                      {selectedPendingTransfer.from_profile?.full_name ?? "Alguém da equipe"} transferiu esta conversa para você
+                  <CrmInlineAlert tone="violet">
+                    <p className="flex items-start gap-1.5 font-medium">
+                      <ArrowRightLeft className="mt-0.5 size-4 shrink-0" />
+                      <span className="min-w-0 flex-1">
+                        {selectedPendingTransfer.from_profile?.full_name ?? "Alguém da equipe"} transferiu
+                        esta conversa para você
+                      </span>
                     </p>
                     {selectedPendingTransfer.note ? (
-                      <p className="mt-1 text-xs text-violet-700 dark:text-violet-300">
-                        Observação: {selectedPendingTransfer.note}
-                      </p>
+                      <p className="mt-1 text-xs opacity-90">Observação: {selectedPendingTransfer.note}</p>
                     ) : null}
-                  </div>
+                  </CrmInlineAlert>
                 ) : null}
-                <div className={cn(crmChatMessagesScroll, crmChatBg)}>
+                <div ref={chatScrollRef} className={cn(crmChatMessagesScroll, crmChatBg)}>
                   {composeTarget ? (
                     <div className="flex min-h-[min(50vh,320px)] flex-col items-center justify-center py-12">
                       <div className="max-w-sm rounded-2xl bg-background/85 px-5 py-4 text-center text-sm text-muted-foreground shadow-sm backdrop-blur-sm">
@@ -1966,155 +2184,46 @@ export function CrmInboxPage() {
                           resolveMediaUrl={resolveMediaUrl}
                           replyTo={m.reply_to_message_id ? messagesById.get(m.reply_to_message_id) : null}
                           onReply={setReplyTo}
-                          highlighted={msgSearchHits.some((h) => h.id === m.id)}
+                          highlighted={msgSearchHighlightIds.has(m.id)}
+                          onContentResize={handleChatContentResize}
                         />
                       ))}
                       <div ref={bottomRef} />
                     </div>
                   )}
                 </div>
-                <div className={crmComposerBar}>
-                  {!composeTarget && scheduledList.length > 0 ? (
-                    <div className="mb-1.5 space-y-1 rounded-lg border border-amber-300/60 bg-amber-50 px-2 py-1.5 text-[11px] dark:border-amber-900/50 dark:bg-amber-950/30">
-                      <p className="flex items-center gap-1.5 font-medium text-amber-800 dark:text-amber-200">
-                        <CalendarClock className="size-3.5" />
-                        {scheduledList.length} mensagem(ns) agendada(s)
-                      </p>
-                      {scheduledList.map((s) => (
-                        <div key={s.id} className="flex items-center gap-1.5">
-                          <span className="shrink-0 tabular-nums text-amber-700 dark:text-amber-300">
-                            {fmtDateTime(s.send_at)}
-                          </span>
-                          <span className="line-clamp-1 flex-1 text-muted-foreground">{s.body}</span>
-                          <button
-                            type="button"
-                            className="shrink-0 text-muted-foreground hover:text-red-600"
-                            onClick={() => void cancelScheduled(s.id)}
-                            title="Cancelar agendamento"
-                          >
-                            <Trash2 className="size-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                  {replyTo ? (
-                    <div className="mb-1.5 flex items-center gap-1.5 rounded-lg border border-border/60 bg-background px-2 py-1.5 text-[11px]">
-                      <Reply className="size-3 shrink-0 text-emerald-600" />
-                      <p className="line-clamp-1 flex-1 text-muted-foreground">{replyTo.body ?? replyTo.message_type}</p>
-                      <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setReplyTo(null)}>
-                        <X className="size-3.5" />
-                      </button>
-                    </div>
-                  ) : null}
-                  <CrmQuickReplies
-                    disabled={sending || (!selectedId && !composeTarget) || selected?.status === "closed"}
-                    templateVars={quickReplyVars}
-                    onSelect={(t) => setText((prev) => (prev ? `${prev}\n\n${t}` : t))}
-                  />
-                  <div className="flex items-center gap-1 rounded-xl border border-border/50 bg-background p-1 shadow-sm">
-                    <input
-                      ref={fileRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,.jpg,.jpeg,.png,.webp,.gif,.pdf"
-                      className="hidden"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) void sendFile(f);
-                        e.target.value = "";
-                      }}
-                    />
-                    <input
-                      ref={videoFileRef}
-                      type="file"
-                      accept="video/mp4,video/3gpp,video/quicktime,.mp4,.3gp,.mov"
-                      className="hidden"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) void sendFile(f);
-                        e.target.value = "";
-                      }}
-                    />
-                    <input
-                      ref={audioFileRef}
-                      type="file"
-                      accept="audio/*,.mp3,.ogg,.m4a,.aac,.wav"
-                      className="hidden"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) void sendFile(f);
-                        e.target.value = "";
-                      }}
-                    />
-                    <Button variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" onClick={() => fileRef.current?.click()} disabled={sending || !selectedId || selected?.status === "closed" || !!composeTarget || (selected?.channel ?? "whatsapp") !== "whatsapp"} title="Enviar foto ou PDF">
-                      <Paperclip className="size-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-8 shrink-0 rounded-full"
-                      onClick={() => videoFileRef.current?.click()}
-                      disabled={sending || !selectedId || selected?.status === "closed" || !!composeTarget || (selected?.channel ?? "whatsapp") !== "whatsapp"}
-                      title="Enviar vídeo"
-                    >
-                      <Video className="size-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-8 shrink-0 rounded-full"
-                      onClick={() => audioFileRef.current?.click()}
-                      disabled={sending || !selectedId || selected?.status === "closed" || !!composeTarget || (selected?.channel ?? "whatsapp") !== "whatsapp"}
-                      title="Anexar áudio"
-                    >
-                      <FileAudio className="size-4" />
-                    </Button>
-                    <CrmAudioRecorder
-                      disabled={sending || !selectedId || selected?.status === "closed" || !!composeTarget || (selected?.channel ?? "whatsapp") !== "whatsapp"}
-                      onRecorded={(f) => void sendFile(f)}
-                    />
-                    <CrmEmojiPicker
-                      onSelect={insertEmoji}
-                      disabled={(!composeTarget && selected?.status === "closed") || (!selectedId && !composeTarget)}
-                    />
-                    <Textarea
-                      ref={composerRef}
-                      placeholder="Digite uma mensagem… (Shift+Enter para nova linha)"
-                      value={text}
-                      onChange={(e) => {
-                        setText(e.target.value);
-                        if (selectedId) broadcastTyping();
-                      }}
-                      disabled={!composeTarget && selected?.status === "closed"}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          void sendText();
-                        }
-                      }}
-                      rows={2}
-                      className="min-h-[2.25rem] max-h-28 flex-1 resize-none border-0 bg-transparent py-1.5 text-[13px] shadow-none focus-visible:ring-0"
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-8 shrink-0 rounded-full"
-                      onClick={openSchedule}
-                      disabled={sending || !text.trim() || !!composeTarget || !selectedId || selected?.status === "closed"}
-                      title="Agendar envio"
-                    >
-                      <CalendarClock className="size-4" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      className="size-8 shrink-0 rounded-full bg-[#25D366] hover:bg-[#20bd5a]"
-                      onClick={() => void sendText()}
-                      disabled={sending || !text.trim() || (!composeTarget && selected?.status === "closed")}
-                    >
-                      {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-                    </Button>
-                  </div>
-                </div>
+                <CrmInboxComposer
+                  composeTarget={composeTarget}
+                  selectedId={selectedId}
+                  selectedStatus={selected?.status}
+                  selectedChannel={selected?.channel}
+                  sending={sending}
+                  humanizing={humanizing}
+                  text={text}
+                  onTextChange={(v) => {
+                    setText(v);
+                    if (selectedId) broadcastTyping();
+                  }}
+                  onComposerInput={adjustComposerHeight}
+                  onSend={() => void sendText()}
+                  onHumanize={() => void humanizeComposer()}
+                  onSchedule={openSchedule}
+                  onInsertEmoji={insertEmoji}
+                  onSendFile={(f) => void sendFile(f)}
+                  onShareContact={() => void openShareContact()}
+                  onShareLocation={() => void sendClinicLocation()}
+                  composerRef={composerRef}
+                  fileRef={fileRef}
+                  videoFileRef={videoFileRef}
+                  audioFileRef={audioFileRef}
+                  scheduledList={scheduledList}
+                  replyTo={replyTo}
+                  onCancelScheduled={(id) => void cancelScheduled(id)}
+                  onClearReply={() => setReplyTo(null)}
+                  quickRepliesDisabled={sending || (!selectedId && !composeTarget) || selected?.status === "closed"}
+                  quickReplyVars={quickReplyVars}
+                  onQuickReplySelect={(t) => setText((prev) => (prev ? `${prev}\n\n${t}` : t))}
+                />
               </div>
             )}
           </main>
@@ -2162,6 +2271,38 @@ export function CrmInboxPage() {
 
                 <div className={crmDetailScroll}>
                   <TabsContent value="patient" className={crmDetailTabContent}>
+                    {selected ? (
+                      <CrmDetailSection title="Atendimento">
+                        <div className="flex items-start gap-2">
+                          <UserRound className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium">
+                              {chatHandlerInfo.assignedName ??
+                                chatHandlerInfo.lastOutboundStaff ??
+                                "Sem responsável"}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {chatHandlerInfo.assignedName
+                                ? "Responsável pela conversa"
+                                : chatHandlerInfo.lastOutboundStaff
+                                  ? "Última pessoa que respondeu (conversa não assumida)"
+                                  : "Ninguém assumiu esta conversa ainda"}
+                            </p>
+                            {profile && selected.assigned_to !== profile.id ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="mt-2 h-8 w-full text-xs"
+                                onClick={() => void assignToMe()}
+                              >
+                                Assumir conversa
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                      </CrmDetailSection>
+                    ) : null}
+
                     {selected?.patient_id ? (
                       <CrmDetailSection title="Prontuário vinculado" bare>
                         <CrmPatientPanel
@@ -2220,15 +2361,10 @@ export function CrmInboxPage() {
                     <CrmDetailSection title="Funil de vendas">
                       {selected ? (
                         <>
-                          <CrmFunnelAiSuggestion
-                            conversationId={selected.id}
-                            dealId={selected.deal_id}
-                            onUpdated={() => void loadConversations({ silent: true })}
-                          />
                           {!selected.deal_id ? (
                             <Button
                               size="sm"
-                              className="mt-2 w-full bg-emerald-600 hover:bg-emerald-700"
+                              className="w-full bg-emerald-600 hover:bg-emerald-700"
                               onClick={() => void addToPipeline()}
                             >
                               Adicionar ao funil (manual)
@@ -2577,6 +2713,45 @@ export function CrmInboxPage() {
             </Button>
             <Button disabled={sending || !newPhone.trim() || !newMsg.trim()} onClick={() => void startConversation()}>
               {sending ? "Enviando…" : "Iniciar conversa"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={shareContactOpen} onOpenChange={setShareContactOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Enviar contato</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="share-contact-name">Nome</Label>
+              <Input
+                id="share-contact-name"
+                value={shareContactName}
+                onChange={(e) => setShareContactName(e.target.value)}
+                placeholder="Nome do contato"
+              />
+            </div>
+            <div>
+              <Label htmlFor="share-contact-phone">Telefone</Label>
+              <Input
+                id="share-contact-phone"
+                value={shareContactPhone}
+                onChange={(e) => setShareContactPhone(e.target.value)}
+                placeholder="(33) 99999-9999"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShareContactOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={sending || !shareContactName.trim() || !shareContactPhone.trim()}
+              onClick={() => void sendShareContact()}
+            >
+              {sending ? <Loader2 className="size-4 animate-spin" /> : "Enviar contato"}
             </Button>
           </DialogFooter>
         </DialogContent>
