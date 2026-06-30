@@ -3,6 +3,8 @@ import { dashboardPathFor } from "@/lib/mock-auth";
 
 export const CRM_PWA_SESSION_KEY = "clinicos-crm-pwa";
 export const CRM_PWA_THEME = "#075E54";
+/** Largura fixa do frame mobile (estilo WhatsApp Business). */
+export const CRM_PWA_FRAME_WIDTH = 430;
 
 /** Detecta app instalado (Android PWA ou iOS Add to Home Screen). */
 export function isCrmStandalone(): boolean {

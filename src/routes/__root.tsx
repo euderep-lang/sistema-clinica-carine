@@ -39,9 +39,17 @@ function NotFoundComponent() {
   );
 }
 
+function isStaleChunkError(message: string): boolean {
+  return /Failed to fetch dynamically imported module|Loading chunk \d+ failed|Importing a module script failed/i.test(
+    message,
+  );
+}
+
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
+  const staleChunk = isStaleChunkError(error?.message ?? "");
+
   useEffect(() => {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
     captureException(error, { boundary: "tanstack_root_error_component" });
@@ -54,7 +62,9 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
           Não foi possível carregar esta página
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Ocorreu um erro inesperado. Tente novamente ou volte ao início.
+          {staleChunk
+            ? "Há uma versão nova do sistema. Recarregue a página para continuar."
+            : "Ocorreu um erro inesperado. Tente novamente ou volte ao início."}
         </p>
         {error?.message && (
           <p className="mt-4 max-h-40 overflow-auto rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-left text-xs font-mono text-destructive">
@@ -64,12 +74,16 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
+              if (staleChunk) {
+                window.location.reload();
+                return;
+              }
               router.invalidate();
               reset();
             }}
             className="inline-flex cursor-pointer items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors duration-200 hover:bg-primary/90"
           >
-            Tentar novamente
+            {staleChunk ? "Recarregar página" : "Tentar novamente"}
           </button>
           <a
             href="/"

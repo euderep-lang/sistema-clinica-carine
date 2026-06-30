@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/mock-auth";
+import { useCrmViewportLock } from "@/hooks/use-crm-viewport-lock";
 import { canAccessCrm, CRM_PWA_THEME, markCrmPwaSession, postLoginPathForRole } from "@/lib/crm-pwa";
 
 export const Route = createFileRoute("/crm/login")({
@@ -32,6 +33,8 @@ function CrmLoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  useCrmViewportLock(true);
 
   if (!loading && profile) {
     if (canAccessCrm(profile.role)) {
@@ -61,10 +64,16 @@ function CrmLoginPage() {
 
   return (
     <div
-      className="flex min-h-dvh flex-col bg-[#111b21] text-white"
-      style={{ paddingTop: "max(0px, env(safe-area-inset-top))" }}
+      className="crm-mobile-shell fixed left-[var(--crm-vv-offset-left,0)] top-[var(--crm-vv-offset-top,0)] z-50 flex flex-col overflow-hidden bg-[#111b21] text-white"
+      style={{
+        width: "var(--crm-vv-width, 100%)",
+        height: "var(--crm-vv-height, 100svh)",
+        maxHeight: "var(--crm-vv-height, 100svh)",
+        paddingTop: "max(0px, env(safe-area-inset-top))",
+        paddingBottom: "max(0px, env(safe-area-inset-bottom))",
+      }}
     >
-      <div className="flex flex-1 flex-col items-center justify-center px-6 py-10">
+      <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-10">
         <div className="w-full max-w-[22rem] space-y-8">
           <div className="space-y-4 text-center">
             <div

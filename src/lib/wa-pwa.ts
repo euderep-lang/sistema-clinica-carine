@@ -1,7 +1,8 @@
 export async function registerWaServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (typeof window === "undefined" || !("serviceWorker" in navigator)) return null;
   try {
-    const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+    // Escopo só /crm/ — não interfere no app principal (/admin, etc.)
+    const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/crm/" });
     return reg;
   } catch {
     return null;

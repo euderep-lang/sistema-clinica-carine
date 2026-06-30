@@ -1,6 +1,6 @@
 /* Service Worker do CRM — cache do shell + notificações (in-app e Web Push 24/7). */
 
-const CACHE = "clinicos-crm-v4";
+const CACHE = "clinicos-crm-v5";
 
 async function setBadgeCount(count) {
   if (!("setAppBadge" in self.registration)) return;
