@@ -31,3 +31,42 @@ export const GENDER_TEMPLATE_VAR_KEYS = [
   "interessado",
   "satisfeito",
 ] as const;
+
+const GENDER_LITERAL_FIXES: { placeholder: string; patterns: RegExp[] }[] = [
+  {
+    placeholder: "{{muitos_pacientes}}",
+    patterns: [/\bmuitas pacientes\b/gi, /\bmuitos pacientes\b/gi],
+  },
+  {
+    placeholder: "ficar {{perdido}}",
+    patterns: [/\bficar perdida\b/gi, /\bficar perdido\b/gi],
+  },
+  {
+    placeholder: "continua {{insatisfeito}}",
+    patterns: [/\bcontinua insatisfeita\b/gi, /\bcontinua insatisfeito\b/gi],
+  },
+  {
+    placeholder: "ficar {{interessado}}",
+    patterns: [/\bficar interessada\b/gi, /\bficar interessado\b/gi],
+  },
+  {
+    placeholder: "ficar {{satisfeito}}",
+    patterns: [/\bficar satisfeita\b/gi, /\bficar satisfeito\b/gi],
+  },
+];
+
+/**
+ * Converte concordâncias fixas (comum em templates editados manualmente) para placeholders dinâmicos.
+ * "mensagem perdida" não é alterado — concorda com "mensagem", não com o paciente.
+ */
+export function normalizeGenderInTemplate(template: string): string {
+  let out = template;
+  for (const { placeholder, patterns } of GENDER_LITERAL_FIXES) {
+    const varName = placeholder.match(/\{\{(\w+)\}\}/)?.[1];
+    if (varName && out.includes(`{{${varName}}}`)) continue;
+    for (const pattern of patterns) {
+      out = out.replace(pattern, placeholder);
+    }
+  }
+  return out;
+}

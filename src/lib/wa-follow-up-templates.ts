@@ -1,3 +1,5 @@
+import { normalizeGenderInTemplate } from "@/lib/wa-template-gender";
+
 export type FollowUpMode = "auto" | "manual";
 
 export type FollowUpStepDef = {
@@ -275,7 +277,7 @@ export function mergeFollowUpSequences(
     const seqOverrides = overrides?.[sequenceKey];
     result[sequenceKey] = steps.map((step) => ({
       ...step,
-      template: seqOverrides?.[step.key]?.trim() || step.template,
+      template: normalizeGenderInTemplate(seqOverrides?.[step.key]?.trim() || step.template),
     }));
   }
   return result;
@@ -289,7 +291,7 @@ export function templatesToOverrides(
     const seqEdited = edited[sequenceKey];
     if (!seqEdited) continue;
     for (const step of steps) {
-      const value = seqEdited[step.key]?.trim();
+      const value = normalizeGenderInTemplate(seqEdited[step.key]?.trim() ?? "");
       if (!value || value === step.template.trim()) continue;
       if (!out[sequenceKey]) out[sequenceKey] = {};
       out[sequenceKey][step.key] = value;

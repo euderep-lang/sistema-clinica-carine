@@ -24,6 +24,7 @@ import { applyWaTagRules, isFirstInboundMessage } from "@/lib/wa-tag-automation.
 import { handleAppointmentConfirmationReply } from "@/lib/wa-appointment-confirmation.server";
 import { isValidContactPhotoUrl } from "@/lib/wa-contact-photo";
 import { providerSendText, isWhatsAppConfigured } from "@/lib/whatsapp-provider.server";
+import { humanizeForConversation } from "@/lib/wa-quick-reply-ai.server";
 
 export async function resolveTenantId(): Promise<string | null> {
   const { data } = await supabaseAdmin.from("tenants").select("id").limit(1).maybeSingle();
@@ -533,8 +534,9 @@ export async function maybeSendAfterHoursAutoReply(
 
   const message = customMessage?.trim() || DEFAULT_AFTER_HOURS_MESSAGE;
   try {
+    const humanized = await humanizeForConversation(tenantId, message, { conversationId });
     const normalized = normalizeBrazilPhone(phone);
-    const { messageId } = await providerSendText(normalized, message);
+    const { messageId } = await providerSendText(normalized, humanized);
     const ts = now.toISOString();
 
     await supabaseAdmin.from("wa_messages" as never).insert({
@@ -543,7 +545,7 @@ export async function maybeSendAfterHoursAutoReply(
       wa_message_id: messageId,
       direction: "outbound",
       message_type: "text",
-      body: message,
+      body: humanized,
       status: "sent",
       sent_by: null,
       created_at: ts,
@@ -554,7 +556,7 @@ export async function maybeSendAfterHoursAutoReply(
       .update({
         last_after_hours_reply_at: ts,
         last_message_at: ts,
-        last_message_preview: message.slice(0, 120),
+        last_message_preview: humanized.slice(0, 120),
         updated_at: ts,
       } as never)
       .eq("id", conversationId);
@@ -563,7 +565,7 @@ export async function maybeSendAfterHoursAutoReply(
       tenantId,
       conversationId,
       action: "after_hours_auto_reply",
-      details: { preview: message.slice(0, 80) },
+      details: { preview: humanized.slice(0, 80) },
       source: "automation",
     });
   } catch (e) {

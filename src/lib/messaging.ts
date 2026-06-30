@@ -26,11 +26,12 @@ export function buildWhatsAppLink(phone: string | null | undefined, content: str
 }
 
 export function buildVars(patient: PatientLite, tenantName: string, extras?: Record<string, string>): Record<string, string> {
+  const primeiro = patient.full_name.split(" ")[0] ?? patient.full_name;
   return {
     ...buildGenderTemplateVars(patient.gender),
-    nome_paciente: patient.full_name,
+    nome_paciente: primeiro,
     nome_clinica: tenantName,
-    primeiro_nome: patient.full_name.split(" ")[0] ?? patient.full_name,
+    primeiro_nome: primeiro,
     ...(extras ?? {}),
   };
 }

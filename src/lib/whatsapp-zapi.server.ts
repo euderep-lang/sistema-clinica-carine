@@ -207,7 +207,9 @@ export async function sendZApiMedia(
       ? "audio/mpeg"
       : mimeType.includes("ogg")
         ? "audio/ogg"
-        : mimeType;
+        : mimeType.includes("mp4") || mimeType.includes("m4a") || mimeType.includes("aac") || mimeType.includes("caf")
+          ? "audio/mp4"
+          : mimeType;
     json = await zapiRequest(config, "/send-audio", {
       phone,
       audio: toDataUri(base64, audioMime),
@@ -230,6 +232,46 @@ export async function sendZApiMedia(
     });
   }
 
+  const messageId = json.messageId ?? json.id ?? json.zaapId;
+  if (!messageId) throw new Error("Z-API não retornou ID da mensagem");
+  return { messageId };
+}
+
+export async function sendZApiContact(
+  config: ZApiConfig,
+  phone: string,
+  contactName: string,
+  contactPhone: string,
+  options?: { replyToWaMessageId?: string },
+) {
+  const json = await zapiRequest<{ messageId?: string; id?: string; zaapId?: string }>(config, "/send-contact", {
+    phone,
+    contactName,
+    contactPhone,
+    ...(options?.replyToWaMessageId ? { messageId: options.replyToWaMessageId } : {}),
+  });
+  const messageId = json.messageId ?? json.id ?? json.zaapId;
+  if (!messageId) throw new Error("Z-API não retornou ID da mensagem");
+  return { messageId };
+}
+
+export async function sendZApiLocation(
+  config: ZApiConfig,
+  phone: string,
+  title: string,
+  address: string,
+  latitude: number | string,
+  longitude: number | string,
+  options?: { replyToWaMessageId?: string },
+) {
+  const json = await zapiRequest<{ messageId?: string; id?: string; zaapId?: string }>(config, "/send-location", {
+    phone,
+    title,
+    address,
+    latitude: String(latitude),
+    longitude: String(longitude),
+    ...(options?.replyToWaMessageId ? { messageId: options.replyToWaMessageId } : {}),
+  });
   const messageId = json.messageId ?? json.id ?? json.zaapId;
   if (!messageId) throw new Error("Z-API não retornou ID da mensagem");
   return { messageId };

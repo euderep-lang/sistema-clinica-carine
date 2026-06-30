@@ -8,11 +8,21 @@ import {
   getWhatsAppStatusPayload,
   isWhatsAppConfigured,
   providerResolveMediaUrl,
+  providerSendContact,
+  providerSendLocation,
   providerSendMedia,
   providerSendText,
 } from "@/lib/whatsapp-provider.server";
 import { sendMetaSocialText } from "@/lib/whatsapp-meta.server";
+import { geocodeAddressLine } from "@/lib/wa-geocode.server";
+import { formatClinicAddress, type ClinicAddress } from "@/lib/settings-helpers";
+import { getTenantSettingServer } from "@/lib/wa-tenant-settings.server";
 import { normalizeOutboundMessageBody } from "@/lib/wa-automation-quick-replies.server";
+import { normalizeManualOutboundMessage } from "@/lib/wa-quick-reply-ai.server";
+import {
+  formatStaffWaTextForPatient,
+  loadWaSenderProfile,
+} from "@/lib/wa-sender-signature.server";
 import { getProfessionalWaUnreadBadgeCount, sendPushToUsers } from "@/lib/web-push.server";
 import { logAuditSafe } from "@/lib/audit.server";
 
@@ -65,8 +75,15 @@ export const sendWaText = createServerFn({ method: "POST" })
       external_user_id?: string | null;
     };
 
-    const text = normalizeOutboundMessageBody(data.text);
+    const text = await normalizeManualOutboundMessage(
+      profile.tenant_id,
+      normalizeOutboundMessageBody(data.text),
+      { conversationId: data.conversationId },
+    );
     if (!text) throw new Error("Mensagem vazia");
+
+    const senderProfile = await loadWaSenderProfile(supabase, userId);
+    const patientText = formatStaffWaTextForPatient(text, senderProfile);
 
     let replyToWaId: string | undefined;
     if (data.replyToMessageId) {
@@ -84,11 +101,11 @@ export const sendWaText = createServerFn({ method: "POST" })
 
     if (channel === "instagram" || channel === "messenger") {
       const recipientId = convRow.external_user_id ?? convRow.contact_phone;
-      const result = await sendMetaSocialText(recipientId, text, channel);
+      const result = await sendMetaSocialText(recipientId, patientText, channel);
       messageId = result.messageId;
     } else {
       const phone = normalizeBrazilPhone(convRow.contact_phone);
-      const result = await providerSendText(phone, text, {
+      const result = await providerSendText(phone, patientText, {
         replyToWaMessageId: replyToWaId,
       });
       messageId = result.messageId;
@@ -169,7 +186,7 @@ export const sendWaMedia = createServerFn({ method: "POST" })
     let mimeType = data.mimeType;
     let filename = data.filename;
 
-    if (data.mediaType === "audio" && !/mpeg|mp3|ogg/i.test(mimeType)) {
+    if (data.mediaType === "audio" && !/mpeg|mp3|ogg|mp4|m4a|aac|opus|caf/i.test(mimeType)) {
       const converted = await convertAudioBase64ToMp3(base64, mimeType);
       if (converted) {
         base64 = converted.base64;
@@ -178,22 +195,27 @@ export const sendWaMedia = createServerFn({ method: "POST" })
       }
     }
 
+    const senderProfile = await loadWaSenderProfile(supabase, userId);
+    const patientCaption = data.caption?.trim()
+      ? formatStaffWaTextForPatient(data.caption, senderProfile)
+      : undefined;
+
     const { messageId, mediaRef } = await providerSendMedia(
       phone,
       data.mediaType,
       base64,
       mimeType,
       filename,
-      data.caption,
+      patientCaption,
     );
 
     const preview =
       data.mediaType === "audio" ? "🎤 Áudio" : data.mediaType === "image" ? "📷 Imagem" : `📎 ${filename}`;
     const now = new Date().toISOString();
 
-    // Z-API não devolve URL da mídia — guardamos data URI comprimida para preview no CRM
+    // Z-API não devolve URL da mídia — guardamos data URI para preview no CRM
     let storedMediaRef = mediaRef;
-    if (!storedMediaRef && data.mediaType === "image") {
+    if (!storedMediaRef && (data.mediaType === "image" || data.mediaType === "document")) {
       const dataUri = `data:${mimeType};base64,${base64}`;
       if (dataUri.length <= 600_000) storedMediaRef = dataUri;
     }
@@ -233,6 +255,138 @@ export const sendWaMedia = createServerFn({ method: "POST" })
       details: { media_type: data.mediaType, message_id: messageId, filename },
       source: "ui",
     });
+
+    return { ok: true };
+  });
+
+export const sendWaContact = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { conversationId: string; contactName: string; contactPhone: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const profile = await requireCrmAccess(supabase, userId);
+    if (!isWhatsAppConfigured()) throw new Error(configError());
+
+    const contactName = data.contactName.trim();
+    const contactPhone = normalizeBrazilPhone(data.contactPhone);
+    if (!contactName) throw new Error("Informe o nome do contato");
+    if (!contactPhone) throw new Error("Telefone do contato inválido");
+
+    const { data: conv, error } = await supabase
+      .from("wa_conversations" as never)
+      .select("id, contact_phone, status, channel")
+      .eq("id", data.conversationId)
+      .maybeSingle();
+    if (error || !conv) throw new Error("Conversa não encontrada");
+
+    const convRow = conv as { contact_phone: string; status: string; channel?: string };
+    if ((convRow.channel ?? "whatsapp") !== "whatsapp") {
+      throw new Error("Compartilhar contato só funciona no WhatsApp");
+    }
+
+    const phone = normalizeBrazilPhone(convRow.contact_phone);
+    const { messageId } = await providerSendContact(phone, contactName, contactPhone);
+
+    const now = new Date().toISOString();
+    const preview = `👤 Contato: ${contactName}`;
+    const rawPayload = {
+      contact: { displayName: contactName, contactPhone },
+    };
+
+    await supabase.from("wa_messages" as never).insert({
+      tenant_id: profile.tenant_id,
+      conversation_id: data.conversationId,
+      wa_message_id: messageId,
+      direction: "outbound",
+      message_type: "contact",
+      body: preview,
+      status: "sent",
+      sent_by: userId,
+      raw_payload: rawPayload,
+    } as never);
+
+    await supabase
+      .from("wa_conversations" as never)
+      .update({
+        last_message_at: now,
+        last_message_preview: preview,
+        updated_at: now,
+        ...(convRow.status === "closed" ? { status: "open", close_reason: null, closed_at: null, closed_by: null } : {}),
+      } as never)
+      .eq("id", data.conversationId);
+
+    return { ok: true };
+  });
+
+export const sendWaClinicLocation = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { conversationId: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const profile = await requireCrmAccess(supabase, userId);
+    if (!isWhatsAppConfigured()) throw new Error(configError());
+
+    const { data: conv, error } = await supabase
+      .from("wa_conversations" as never)
+      .select("id, contact_phone, status, channel")
+      .eq("id", data.conversationId)
+      .maybeSingle();
+    if (error || !conv) throw new Error("Conversa não encontrada");
+
+    const convRow = conv as { contact_phone: string; status: string; channel?: string };
+    if ((convRow.channel ?? "whatsapp") !== "whatsapp") {
+      throw new Error("Compartilhar localização só funciona no WhatsApp");
+    }
+
+    const [{ data: tenantRow }, addrSetting] = await Promise.all([
+      supabase.from("tenants").select("name, trade_name").eq("id", profile.tenant_id).maybeSingle(),
+      getTenantSettingServer<ClinicAddress>(profile.tenant_id, "address"),
+    ]);
+
+    const title = tenantRow?.trade_name?.trim() || tenantRow?.name?.trim() || "Clínica";
+    const address = formatClinicAddress(addrSetting);
+    if (!address) throw new Error("Cadastre o endereço da clínica em Configurações → Clínica");
+
+    const coords = await geocodeAddressLine(address);
+    if (!coords) throw new Error("Não foi possível localizar o endereço da clínica no mapa");
+
+    const phone = normalizeBrazilPhone(convRow.contact_phone);
+    const { messageId } = await providerSendLocation(phone, title, address, coords.lat, coords.lng);
+
+    const now = new Date().toISOString();
+    const preview = `📍 ${title}`;
+    const mapsUrl = `https://www.google.com/maps?q=${coords.lat},${coords.lng}`;
+    const rawPayload = {
+      location: {
+        name: title,
+        address,
+        latitude: coords.lat,
+        longitude: coords.lng,
+        url: mapsUrl,
+      },
+    };
+
+    await supabase.from("wa_messages" as never).insert({
+      tenant_id: profile.tenant_id,
+      conversation_id: data.conversationId,
+      wa_message_id: messageId,
+      direction: "outbound",
+      message_type: "location",
+      body: `${preview}\n${mapsUrl}`,
+      status: "sent",
+      sent_by: userId,
+      raw_payload: rawPayload,
+    } as never);
+
+    await supabase
+      .from("wa_conversations" as never)
+      .update({
+        last_message_at: now,
+        last_message_preview: preview,
+        updated_at: now,
+        ...(convRow.status === "closed" ? { status: "open", close_reason: null, closed_at: null, closed_by: null } : {}),
+      } as never)
+      .eq("id", data.conversationId);
 
     return { ok: true };
   });
@@ -362,7 +516,8 @@ export const listScheduledWaMessages = createServerFn({ method: "POST" })
       .select("id, body, send_at, status, created_at, error")
       .eq("conversation_id", data.conversationId)
       .eq("status", "pending")
-      .order("send_at", { ascending: true });
+      .order("send_at", { ascending: true })
+      .limit(50);
     if (error) throw new Error(error.message);
     return (rows ?? []) as { id: string; body: string; send_at: string; status: string; created_at: string; error: string | null }[];
   });
@@ -433,8 +588,10 @@ export const startWaConversation = createServerFn({ method: "POST" })
     const phone = normalizeBrazilPhone(data.phone);
     const now = new Date().toISOString();
     const displayName = data.name ?? phone;
-    const text = normalizeOutboundMessageBody(data.text);
-    if (!text) throw new Error("Mensagem vazia");
+    const draft = normalizeOutboundMessageBody(data.text);
+    if (!draft) throw new Error("Mensagem vazia");
+
+    const senderProfile = await loadWaSenderProfile(supabase, userId);
 
     const { data: tenantConvs } = await supabaseAdmin
       .from("wa_conversations" as never)
@@ -456,6 +613,7 @@ export const startWaConversation = createServerFn({ method: "POST" })
     let conversationId: string;
 
     if (existing) {
+      conversationId = existing.id;
       const { error: updateErr } = await supabaseAdmin
         .from("wa_conversations" as never)
         .update({
@@ -463,14 +621,11 @@ export const startWaConversation = createServerFn({ method: "POST" })
           patient_id: data.patientId ?? existing.patient_id ?? null,
           contact_name: data.patientId ? displayName : existing.contact_name ?? displayName,
           assigned_to: userId,
-          last_message_at: now,
-          last_message_preview: text.slice(0, 120),
           status: "open",
           updated_at: now,
         } as never)
         .eq("id", existing.id);
       if (updateErr) throw new Error(updateErr.message);
-      conversationId = existing.id;
     } else {
       const { data: conv, error: insertErr } = await supabaseAdmin
         .from("wa_conversations" as never)
@@ -480,8 +635,6 @@ export const startWaConversation = createServerFn({ method: "POST" })
           patient_id: data.patientId ?? null,
           contact_name: displayName,
           assigned_to: userId,
-          last_message_at: now,
-          last_message_preview: text.slice(0, 120),
           status: "open",
           updated_at: now,
         } as never)
@@ -491,7 +644,22 @@ export const startWaConversation = createServerFn({ method: "POST" })
       conversationId = (conv as { id: string }).id;
     }
 
-    const { messageId } = await providerSendText(phone, text);
+    const text = await normalizeManualOutboundMessage(profile.tenant_id, draft, {
+      conversationId,
+      contactName: displayName,
+    });
+    const patientText = formatStaffWaTextForPatient(text, senderProfile);
+
+    const { messageId } = await providerSendText(phone, patientText);
+
+    await supabaseAdmin
+      .from("wa_conversations" as never)
+      .update({
+        last_message_at: now,
+        last_message_preview: text.slice(0, 120),
+        updated_at: now,
+      } as never)
+      .eq("id", conversationId);
 
     await supabaseAdmin.from("wa_messages" as never).insert({
       tenant_id: profile.tenant_id,

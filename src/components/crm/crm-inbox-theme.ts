@@ -23,11 +23,11 @@ export const crmListItemActive =
   "bg-[#f0f2f5] dark:bg-[#202c33]";
 
 export const crmComposerBar =
-  "shrink-0 border-t border-black/5 bg-[#f0f2f5] px-2 py-1.5 dark:border-white/10 dark:bg-[#1f2c34] pb-[max(0.375rem,env(safe-area-inset-bottom))]";
+  "shrink-0 border-t border-black/5 bg-[#f0f2f5] px-2 py-1.5 dark:border-white/10 dark:bg-[#1f2c34] pb-[max(0.375rem,calc(env(safe-area-inset-bottom)+var(--crm-keyboard-inset,0px)))]";
 
 /** Área de mensagens — scroll interno, composer fica fixo embaixo */
 export const crmChatMessagesScroll =
-  "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3";
+  "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 [-webkit-overflow-scrolling:touch]";
 
 export const crmListItemBase =
   "mb-0 w-full max-w-full overflow-hidden border-b border-black/[0.06] px-3 py-3 text-left transition-colors active:bg-[#f5f6f6] dark:border-white/[0.06] dark:active:bg-[#202c33]";

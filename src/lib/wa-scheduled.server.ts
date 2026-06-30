@@ -5,6 +5,11 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { normalizeBrazilPhone } from "@/lib/wa-phone";
 import { normalizeOutboundMessageBody } from "@/lib/wa-automation-quick-replies.server";
+import { humanizeForConversation } from "@/lib/wa-quick-reply-ai.server";
+import {
+  formatStaffWaTextForPatient,
+  loadWaSenderProfile,
+} from "@/lib/wa-sender-signature.server";
 import { providerSendText, isWhatsAppConfigured } from "@/lib/whatsapp-provider.server";
 import { sendMetaSocialText } from "@/lib/whatsapp-meta.server";
 
@@ -36,19 +41,28 @@ async function deliverScheduled(row: ScheduledRow): Promise<void> {
   if (!conv) throw new Error("Conversa não encontrada");
   const convRow = conv as ConversationRow;
 
-  const text = normalizeOutboundMessageBody(row.body);
-  if (!text) throw new Error("Mensagem vazia");
+  const draft = normalizeOutboundMessageBody(row.body);
+  if (!draft) throw new Error("Mensagem vazia");
+
+  const text = await humanizeForConversation(row.tenant_id, draft, {
+    conversationId: row.conversation_id,
+  });
+
+  const senderProfile = row.created_by
+    ? await loadWaSenderProfile(supabaseAdmin, row.created_by)
+    : null;
+  const patientText = formatStaffWaTextForPatient(text, senderProfile);
 
   const channel = convRow.channel ?? "whatsapp";
   let messageId: string;
 
   if (channel === "instagram" || channel === "messenger") {
     const recipientId = convRow.external_user_id ?? convRow.contact_phone;
-    const result = await sendMetaSocialText(recipientId, text, channel);
+    const result = await sendMetaSocialText(recipientId, patientText, channel);
     messageId = result.messageId;
   } else {
     const phone = normalizeBrazilPhone(convRow.contact_phone);
-    const result = await providerSendText(phone, text);
+    const result = await providerSendText(phone, patientText);
     messageId = result.messageId;
   }
 

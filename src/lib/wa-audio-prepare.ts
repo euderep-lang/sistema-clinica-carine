@@ -1,4 +1,5 @@
 import lamejs from "lamejs";
+import { isIosSafari } from "@/lib/crm-pwa";
 
 const WHATSAPP_AUDIO_MIMES = new Set([
   "audio/mpeg",
@@ -9,6 +10,7 @@ const WHATSAPP_AUDIO_MIMES = new Set([
   "audio/mp4",
   "audio/m4a",
   "audio/x-m4a",
+  "audio/x-caf",
 ]);
 
 function mimeFromFilename(name: string): string {
@@ -20,6 +22,7 @@ function mimeFromFilename(name: string): string {
       return "audio/ogg";
     case "m4a":
     case "aac":
+    case "caf":
       return "audio/mp4";
     case "webm":
       return "audio/webm";
@@ -33,7 +36,14 @@ function mimeFromFilename(name: string): string {
 export function isWhatsAppReadyAudio(mime: string): boolean {
   const m = mime.toLowerCase();
   if (WHATSAPP_AUDIO_MIMES.has(m)) return true;
-  return m.includes("ogg") || m.includes("mpeg") || m.includes("mp3");
+  return m.includes("ogg") || m.includes("mpeg") || m.includes("mp3") || m.includes("mp4") || m.includes("m4a");
+}
+
+function getMp3Encoder() {
+  const lib = lamejs as typeof lamejs & { default?: { Mp3Encoder?: typeof lamejs.Mp3Encoder } };
+  const Enc = lib.Mp3Encoder ?? lib.default?.Mp3Encoder;
+  if (!Enc) throw new Error("Conversão MP3 indisponível neste navegador.");
+  return Enc;
 }
 
 function floatTo16(samples: Float32Array): Int16Array {
@@ -54,7 +64,8 @@ async function convertAudioToMp3(file: File): Promise<File> {
     const channels = decoded.numberOfChannels;
     const right = channels > 1 ? floatTo16(decoded.getChannelData(1)) : left;
 
-    const encoder = new lamejs.Mp3Encoder(channels, sampleRate, 128);
+    const Mp3Encoder = getMp3Encoder();
+    const encoder = new Mp3Encoder(channels, sampleRate, 128);
     const mp3Chunks: Int8Array[] = [];
     const block = 1152;
 
@@ -71,6 +82,14 @@ async function convertAudioToMp3(file: File): Promise<File> {
     const blob = new Blob(mp3Chunks as BlobPart[], { type: "audio/mpeg" });
     const baseName = file.name.replace(/\.[^.]+$/, "") || `audio-${Date.now()}`;
     return new File([blob], `${baseName}.mp3`, { type: "audio/mpeg" });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "erro desconhecido";
+    if (/decode|encoding|not supported/i.test(msg)) {
+      throw new Error(
+        "Este aparelho não converteu a gravação. Use o clipe para anexar MP3, OGG ou M4A.",
+      );
+    }
+    throw new Error(`Falha ao converter áudio: ${msg}`);
   } finally {
     await ctx.close();
   }
@@ -80,8 +99,18 @@ async function convertAudioToMp3(file: File): Promise<File> {
 export async function prepareAudioFileForWhatsApp(file: File): Promise<File> {
   const mime = (file.type || mimeFromFilename(file.name)).toLowerCase();
   if (isWhatsAppReadyAudio(mime)) {
-    if (!file.type && mime) {
-      return new File([file], file.name, { type: mime });
+    const normalizedMime =
+      mime.includes("mp4") || mime.includes("m4a") || mime.includes("caf")
+        ? "audio/mp4"
+        : mime.includes("ogg")
+          ? "audio/ogg"
+          : mime.includes("mpeg") || mime.includes("mp3")
+            ? "audio/mpeg"
+            : mime;
+    if (!file.type || file.type !== normalizedMime) {
+      return new File([file], file.name.replace(/\.\w+$/, "") + (normalizedMime.includes("mp4") ? ".m4a" : normalizedMime.includes("ogg") ? ".ogg" : ".mp3"), {
+        type: normalizedMime,
+      });
     }
     return file;
   }

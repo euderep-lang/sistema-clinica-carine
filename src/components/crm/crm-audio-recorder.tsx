@@ -3,6 +3,7 @@ import { Mic, Square } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { canRecordAudio } from "@/lib/wa-audio-prepare";
+import { isIosSafari } from "@/lib/crm-pwa";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -16,6 +17,7 @@ export function CrmAudioRecorder({ onRecorded, disabled }: Props) {
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const startedAtRef = useRef(0);
+  const mimeRef = useRef("");
 
   useEffect(() => {
     return () => {
@@ -29,18 +31,25 @@ export function CrmAudioRecorder({ onRecorded, disabled }: Props) {
 
     if (!canRecordAudio()) {
       toast.error(
-        "Microfone indisponível neste endereço. Use HTTPS (ngrok) ou anexe um arquivo de áudio pelo clipe.",
+        "Microfone indisponível. Use HTTPS e permita o microfone nas configurações do app.",
         { duration: 8000 },
       );
       return;
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          channelCount: 1,
+        },
+      });
       streamRef.current = stream;
       chunksRef.current = [];
 
       const mimeType = getSupportedMimeType();
+      mimeRef.current = mimeType;
       const recorder = mimeType
         ? new MediaRecorder(stream, { mimeType })
         : new MediaRecorder(stream);
@@ -49,19 +58,26 @@ export function CrmAudioRecorder({ onRecorded, disabled }: Props) {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
+      recorder.onerror = () => {
+        toast.error("Erro na gravação. Tente novamente ou anexe um arquivo de áudio.");
+        setRecording(false);
+        stream.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      };
+
       recorder.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
 
         const durationMs = Date.now() - startedAtRef.current;
         if (durationMs < 400 || chunksRef.current.length === 0) {
-          toast.info("Gravação muito curta. Segure o botão e fale por pelo menos 1 segundo.");
+          toast.info("Gravação muito curta. Fale por pelo menos 1 segundo.");
           return;
         }
 
-        const type = recorder.mimeType || mimeType || "audio/webm";
+        const type = recorder.mimeType || mimeRef.current || "audio/webm";
         const blob = new Blob(chunksRef.current, { type });
-        const ext = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
+        const ext = type.includes("mp4") || type.includes("aac") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
         onRecorded(new File([blob], `audio-${Date.now()}.${ext}`, { type }));
       };
 
@@ -70,8 +86,15 @@ export function CrmAudioRecorder({ onRecorded, disabled }: Props) {
       recorder.start(250);
       setRecording(true);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Permissão negada";
-      toast.error(`Não foi possível gravar áudio: ${msg}`);
+      const err = e as DOMException;
+      if (err.name === "NotAllowedError") {
+        toast.error("Permissão do microfone negada. Ative em Ajustes → Safari/Chrome → Microfone.");
+      } else if (err.name === "NotFoundError") {
+        toast.error("Nenhum microfone encontrado neste dispositivo.");
+      } else {
+        const msg = e instanceof Error ? e.message : "Permissão negada";
+        toast.error(`Não foi possível gravar áudio: ${msg}`);
+      }
     }
   };
 
@@ -100,13 +123,10 @@ export function CrmAudioRecorder({ onRecorded, disabled }: Props) {
 }
 
 function getSupportedMimeType(): string {
-  const types = [
-    "audio/webm;codecs=opus",
-    "audio/webm",
-    "audio/ogg;codecs=opus",
-    "audio/mp4",
-    "audio/aac",
-  ];
+  const iosFirst = ["audio/mp4", "audio/aac", "audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/webm"];
+  const androidFirst = ["audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+  const types = isIosSafari() ? iosFirst : androidFirst;
+
   for (const t of types) {
     if (MediaRecorder.isTypeSupported(t)) return t;
   }

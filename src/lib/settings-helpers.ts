@@ -215,7 +215,7 @@ export const TEMPLATE_VARS = [
 
 export const SAMPLE_VARS: Record<string, string> = {
   primeiro_nome: "Maria",
-  nome_paciente: "Maria Silva",
+      nome_paciente: "Maria",
   muitos_pacientes: "muitas pacientes",
   perdido: "perdida",
   insatisfeito: "insatisfeita",

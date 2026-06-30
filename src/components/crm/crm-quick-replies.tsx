@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Loader2, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   deleteWaQuickReply,
@@ -10,6 +10,14 @@ import {
   upsertWaQuickReply,
 } from "@/lib/whatsapp-crm.functions";
 import { renderTemplate, TEMPLATE_VARS } from "@/lib/settings-helpers";
+import {
+  fetchWaQuickRepliesCached,
+  getCachedWaQuickReplies,
+  invalidateWaQuickRepliesCache,
+  markWaQuickRepliesSeeded,
+  shouldRunWaQuickRepliesBackgroundSeed,
+  type WaQuickReplyRow,
+} from "@/lib/wa-quick-replies-cache";
 import { QUICK_REPLY_CATEGORY_LABELS } from "@/lib/whatsapp-crm";
 import { useAuth } from "@/lib/mock-auth";
 import { Button } from "@/components/ui/button";
@@ -18,14 +26,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 const CUSTOM_CATEGORY = "personalizadas";
-
-interface Reply {
-  id: string;
-  name: string;
-  content: string;
-  category?: string;
-  shortcut?: string | null;
-}
 
 interface Props {
   onSelect: (text: string) => void;
@@ -41,7 +41,10 @@ export function CrmQuickReplies({ onSelect, disabled, templateVars }: Props) {
   const upsertFn = useServerFn(upsertWaQuickReply);
   const deleteFn = useServerFn(deleteWaQuickReply);
 
-  const [replies, setReplies] = useState<Reply[]>([]);
+  const [replies, setReplies] = useState<WaQuickReplyRow[]>(() =>
+    tenant?.id ? (getCachedWaQuickReplies(tenant.id) ?? []) : [],
+  );
+  const [loading, setLoading] = useState(() => !replies.length);
   const [category, setCategory] = useState<string>("all");
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -50,17 +53,47 @@ export function CrmQuickReplies({ onSelect, disabled, templateVars }: Props) {
   const [saving, setSaving] = useState(false);
 
   const loadReplies = useCallback(async () => {
-    const rows = await repliesFn();
-    setReplies(rows as Reply[]);
-  }, [repliesFn]);
+    if (!tenant?.id) return;
+    const rows = await fetchWaQuickRepliesCached(tenant.id, async () => {
+      const data = await repliesFn();
+      return data as WaQuickReplyRow[];
+    });
+    setReplies(rows);
+    setLoading(false);
+    return rows;
+  }, [repliesFn, tenant?.id]);
 
   useEffect(() => {
-    void (async () => {
-      await seedFn().catch(() => {});
-      await seedFollowUpFn().catch(() => {});
-      await loadReplies();
-    })();
-  }, [loadReplies, seedFn, seedFollowUpFn]);
+    if (!tenant?.id) return;
+
+    const cached = getCachedWaQuickReplies(tenant.id);
+    if (cached?.length) {
+      setReplies(cached);
+      setLoading(false);
+    }
+
+    let cancelled = false;
+    void loadReplies().then(() => {
+      if (cancelled) return;
+    });
+
+    if (shouldRunWaQuickRepliesBackgroundSeed()) {
+      markWaQuickRepliesSeeded();
+      void seedFn()
+        .catch(() => {})
+        .then(() => invalidateWaQuickRepliesCache());
+      void seedFollowUpFn()
+        .catch(() => {})
+        .then(() => {
+          invalidateWaQuickRepliesCache();
+          if (!cancelled) void loadReplies();
+        });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadReplies, seedFn, seedFollowUpFn, tenant?.id]);
 
   const categories = useMemo(() => {
     const set = new Set(replies.map((r) => r.category ?? "geral"));
@@ -92,6 +125,13 @@ export function CrmQuickReplies({ onSelect, disabled, templateVars }: Props) {
     [tenant?.name, templateVars],
   );
 
+  const applyReply = useCallback(
+    (content: string) => {
+      onSelect(renderTemplate(content, vars));
+    },
+    [onSelect, vars],
+  );
+
   const resetForm = () => {
     setEditingId(null);
     setFormName("");
@@ -106,7 +146,7 @@ export function CrmQuickReplies({ onSelect, disabled, templateVars }: Props) {
     setFormOpen(true);
   };
 
-  const openEditForm = (reply: Reply) => {
+  const openEditForm = (reply: WaQuickReplyRow) => {
     setEditingId(reply.id);
     setFormName(reply.name);
     setFormContent(reply.content);
@@ -130,6 +170,7 @@ export function CrmQuickReplies({ onSelect, disabled, templateVars }: Props) {
       });
       toast.success(editingId ? "Mensagem atualizada" : "Mensagem criada");
       resetForm();
+      invalidateWaQuickRepliesCache();
       await loadReplies();
     } catch (e) {
       toast.error((e as Error).message || "Não foi possível salvar");
@@ -143,6 +184,7 @@ export function CrmQuickReplies({ onSelect, disabled, templateVars }: Props) {
       await deleteFn({ data: { id } });
       toast.success("Mensagem removida");
       if (editingId === id) resetForm();
+      invalidateWaQuickRepliesCache();
       await loadReplies();
     } catch (e) {
       toast.error((e as Error).message || "Não foi possível remover");
@@ -150,6 +192,15 @@ export function CrmQuickReplies({ onSelect, disabled, templateVars }: Props) {
   };
 
   const isCustomTab = category === CUSTOM_CATEGORY;
+
+  if (loading && replies.length === 0) {
+    return (
+      <div className="mb-2 flex items-center gap-2 text-[10px] text-muted-foreground">
+        <Loader2 className="size-3 animate-spin" />
+        Carregando respostas…
+      </div>
+    );
+  }
 
   if (replies.length === 0 && !isCustomTab) {
     return (
@@ -167,7 +218,8 @@ export function CrmQuickReplies({ onSelect, disabled, templateVars }: Props) {
 
   return (
     <div className="mb-2 space-y-1.5">
-      <div className="flex gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {categories.map((c) => (
           <button
             key={c}
@@ -188,10 +240,18 @@ export function CrmQuickReplies({ onSelect, disabled, templateVars }: Props) {
             {QUICK_REPLY_CATEGORY_LABELS[c] ?? c}
           </button>
         ))}
+        </div>
+        <span
+          className="hidden shrink-0 items-center gap-1 text-[10px] text-muted-foreground sm:inline-flex"
+          title="Use o botão ✨ no campo de mensagem para reformular com IA antes de enviar"
+        >
+          <Sparkles className="size-3 text-emerald-600" />
+          IA manual
+        </span>
       </div>
 
       {isCustomTab ? (
-        <div className="rounded-xl border border-violet-200/80 bg-violet-50/40 p-2.5 dark:border-violet-900/40 dark:bg-violet-950/20">
+        <div className="max-h-[min(36dvh,280px)] overflow-y-auto overscroll-contain rounded-xl border border-violet-200/80 bg-violet-50/40 p-2.5 dark:border-violet-900/40 dark:bg-violet-950/20 [-webkit-overflow-scrolling:touch]">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-[11px] font-medium text-violet-900 dark:text-violet-200">
               Suas mensagens personalizadas
@@ -261,7 +321,7 @@ export function CrmQuickReplies({ onSelect, disabled, templateVars }: Props) {
                       "transition hover:border-violet-300 hover:bg-violet-50 disabled:opacity-50",
                       "dark:border-violet-900/50 dark:bg-violet-950/30 dark:text-violet-100",
                     )}
-                    onClick={() => onSelect(renderTemplate(r.content, vars))}
+                    onClick={() => applyReply(r.content)}
                   >
                     {r.name}
                   </button>
@@ -301,7 +361,7 @@ export function CrmQuickReplies({ onSelect, disabled, templateVars }: Props) {
                 "transition hover:border-emerald-300 hover:bg-emerald-50 disabled:opacity-50",
                 "dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-100",
               )}
-              onClick={() => onSelect(renderTemplate(r.content, vars))}
+              onClick={() => applyReply(r.content)}
             >
               {r.name}
             </button>

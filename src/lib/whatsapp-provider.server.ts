@@ -13,6 +13,8 @@ import {
   resolveZApiMediaUrl,
   sendZApiMedia,
   sendZApiText,
+  sendZApiContact,
+  sendZApiLocation,
 } from "@/lib/whatsapp-zapi.server";
 
 export type WhatsAppProviderKind = "meta" | "zapi";
@@ -101,6 +103,38 @@ export async function providerSendMedia(
     return { messageId, mediaRef: mediaId };
   }
   throw new Error("WhatsApp não configurado");
+}
+
+export async function providerSendContact(
+  phone: string,
+  contactName: string,
+  contactPhone: string,
+  options?: { replyToWaMessageId?: string },
+) {
+  const provider = getWhatsAppProvider();
+  if (provider === "zapi") {
+    const config = getZApiConfig();
+    if (!config) throw new Error("Z-API não configurada");
+    return sendZApiContact(config, phone, contactName, contactPhone, options);
+  }
+  throw new Error("Envio de contato disponível apenas com Z-API");
+}
+
+export async function providerSendLocation(
+  phone: string,
+  title: string,
+  address: string,
+  latitude: number,
+  longitude: number,
+  options?: { replyToWaMessageId?: string },
+) {
+  const provider = getWhatsAppProvider();
+  if (provider === "zapi") {
+    const config = getZApiConfig();
+    if (!config) throw new Error("Z-API não configurada");
+    return sendZApiLocation(config, phone, title, address, latitude, longitude, options);
+  }
+  throw new Error("Envio de localização disponível apenas com Z-API");
 }
 
 export async function providerResolveMediaUrl(mediaRef: string, mimeType?: string | null) {

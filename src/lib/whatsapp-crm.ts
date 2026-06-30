@@ -38,6 +38,7 @@ export interface WaMessage {
   created_at: string;
   reply_to_message_id?: string | null;
   sender_profile?: { full_name: string } | null;
+  raw_payload?: unknown;
 }
 
 export interface WaTag {
@@ -206,6 +207,35 @@ export function conversationDisplayName(c: {
   patients?: { full_name: string; gender?: string | null } | null;
 }): string {
   return c.patients?.full_name ?? c.contact_name ?? formatPhoneBR(c.contact_phone);
+}
+
+export function conversationAssigneeName(c: WaConversation | null | undefined): string | null {
+  const name = c?.assigned_profile?.full_name?.trim();
+  return name || null;
+}
+
+export function lastOutboundStaffName(messages: WaMessage[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.direction === "outbound" && m.sender_profile?.full_name?.trim()) {
+      return m.sender_profile.full_name.trim();
+    }
+  }
+  return null;
+}
+
+/** Subtítulo do chat: quem está atendendo, digitando ou telefone do contato. */
+export function conversationHandlerSubtitle(input: {
+  typingUser?: string | null;
+  assignedName?: string | null;
+  lastOutboundStaff?: string | null;
+  phone?: string;
+}): string {
+  if (input.typingUser?.trim()) return `${input.typingUser.trim()} está digitando…`;
+  if (input.assignedName) return `Atendido por ${input.assignedName}`;
+  if (input.lastOutboundStaff) return `Última resposta: ${input.lastOutboundStaff}`;
+  if (input.phone) return input.phone;
+  return "Sem responsável";
 }
 
 export function isDirectMediaUrl(mediaId: string | null | undefined): boolean {

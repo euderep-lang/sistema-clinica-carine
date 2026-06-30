@@ -14,6 +14,7 @@ import { logAuditSafe } from "@/lib/audit.server";
 import { isWhatsAppConfigured, providerSendText } from "@/lib/whatsapp-provider.server";
 import { buildGenderTemplateVars } from "@/lib/wa-template-gender";
 import { normalizeOutboundMessageBody } from "@/lib/wa-automation-quick-replies.server";
+import { humanizeForConversation } from "@/lib/wa-quick-reply-ai.server";
 import { getPublicAppUrl } from "@/lib/app-url";
 
 export type { FollowUpMode, FollowUpStepDef };
@@ -92,7 +93,7 @@ export function buildFollowUpVars(ctx: TemplateContext): Record<string, string> 
   return {
     ...buildGenderTemplateVars(ctx.patientGender),
     primeiro_nome: firstName(ctx.patientName),
-    nome_paciente: ctx.patientName?.trim() || "paciente",
+    nome_paciente: firstName(ctx.patientName),
     nome_profissional: ctx.professionalName?.trim() || "equipe médica",
     nome_clinica: ctx.tenantName?.trim() || "nossa clínica",
     data_consulta: appt ? fmtDateFromDate(appt) : "{{data_consulta}}",
@@ -559,6 +560,60 @@ export async function cancelActiveFollowUpRuns(input: {
     .eq("status", "pending");
 }
 
+async function resolveFollowUpTemplateContext(input: {
+  tenantId: string;
+  patientId?: string | null;
+  conversationId?: string | null;
+  appointmentId?: string | null;
+}): Promise<TemplateContext> {
+  const ctx: TemplateContext = { tenantName: await getTenantName(input.tenantId) };
+
+  let patientId = input.patientId ?? null;
+  if (!patientId && input.conversationId) {
+    const { data: conv } = await supabaseAdmin
+      .from("wa_conversations" as never)
+      .select("patient_id, contact_name")
+      .eq("id", input.conversationId)
+      .maybeSingle();
+    patientId = (conv as { patient_id?: string | null } | null)?.patient_id ?? null;
+    ctx.patientName = (conv as { contact_name?: string | null } | null)?.contact_name;
+  }
+
+  if (patientId) {
+    const { data: patientRow } = await supabaseAdmin
+      .from("patients")
+      .select("gender, full_name")
+      .eq("id", patientId)
+      .maybeSingle();
+    if (patientRow) {
+      ctx.patientGender = patientRow.gender;
+      ctx.patientName = patientRow.full_name ?? ctx.patientName;
+    }
+  }
+
+  if (input.appointmentId) {
+    const { data: appt } = await supabaseAdmin
+      .from("appointments")
+      .select("starts_at, professional_id")
+      .eq("id", input.appointmentId)
+      .maybeSingle();
+    if (appt) {
+      ctx.appointmentAt = new Date((appt as { starts_at: string }).starts_at);
+      const profId = (appt as { professional_id?: string | null }).professional_id;
+      if (profId) {
+        const { data: professional } = await supabaseAdmin
+          .from("profiles")
+          .select("full_name, display_name")
+          .eq("id", profId)
+          .maybeSingle();
+        ctx.professionalName = professionalDisplayName(professional);
+      }
+    }
+  }
+
+  return ctx;
+}
+
 async function createManualTask(input: {
   tenantId: string;
   conversationId?: string | null;
@@ -823,8 +878,10 @@ async function sendAutomatedMessage(
   const convRow = conv as { contact_phone: string; channel?: string };
   if ((convRow.channel ?? "whatsapp") !== "whatsapp") return null;
 
+  const humanizedText = await humanizeForConversation(tenantId, text, { conversationId });
+
   const phone = normalizeBrazilPhone(convRow.contact_phone);
-  const result = await providerSendText(phone, text);
+  const result = await providerSendText(phone, humanizedText);
   const now = new Date();
 
   await insertWaMessage({
@@ -833,7 +890,7 @@ async function sendAutomatedMessage(
     waMessageId: result.messageId,
     direction: "outbound",
     messageType: "text",
-    body: text,
+    body: humanizedText,
     status: "sent",
     sentBy: null,
     sentAt: now,
@@ -850,7 +907,7 @@ async function sendAutomatedMessage(
     .from("wa_conversations" as never)
     .update({
       last_message_at: now.toISOString(),
-      last_message_preview: text.slice(0, 120),
+      last_message_preview: humanizedText.slice(0, 120),
       updated_at: now.toISOString(),
     } as never)
     .eq("id", conversationId);
@@ -859,7 +916,7 @@ async function sendAutomatedMessage(
     tenantId,
     category: "whatsapp",
     action: "whatsapp.message_auto_sent",
-    summary: `Mensagem automática enviada (Z-API): ${text.slice(0, 100)}`,
+    summary: `Mensagem automática enviada (Z-API): ${humanizedText.slice(0, 100)}`,
     entityType: "conversation",
     entityId: conversationId,
     conversationId,
@@ -868,7 +925,7 @@ async function sendAutomatedMessage(
       step_key: meta?.stepKey,
       run_id: meta?.runId,
       trigger_type: meta?.triggerType,
-      preview: text.slice(0, 200),
+      preview: humanizedText.slice(0, 200),
     },
     source: "automation",
   });
@@ -972,6 +1029,13 @@ export async function processDueFollowUps(
           continue;
         }
         const assignee = row.assigned_to ?? (await getDefaultReceptionAssignee(row.tenant_id));
+        const manualCtx = await resolveFollowUpTemplateContext({
+          tenantId: row.tenant_id,
+          patientId: row.patient_id,
+          conversationId: row.conversation_id,
+          appointmentId: row.appointment_id,
+        });
+        const manualText = renderFollowUpMessage(row.message_template, manualCtx);
         if (assignee) {
           await createManualTask({
             tenantId: row.tenant_id,
@@ -979,7 +1043,7 @@ export async function processDueFollowUps(
             patientId: row.patient_id,
             assignedTo: assignee,
             title: `Follow-up: ${row.step_key.replace(/_/g, " ")}`,
-            description: row.rendered_message ?? row.message_template,
+            description: manualText,
             dueAt: now,
           });
         }
@@ -987,7 +1051,7 @@ export async function processDueFollowUps(
         continue;
       }
 
-      if (!row.conversation_id || !row.rendered_message) {
+      if (!row.conversation_id || !row.message_template) {
         await supabaseAdmin
           .from("wa_follow_up_schedules" as never)
           .update({ status: "skipped", error_message: "Sem conversa WhatsApp vinculada" } as never)
@@ -1002,10 +1066,21 @@ export async function processDueFollowUps(
         continue;
       }
 
+      const sendCtx = await resolveFollowUpTemplateContext({
+        tenantId: row.tenant_id,
+        patientId: row.patient_id,
+        conversationId: row.conversation_id,
+        appointmentId: row.appointment_id,
+      });
+      const textToSend =
+        row.step_key === NPS_STEP_KEY
+          ? (row.rendered_message ?? row.message_template)
+          : renderFollowUpMessage(row.message_template, sendCtx);
+
       const result = await sendAutomatedMessage(
         row.tenant_id,
         row.conversation_id,
-        row.rendered_message,
+        textToSend,
         {
           stepKey: row.step_key,
           runId: row.run_id,
@@ -1046,7 +1121,7 @@ export async function processDueFollowUps(
             channel: "whatsapp",
             confirmation_type: confirmationType,
             status: "sent",
-            message_preview: (row.rendered_message ?? "").slice(0, 200),
+            message_preview: textToSend.slice(0, 200),
           } as never);
         }
       }

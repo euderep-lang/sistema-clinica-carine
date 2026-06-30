@@ -21,10 +21,20 @@ export function CrmMetricsStrip({ onFilterUnassigned, onFilterUnread, compact }:
   } | null>(null);
 
   useEffect(() => {
-    const load = () => void metricsFn().then(setMetrics);
+    const load = () => {
+      if (document.visibilityState !== "visible") return;
+      void metricsFn().then(setMetrics);
+    };
     load();
-    const id = window.setInterval(load, 30_000);
-    return () => window.clearInterval(id);
+    const id = window.setInterval(load, 60_000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [metricsFn]);
 
   if (!metrics) return null;

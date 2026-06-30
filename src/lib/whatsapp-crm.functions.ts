@@ -8,6 +8,9 @@ import { normalizeBrazilPhone } from "@/lib/whatsapp-meta.server";
 import { logWaAudit } from "@/lib/wa-audit.server";
 import { normalizeMessageLineBreaks } from "@/lib/wa-automation-quick-replies";
 import { syncAutomationQuickReplies } from "@/lib/wa-automation-quick-replies.server";
+import {
+  humanizeComposerMessage,
+} from "@/lib/wa-quick-reply-ai.server";
 import { isContactPhotoCacheFresh, isValidContactPhotoUrl } from "@/lib/wa-contact-photo";
 import {
   cancelFollowUpsOnConversationClose,
@@ -249,7 +252,6 @@ export const getWaQuickReplies = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const profile = await requireCrmAccess(context.supabase, context.userId);
-    await syncAutomationQuickReplies(profile.tenant_id);
 
     const { data: crmReplies } = await context.supabase
       .from("wa_quick_replies" as never)
@@ -273,6 +275,28 @@ export const getWaQuickReplies = createServerFn({ method: "GET" })
       category: "marketing",
       shortcut: null,
     }));
+  });
+
+export const humanizeWaQuickReply = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    (d: {
+      message: string;
+      conversationId?: string | null;
+      patientFirstName?: string | null;
+      contactName?: string | null;
+    }) => d,
+  )
+  .handler(async ({ data, context }) => {
+    const profile = await requireCrmAccess(context.supabase, context.userId);
+    const message = data.message?.trim();
+    if (!message) throw new Error("Mensagem vazia");
+
+    return humanizeComposerMessage(profile.tenant_id, message, {
+      conversationId: data.conversationId ?? null,
+      patientFirstName: data.patientFirstName ?? null,
+      contactName: data.contactName ?? null,
+    });
   });
 
 const DEFAULT_QUICK_REPLIES = [
@@ -352,16 +376,20 @@ export const deleteWaQuickReply = createServerFn({ method: "POST" })
 
 export const searchWaMessages = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { conversationId: string; query: string }) => d)
+  .inputValidator(
+    (d: { conversationId: string; query: string; relatedConversationIds?: string[] }) => d,
+  )
   .handler(async ({ data, context }) => {
     await requireCrmAccess(context.supabase, context.userId);
     const q = data.query.trim();
     if (!q) return [];
 
+    const convIds = [...new Set([data.conversationId, ...(data.relatedConversationIds ?? [])])];
+
     const { data: rows, error } = await context.supabase
       .from("wa_messages" as never)
       .select("id, body, created_at, direction, message_type, media_filename")
-      .eq("conversation_id", data.conversationId)
+      .in("conversation_id", convIds)
       .or(`body.ilike.%${q}%,media_filename.ilike.%${q}%`)
       .order("created_at", { ascending: false })
       .limit(50);

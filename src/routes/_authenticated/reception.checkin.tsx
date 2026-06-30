@@ -210,6 +210,81 @@ function CheckinPage() {
               Nenhum agendamento para este filtro.
             </p>
           ) : (
+            <>
+              <div className="space-y-3 p-3 md:hidden">
+                {filtered.map((r) => (
+                  <div key={r.id} className="rounded-lg border bg-card p-3 shadow-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-mono text-sm font-semibold tabular-nums">
+                          {r.start_time.slice(0, 5)}
+                        </p>
+                        <p className="truncate font-medium">{r.patients?.full_name ?? "—"}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {r.profiles?.full_name ?? "—"}
+                          {r.rooms?.name ? ` · ${r.rooms.name}` : ""}
+                        </p>
+                      </div>
+                      <Badge className={STATUS_CLASS[r.status] ?? ""}>
+                        {APPOINTMENT_STATUS_LABEL[r.status] ?? r.status}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {r.status === "scheduled" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1"
+                          disabled={updatingId === r.id}
+                          onClick={() => void updateStatus(r.id, "confirmed")}
+                        >
+                          {updatingId === r.id ? (
+                            <Loader2 className="size-3 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="size-3 mr-1" />
+                          )}
+                          Confirmar
+                        </Button>
+                      )}
+                      {["scheduled", "confirmed"].includes(r.status) && (
+                        <Button
+                          size="sm"
+                          className="flex-1"
+                          disabled={updatingId === r.id}
+                          onClick={() => void updateStatus(r.id, "in_progress")}
+                        >
+                          {updatingId === r.id ? (
+                            <Loader2 className="size-3 animate-spin" />
+                          ) : (
+                            <UserCheck className="size-3 mr-1" />
+                          )}
+                          Check-in
+                        </Button>
+                      )}
+                      {r.status === "in_progress" && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="flex-1"
+                          disabled={updatingId === r.id}
+                          onClick={() => void updateStatus(r.id, "completed")}
+                        >
+                          <Clock className="size-3 mr-1" />
+                          Finalizar
+                        </Button>
+                      )}
+                      {r.patient_id && (
+                        <Button size="sm" variant="ghost" asChild>
+                          <Link to="/reception/pacientes/$id" params={{ id: r.patient_id }}>
+                            Ver cadastro
+                          </Link>
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="hidden overflow-x-auto md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -296,6 +371,8 @@ function CheckinPage() {
                 ))}
               </TableBody>
             </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

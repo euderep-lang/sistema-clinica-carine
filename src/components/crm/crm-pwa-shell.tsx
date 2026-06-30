@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/mock-auth";
 import { CRM_PWA_THEME } from "@/lib/crm-pwa";
 import { performAppSignOut } from "@/lib/crm-sign-out";
+import { useCrmViewportLock } from "@/hooks/use-crm-viewport-lock";
 
 export type CrmPwaTab = "inbox" | "pipeline" | "analytics";
 
@@ -55,6 +56,8 @@ export function CrmPwaShell({ children, activeTab, hideBottomNav, header }: CrmP
   const navigate = useNavigate();
   const role = profile?.role;
 
+  useCrmViewportLock(true);
+
   const handleLogout = async () => {
     await performAppSignOut(signOut);
     navigate({ to: "/crm/login", replace: true });
@@ -66,8 +69,13 @@ export function CrmPwaShell({ children, activeTab, hideBottomNav, header }: CrmP
 
   return (
     <div
-      className="flex h-dvh max-h-dvh flex-col overflow-hidden bg-[#111b21]"
-      style={{ ["--crm-wa-header" as string]: CRM_PWA_THEME }}
+      className="crm-mobile-shell fixed left-[var(--crm-vv-offset-left,0)] top-[var(--crm-vv-offset-top,0)] z-50 flex flex-col overflow-hidden bg-[#111b21]"
+      style={{
+        width: "var(--crm-vv-width, 100%)",
+        height: "var(--crm-vv-height, 100svh)",
+        maxHeight: "var(--crm-vv-height, 100svh)",
+        ["--crm-wa-header" as string]: CRM_PWA_THEME,
+      }}
     >
       <header
         className="shrink-0 bg-[#075E54] text-white shadow-sm"
@@ -136,7 +144,9 @@ export function CrmPwaShell({ children, activeTab, hideBottomNav, header }: CrmP
       {!hideBottomNav ? (
         <nav
           className="shrink-0 border-t border-black/5 bg-[#f0f2f5] dark:border-white/10 dark:bg-[#1f2c34]"
-          style={{ paddingBottom: "max(0px, env(safe-area-inset-bottom))" }}
+          style={{
+            paddingBottom: "max(0px, env(safe-area-inset-bottom))",
+          }}
         >
           <div className="flex h-[52px] items-stretch justify-around">
             {tabs.map((tab) => {

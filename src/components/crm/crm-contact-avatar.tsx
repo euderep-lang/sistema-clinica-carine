@@ -53,16 +53,17 @@ export function useWaContactPhotos(conversations: PhotoSlice[], priorityIds: str
       pending.map(async (c) => {
         try {
           const { url } = await photoFnRef.current({ data: { conversationId: c.id } });
-          if (!cancelled) {
-            setPhotos((prev) => ({ ...prev, [c.id]: url ?? null }));
-          }
+          return { id: c.id, url: url ?? null };
         } catch {
-          if (!cancelled) {
-            setPhotos((prev) => ({ ...prev, [c.id]: null }));
-          }
+          return { id: c.id, url: null as string | null };
         }
       }),
-    );
+    ).then((results) => {
+      if (cancelled || !results.length) return;
+      const batch: Record<string, string | null> = {};
+      for (const { id, url } of results) batch[id] = url;
+      setPhotos((prev) => ({ ...prev, ...batch }));
+    });
 
     return () => {
       cancelled = true;
