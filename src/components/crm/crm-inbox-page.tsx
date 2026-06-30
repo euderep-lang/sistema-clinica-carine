@@ -7,7 +7,6 @@ import {
   ArrowRightLeft,
   BarChart3,
   Bell,
-  ClipboardList,
   ExternalLink,
   FileDown,
   Info,
@@ -17,39 +16,21 @@ import {
   Reply,
   RefreshCw,
   Search,
-  StickyNote,
-  Tag,
   Trash2,
-  UserPlus,
   UserRound,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { CrmInboxComposer } from "@/components/crm/crm-inbox-composer";
+import { CrmInboxDetailPanel } from "@/components/crm/crm-inbox-detail-panel";
 import { CrmInboxListPanel } from "@/components/crm/crm-inbox-list-panel";
 import { CrmContactAvatar, CrmContactAvatarFromMap, useWaContactPhotos } from "@/components/crm/crm-contact-avatar";
 import { CrmMessageBubble } from "@/components/crm/crm-message-bubble";
 import { CrmConnectionBadge } from "@/components/crm/crm-connection-badge";
 import { CrmMetricsStrip } from "@/components/crm/crm-metrics-strip";
-import { CrmPatientPanel } from "@/components/crm/crm-patient-panel";
 import { CrmGlobalSearch } from "@/components/crm/crm-global-search";
 import { CrmBroadcastDialog } from "@/components/crm/crm-broadcast-dialog";
-import { CrmTasksPanel } from "@/components/crm/crm-tasks-panel";
-import { CrmTagRulesPanel } from "@/components/crm/crm-tag-rules-panel";
 import { PatientFormDialog } from "@/components/patient-form-dialog";
-import {
-  CrmDetailEmpty,
-  CrmDetailSection,
-  crmDetailAsideShell,
-  crmDetailContentWrap,
-  crmDetailHeader,
-  crmDetailScroll,
-  crmDetailTabContent,
-  crmDetailTabList,
-  crmDetailTabsRoot,
-  crmDetailTabTrigger,
-  crmNoteCard,
-} from "@/components/crm/crm-detail-shell";
 import {
   crmChatBg,
   crmChatMessagesScroll,
@@ -83,15 +64,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
 import { buildGenderTemplateVars } from "@/lib/wa-template-gender";
@@ -110,7 +82,6 @@ import {
   lastOutboundStaffName,
   waMessagePreview,
   TAG_COLORS,
-  WA_OBJECTION_LABELS,
   type WaObjectionType,
   CHANNEL_BADGE_CLASS,
   CHANNEL_LABEL,
@@ -1686,14 +1657,6 @@ export function CrmInboxPage() {
   };
 
   const [detailTab, setDetailTab] = useState("patient");
-  const detailTabLabels: Record<string, string> = {
-    tags: "Tags",
-    patient: "Paciente",
-    notes: "Notas internas",
-    tasks: "Tarefas",
-    reminders: "Lembretes",
-    transfer: "Transferência",
-  };
 
   const assignToMe = async () => {
     if (!selectedId || !profile) return;
@@ -2228,448 +2191,59 @@ export function CrmInboxPage() {
             )}
           </main>
 
-          {/* Coluna 3 — Funções (tags, paciente, tarefas…) */}
-          <aside
-            className={cn(
-              crmDetailAsideShell,
-              "min-h-0 min-w-0",
-              mobileView !== "details" && "hidden lg:flex",
-            )}
-          >
-            <Tabs value={detailTab} onValueChange={setDetailTab} className={crmDetailTabsRoot}>
-              <TabsList className={crmDetailTabList}>
-                {(
-                  [
-                    ["patient", UserRound, "Paciente"],
-                    ["tags", Tag, "Tags"],
-                    ["notes", StickyNote, "Notas"],
-                    ["tasks", ClipboardList, "Tarefas"],
-                    ["reminders", Bell, "Alertas"],
-                    ["transfer", ArrowRightLeft, "Equipe"],
-                  ] as const
-                ).map(([value, Icon, label]) => (
-                  <TabsTrigger
-                    key={value}
-                    value={value}
-                    className={cn(crmDetailTabTrigger, "h-auto data-[state=active]:shadow-none")}
-                  >
-                    <Icon className="size-4 shrink-0" />
-                    <span className="leading-none">{label}</span>
-                  </TabsTrigger>
-                ))}
-              </TabsList>
+          <CrmInboxDetailPanel
+            hiddenOnMobile={mobileView !== "details"}
+            detailTab={detailTab}
+            onDetailTabChange={setDetailTab}
+            selected={selected}
+            selectedId={selectedId}
+            profileId={profile?.id}
+            chatHandlerInfo={chatHandlerInfo}
+            conversationTagIds={conversationTagIds}
+            tags={tags}
+            notes={notes}
+            reminders={reminders}
+            transfers={transfers}
+            staff={staff}
+            patientSearch={patientSearch}
+            onPatientSearchChange={searchPatients}
+            patientOptions={patientOptions}
+            msgSearch={msgSearch}
+            onMsgSearchChange={setMsgSearch}
+            msgSearchHits={msgSearchHits}
+            closeReason={closeReason}
+            onCloseReasonChange={setCloseReason}
+            newTagName={newTagName}
+            onNewTagNameChange={setNewTagName}
+            newTagColor={newTagColor}
+            onNewTagColorChange={setNewTagColor}
+            noteText={noteText}
+            onNoteTextChange={setNoteText}
+            reminderAt={reminderAt}
+            onReminderAtChange={setReminderAt}
+            reminderNote={reminderNote}
+            onReminderNoteChange={setReminderNote}
+            transferTo={transferTo}
+            onTransferToChange={setTransferTo}
+            transferNote={transferNote}
+            onTransferNoteChange={setTransferNote}
+            onAssignToMe={() => void assignToMe()}
+            onLinkPatient={(id) => void linkPatient(id)}
+            onCreatePatientOpen={() => setCreatePatientOpen(true)}
+            onAddToPipeline={() => void addToPipeline()}
+            onRunMsgSearch={() => void runMsgSearch()}
+            onScrollToMessage={scrollToMessage}
+            onReopenConversation={() => void reopenConversation()}
+            onCloseConversation={() => void closeConversation()}
+            onToggleTag={(id) => void toggleTag(id)}
+            onMarkObjection={(key) => void markObjection(key)}
+            onCreateTag={() => void createTag()}
+            onAddNote={() => void addNote()}
+            onAddReminder={() => void addReminder()}
+            onCompleteReminder={(id) => void completeReminder(id)}
+            onDoTransfer={() => void doTransfer()}
+          />
 
-              <div className={crmDetailContentWrap}>
-                <div className={crmDetailHeader}>
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                    {detailTabLabels[detailTab] ?? "Detalhes"}
-                  </p>
-                  <p className="mt-0.5 truncate text-sm font-semibold">
-                    {selected ? conversationDisplayName(selected) : "Selecione uma conversa"}
-                  </p>
-                </div>
-
-                <div className={crmDetailScroll}>
-                  <TabsContent value="patient" className={crmDetailTabContent}>
-                    {selected ? (
-                      <CrmDetailSection title="Atendimento">
-                        <div className="flex items-start gap-2">
-                          <UserRound className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium">
-                              {chatHandlerInfo.assignedName ??
-                                chatHandlerInfo.lastOutboundStaff ??
-                                "Sem responsável"}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {chatHandlerInfo.assignedName
-                                ? "Responsável pela conversa"
-                                : chatHandlerInfo.lastOutboundStaff
-                                  ? "Última pessoa que respondeu (conversa não assumida)"
-                                  : "Ninguém assumiu esta conversa ainda"}
-                            </p>
-                            {profile && selected.assigned_to !== profile.id ? (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="mt-2 h-8 w-full text-xs"
-                                onClick={() => void assignToMe()}
-                              >
-                                Assumir conversa
-                              </Button>
-                            ) : null}
-                          </div>
-                        </div>
-                      </CrmDetailSection>
-                    ) : null}
-
-                    {selected?.patient_id ? (
-                      <CrmDetailSection title="Prontuário vinculado" bare>
-                        <CrmPatientPanel
-                          patientId={selected.patient_id}
-                          patientName={selected.patients?.full_name ?? conversationDisplayName(selected)}
-                          conversationId={selected.id}
-                        />
-                      </CrmDetailSection>
-                    ) : (
-                      <CrmDetailEmpty
-                        icon={UserRound}
-                        title="Sem paciente vinculado"
-                        description="Busque e vincule um paciente para ver agenda e histórico."
-                      />
-                    )}
-
-                    <CrmDetailSection title="Vincular paciente">
-                      <Input
-                        placeholder="Buscar por nome…"
-                        value={patientSearch}
-                        onChange={(e) => void searchPatients(e.target.value)}
-                        className="h-9"
-                      />
-                      <div className="mt-2 space-y-1">
-                        {patientOptions.map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            className="block w-full rounded-lg border border-transparent px-2.5 py-2 text-left text-xs transition hover:border-border hover:bg-muted/50"
-                            onClick={() => void linkPatient(p.id)}
-                          >
-                            {p.full_name}
-                            {p.phone ? <span className="text-muted-foreground"> · {p.phone}</span> : null}
-                          </button>
-                        ))}
-                      </div>
-                      {!selected?.patient_id ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="mt-2 h-8 w-full text-xs"
-                          disabled={!selectedId}
-                          onClick={() => setCreatePatientOpen(true)}
-                        >
-                          <UserPlus className="mr-1.5 size-3.5" />
-                          Criar novo paciente
-                        </Button>
-                      ) : null}
-                      {selected?.patient_id ? (
-                        <Button size="sm" variant="ghost" className="mt-2 h-8 w-full text-xs" onClick={() => void linkPatient(null)}>
-                          Remover vínculo
-                        </Button>
-                      ) : null}
-                    </CrmDetailSection>
-
-                    <CrmDetailSection title="Funil de vendas">
-                      {selected ? (
-                        <>
-                          {!selected.deal_id ? (
-                            <Button
-                              size="sm"
-                              className="w-full bg-emerald-600 hover:bg-emerald-700"
-                              onClick={() => void addToPipeline()}
-                            >
-                              Adicionar ao funil (manual)
-                            </Button>
-                          ) : (
-                            <Button size="sm" variant="outline" className="mt-2 w-full" asChild>
-                              <Link to="/crm/pipeline">Ver no funil</Link>
-                            </Button>
-                          )}
-                        </>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">Selecione uma conversa.</p>
-                      )}
-                    </CrmDetailSection>
-
-                    <CrmDetailSection title="Buscar no histórico">
-                      <div className="flex gap-2">
-                        <Input
-                          placeholder="Texto da mensagem…"
-                          value={msgSearch}
-                          onChange={(e) => setMsgSearch(e.target.value)}
-                          onKeyDown={(e) => e.key === "Enter" && void runMsgSearch()}
-                          className="h-9"
-                        />
-                        <Button size="icon" variant="outline" className="size-9 shrink-0" onClick={() => void runMsgSearch()}>
-                          <Search className="size-4" />
-                        </Button>
-                      </div>
-                      <div className="mt-2 space-y-1.5">
-                        {msgSearchHits.length > 0 ? (
-                          <p className="text-[10px] text-muted-foreground">
-                            {msgSearchHits.length} ocorrência(s) · toque para ir até a mensagem
-                          </p>
-                        ) : null}
-                        {msgSearchHits.map((h) => (
-                          <button
-                            key={h.id}
-                            type="button"
-                            onClick={() => scrollToMessage(h.id)}
-                            className="block w-full rounded-lg bg-muted/40 px-2.5 py-2 text-left text-xs transition hover:bg-muted"
-                          >
-                            <p className="line-clamp-2">{h.body}</p>
-                            <p className="mt-1 text-[10px] text-muted-foreground">{fmtDateTime(h.created_at)}</p>
-                          </button>
-                        ))}
-                      </div>
-                    </CrmDetailSection>
-
-                    <CrmDetailSection title="Status da conversa">
-                      {selected?.status === "closed" ? (
-                        <>
-                          <p className="text-xs text-muted-foreground">
-                            Encerrada{selected.close_reason ? `: ${selected.close_reason}` : ""}
-                          </p>
-                          <Button size="sm" className="mt-2 w-full" onClick={() => void reopenConversation()}>
-                            Reabrir conversa
-                          </Button>
-                        </>
-                      ) : (
-                        <>
-                          <Select value={closeReason} onValueChange={setCloseReason}>
-                            <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              {WA_CLOSE_REASONS.map((r) => (
-                                <SelectItem key={r} value={r}>{r}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Button size="sm" variant="destructive" className="mt-2 w-full" onClick={() => void closeConversation()}>
-                            Encerrar conversa
-                          </Button>
-                        </>
-                      )}
-                    </CrmDetailSection>
-                  </TabsContent>
-
-                  <TabsContent value="tags" className={crmDetailTabContent}>
-                    <CrmDetailSection title="Tags da conversa" description="Clique na tag colorida (com ✓) para remover">
-                      <div className="flex flex-wrap gap-1.5">
-                        {tags.length === 0 ? (
-                          <p className="text-xs text-muted-foreground">Nenhuma tag criada ainda.</p>
-                        ) : (
-                          tags.map((t) => {
-                            const active = conversationTagIds.includes(t.id);
-                            return (
-                              <button
-                                key={t.id}
-                                type="button"
-                                disabled={!selectedId}
-                                onClick={() => void toggleTag(t.id)}
-                                className={cn(
-                                  "inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium text-white transition hover:scale-[1.02] active:scale-[0.98]",
-                                  active
-                                    ? "ring-2 ring-offset-2 ring-offset-background shadow-sm"
-                                    : "opacity-60 hover:opacity-100",
-                                  !selectedId && "cursor-not-allowed opacity-40",
-                                )}
-                                style={{ backgroundColor: t.color }}
-                                title={active ? "Clique para remover" : "Clique para aplicar"}
-                              >
-                                {active ? "✓ " : null}
-                                {t.name}
-                              </button>
-                            );
-                          })
-                        )}
-                      </div>
-                    </CrmDetailSection>
-
-                    <CrmDetailSection
-                      title="Objeção do lead"
-                      description="Dispara sequência manual — a secretária envia a mensagem sugerida"
-                    >
-                      <div className="flex flex-wrap gap-1.5">
-                        {(Object.entries(WA_OBJECTION_LABELS) as [WaObjectionType, string][]).map(
-                          ([key, label]) => (
-                            <Button
-                              key={key}
-                              type="button"
-                              size="sm"
-                              variant={selected?.objection_type === key ? "default" : "outline"}
-                              className="h-8 rounded-full text-xs"
-                              disabled={!selectedId}
-                              onClick={() => void markObjection(key)}
-                            >
-                              {label}
-                            </Button>
-                          ),
-                        )}
-                      </div>
-                    </CrmDetailSection>
-
-                    <CrmDetailSection title="Nova tag">
-                      <Input value={newTagName} onChange={(e) => setNewTagName(e.target.value)} placeholder="Nome da tag" className="h-9" />
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {TAG_COLORS.map((c) => (
-                          <button
-                            key={c}
-                            type="button"
-                            className={cn("size-7 rounded-full transition", newTagColor === c && "ring-2 ring-offset-2 ring-offset-background")}
-                            style={{ backgroundColor: c }}
-                            onClick={() => setNewTagColor(c)}
-                          />
-                        ))}
-                      </div>
-                      <Button size="sm" variant="outline" className="mt-3 w-full" onClick={() => void createTag()}>
-                        Criar tag
-                      </Button>
-                    </CrmDetailSection>
-
-                    <CrmTagRulesPanel tags={tags} />
-                  </TabsContent>
-
-                  <TabsContent value="tasks" className={crmDetailTabContent}>
-                    <CrmTasksPanel
-                      conversationId={selectedId}
-                      staff={staff}
-                      currentUserId={profile?.id ?? ""}
-                    />
-                  </TabsContent>
-
-                  <TabsContent value="notes" className={crmDetailTabContent}>
-                    <CrmDetailSection
-                      title="Nova nota"
-                      description="Visível só para a equipe — não é enviada ao WhatsApp."
-                    >
-                      <Textarea
-                        placeholder="Ex.: paciente prefere horário da tarde, aguardando exames…"
-                        value={noteText}
-                        onChange={(e) => setNoteText(e.target.value)}
-                        rows={4}
-                        className="min-h-[96px] resize-none border-0 bg-muted/30 px-3 py-2.5 shadow-none focus-visible:ring-1"
-                      />
-                      <Button
-                        size="sm"
-                        disabled={!selectedId || !noteText.trim()}
-                        className="mt-3 w-full bg-emerald-600 hover:bg-emerald-700"
-                        onClick={() => void addNote()}
-                      >
-                        Salvar nota
-                      </Button>
-                    </CrmDetailSection>
-
-                    <CrmDetailSection title={notes.length ? `Histórico (${notes.length})` : "Histórico"} bare>
-                      {notes.length === 0 ? (
-                        <CrmDetailEmpty
-                          icon={StickyNote}
-                          title="Nenhuma nota ainda"
-                          description="Registre observações internas sobre este atendimento."
-                        />
-                      ) : (
-                        <div className="space-y-2">
-                          {notes.map((n) => (
-                            <div key={n.id} className={crmNoteCard}>
-                              <p className="text-sm leading-relaxed text-foreground/90">{n.content}</p>
-                              <p className="mt-2 text-[10px] text-muted-foreground">
-                                {n.author?.full_name ?? "Equipe"} · {fmtDateTime(n.created_at)}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </CrmDetailSection>
-                  </TabsContent>
-
-                  <TabsContent value="reminders" className={crmDetailTabContent}>
-                    <CrmDetailSection title="Novo lembrete">
-                      <Input type="datetime-local" value={reminderAt} onChange={(e) => setReminderAt(e.target.value)} className="h-9" />
-                      <Input
-                        placeholder="Descrição (opcional)"
-                        value={reminderNote}
-                        onChange={(e) => setReminderNote(e.target.value)}
-                        className="mt-2 h-9"
-                      />
-                      <Button size="sm" disabled={!selectedId || !reminderAt} className="mt-3 w-full" onClick={() => void addReminder()}>
-                        Criar lembrete
-                      </Button>
-                    </CrmDetailSection>
-
-                    <CrmDetailSection title="Pendentes" bare>
-                      {reminders.length === 0 ? (
-                        <CrmDetailEmpty icon={Bell} title="Sem lembretes" description="Crie alertas para retornar a este contato." />
-                      ) : (
-                        <div className="space-y-2">
-                          {reminders.map((r) => (
-                            <div
-                              key={r.id}
-                              className={cn(
-                                "rounded-xl border border-border/40 bg-background p-3 shadow-sm",
-                                r.completed && "opacity-50",
-                              )}
-                            >
-                              <p className="text-sm font-medium">{fmtDateTime(r.remind_at)}</p>
-                              {r.note ? <p className="mt-1 text-xs text-muted-foreground">{r.note}</p> : null}
-                              {!r.completed ? (
-                                <Button size="sm" variant="ghost" className="mt-2 h-7 px-2 text-xs" onClick={() => void completeReminder(r.id)}>
-                                  Marcar concluído
-                                </Button>
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </CrmDetailSection>
-                  </TabsContent>
-
-                  <TabsContent value="transfer" className={crmDetailTabContent}>
-                    <CrmDetailSection title="Transferir conversa">
-                      <Select value={transferTo} onValueChange={setTransferTo}>
-                        <SelectTrigger className="h-9"><SelectValue placeholder="Transferir para…" /></SelectTrigger>
-                        <SelectContent>
-                          {staff.map((s) => (
-                            <SelectItem key={s.id} value={s.id}>{s.full_name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Input
-                        placeholder="Observação para quem recebe"
-                        value={transferNote}
-                        onChange={(e) => setTransferNote(e.target.value)}
-                        className="mt-2 h-9"
-                      />
-                      <Button size="sm" disabled={!selectedId || !transferTo} className="mt-3 w-full" onClick={() => void doTransfer()}>
-                        Transferir agora
-                      </Button>
-                    </CrmDetailSection>
-
-                    <CrmDetailSection title="Histórico" bare>
-                      {transfers.length === 0 ? (
-                        <CrmDetailEmpty icon={ArrowRightLeft} title="Nenhuma transferência" />
-                      ) : (
-                        <div className="space-y-2">
-                          {transfers.map((t) => {
-                            const isPendingForMe = profile?.id === t.to_user_id && !t.seen_at;
-                            return (
-                              <div
-                                key={t.id}
-                                className={cn(
-                                  "rounded-xl border p-3 text-xs",
-                                  isPendingForMe
-                                    ? "border-violet-300 bg-violet-50 text-violet-900 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-100"
-                                    : "border-border/40 bg-background",
-                                )}
-                              >
-                                <p className="font-medium">
-                                  {t.from_profile?.full_name ?? "—"} → {t.to_profile?.full_name}
-                                </p>
-                                {isPendingForMe ? (
-                                  <Badge className="mt-1 h-4 bg-violet-600 px-1.5 text-[10px] hover:bg-violet-600">
-                                    Aguardando leitura
-                                  </Badge>
-                                ) : null}
-                                <p className="mt-1 text-muted-foreground">{fmtDateTime(t.created_at)}</p>
-                                {t.note ? <p className="mt-1 italic text-muted-foreground">{t.note}</p> : null}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </CrmDetailSection>
-                  </TabsContent>
-                </div>
-              </div>
-            </Tabs>
-          </aside>
         </div>
       </div>
 
