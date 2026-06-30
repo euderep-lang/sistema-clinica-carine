@@ -16,7 +16,11 @@ Procedimentos operacionais para produção.
 
 ### Opcionais
 
-- [ ] `OPENAI_API_KEY` — IA clínica
+- [ ] `OPENAI_API_KEY` — IA no servidor (sem ela, o app funciona; recursos de IA ficam desativados ou usam fallback):
+  - **CRM WhatsApp:** reformulação manual (botão ✨ no composer) e automática em follow-ups, mensagens agendadas e respostas fora do horário
+  - **Prontuário:** resumo de evoluções e interpretação de exames
+  - **Orçamento com IA** (`/professional/orcamento`) e **plano alimentar com IA** (`/professional/plano-alimentar`)
+  - **Funil CRM:** sugestão de etapa por IA (API disponível; UI removida do inbox)
 - [ ] `VITE_SENTRY_DSN` — erros no browser
 - [ ] `SAFEID_*` — receituário SafeID
 
@@ -102,3 +106,27 @@ Contatos: definir responsável técnico + DPO clínica.
 - [ ] Webhook Z-API apontando para URL nova
 - [ ] Cron ativo
 - [ ] Smoke test: login, agenda, CRM inbox, financeiro
+
+## 9. Scripts operacionais (CLI)
+
+Scripts em `scripts/` **não rodam no deploy** — são ferramentas locais ou one-off para migração de dados. **Sempre use `--dry-run` primeiro** quando disponível, e confirme `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` e `TENANT_ID` apontando para o ambiente correto.
+
+Documentação completa: [docs/SCRIPTS.md](./SCRIPTS.md).
+
+| Comando npm | Script | Uso típico |
+|-------------|--------|------------|
+| `db:migrate` | `migrate-supabase.ts` | Aplicar migrations SQL |
+| `db:types` | `gen-supabase-types.ts` | Regenerar types após migration |
+| `db:import-patients` | `import-patients-xlsx.ts` | Importar pacientes de planilha |
+| `db:import-prontuarios` | `import-prontuarios-pdf.ts` | Importar prontuários PDF |
+| `db:import-anexos` | `import-anexos-zip.ts` | Importar anexos de ZIP |
+| `db:import-financeiro` | `import-financeiro-pdf.ts` | Importar financeiro PDF |
+| `wa:sync-chats` | `sync-zapi-chats.ts` | Sincronizar chats Z-API |
+| `wa:process-follow-ups` | `process-wa-follow-ups.ts` | Disparar follow-ups manualmente |
+
+Scripts sem alias npm (rodar com `bun run scripts/<arquivo>.ts`):
+
+- `import-relatorio-completo.ts` — importação MEDX completa (`--dry-run` / `--apply`)
+- `reconciliar-financeiro.ts` — reconciliar faturas com relatório MEDX
+- `anexos-faltantes.ts` — listar anexos do ZIP ainda não importados
+- `update-evolucoes-horario.ts` — atualizar horários de evoluções a partir de PDF
