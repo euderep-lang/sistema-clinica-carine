@@ -60,7 +60,7 @@ async function getNfseConfig(tenantId: string): Promise<NfsePrestadorConfig> {
 
 export const emitNfse = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { billId: string }) => d)
+  .validator((d: { billId: string }) => d)
   .handler(async ({ data, context }) => {
     const { data: profile } = await supabaseAdmin
       .from("profiles")
@@ -167,7 +167,7 @@ export const emitNfse = createServerFn({ method: "POST" })
 
 export const consultNfse = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { billId: string }) => d)
+  .validator((d: { billId: string }) => d)
   .handler(async ({ data, context }) => {
     const { data: profile } = await supabaseAdmin
       .from("profiles")

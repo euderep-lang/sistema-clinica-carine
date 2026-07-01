@@ -62,7 +62,7 @@ export const listTrash = createServerFn({ method: "POST" })
 
 export const restoreTrashItem = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: { id: string }) => data)
+  .validator((data: { id: string }) => data)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const caller = await requireAdminTenant(supabase, userId);
@@ -158,7 +158,7 @@ export const restoreTrashItem = createServerFn({ method: "POST" })
 
 export const purgeTrashItem = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: { id: string }) => data)
+  .validator((data: { id: string }) => data)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const caller = await requireAdminTenant(supabase, userId);

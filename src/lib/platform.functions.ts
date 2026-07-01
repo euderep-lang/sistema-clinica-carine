@@ -20,7 +20,7 @@ async function requireProfile(userId: string) {
 
 export const createPreRegistrationLink = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { appointmentId?: string; patientId?: string; expiresInDays?: number }) => d)
+  .validator((d: { appointmentId?: string; patientId?: string; expiresInDays?: number }) => d)
   .handler(async ({ data, context }) => {
     const profile = await requireProfile(context.userId);
     const expiresAt = new Date();
@@ -42,7 +42,7 @@ export const createPreRegistrationLink = createServerFn({ method: "POST" })
   });
 
 export const getPreRegistrationByToken = createServerFn({ method: "GET" })
-  .inputValidator((token: string) => token)
+  .validator((token: string) => token)
   .handler(async ({ data: token }) => {
     const { data, error } = await supabaseAdmin
       .from("patient_pre_registrations" as never)
@@ -61,7 +61,7 @@ export const getPreRegistrationByToken = createServerFn({ method: "GET" })
   });
 
 export const submitPreRegistration = createServerFn({ method: "POST" })
-  .inputValidator(
+  .validator(
     (d: {
       token: string;
       full_name: string;
@@ -146,7 +146,7 @@ export const submitPreRegistration = createServerFn({ method: "POST" })
 
 export const createNpsSurvey = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { patientId: string; appointmentId?: string; professionalId?: string }) => d)
+  .validator((d: { patientId: string; appointmentId?: string; professionalId?: string }) => d)
   .handler(async ({ data, context }) => {
     const profile = await requireProfile(context.userId);
     const expiresAt = new Date();
@@ -167,7 +167,7 @@ export const createNpsSurvey = createServerFn({ method: "POST" })
   });
 
 export const submitNpsResponse = createServerFn({ method: "POST" })
-  .inputValidator((d: { token: string; score: number; feedback?: string }) => d)
+  .validator((d: { token: string; score: number; feedback?: string }) => d)
   .handler(async ({ data }) => {
     if (data.score < 0 || data.score > 10) throw new Error("Nota inválida");
     const { data: survey, error } = await supabaseAdmin
@@ -200,7 +200,7 @@ export const submitNpsResponse = createServerFn({ method: "POST" })
 
 export const createExamRequest = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(
+  .validator(
     (d: {
       patientId: string;
       exams: string[];
@@ -242,7 +242,7 @@ export const createExamRequest = createServerFn({ method: "POST" })
 
 export const requestPatientDataExport = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((patientId: string) => patientId)
+  .validator((patientId: string) => patientId)
   .handler(async ({ data: patientId, context }) => {
     const profile = await requireProfile(context.userId);
     const { data: patient } = await supabaseAdmin
@@ -280,7 +280,7 @@ export const requestPatientDataExport = createServerFn({ method: "POST" })
 
 export const recordPatientConsent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(
+  .validator(
     (d: { patientId: string; consentType: string; granted: boolean; documentVersion?: string }) => d,
   )
   .handler(async ({ data, context }) => {
@@ -305,7 +305,7 @@ export const recordPatientConsent = createServerFn({ method: "POST" })
 
 export const summarizePatientRecord = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((patientId: string) => patientId)
+  .validator((patientId: string) => patientId)
   .handler(async ({ data: patientId, context }) => {
     const profile = await requireProfile(context.userId);
     const apiKey = process.env.OPENAI_API_KEY?.trim();
@@ -363,7 +363,7 @@ export const summarizePatientRecord = createServerFn({ method: "POST" })
 
 export const interpretExamText = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { text: string; patientContext?: string }) => d)
+  .validator((d: { text: string; patientContext?: string }) => d)
   .handler(async ({ data }) => {
     const apiKey = process.env.OPENAI_API_KEY?.trim();
     if (!apiKey) {
@@ -407,7 +407,7 @@ export const interpretExamText = createServerFn({ method: "POST" })
 
 export const shareClinicalRecord = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(
+  .validator(
     (d: {
       patientId: string;
       sharedWithProfessionalId: string;

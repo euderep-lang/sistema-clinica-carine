@@ -132,7 +132,7 @@ export const getDigitalCertificateStatus = createServerFn({ method: "GET" })
 
 export const discoverCloudCertificates = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(z.object({ cpf: z.string().min(11) }))
+  .validator(z.object({ cpf: z.string().min(11) }))
   .handler(async ({ data, context }) => {
     await requireProfessional(context.supabase, context.userId);
     const slots = await discoverSafeIdCertificates(data.cpf);
@@ -141,7 +141,7 @@ export const discoverCloudCertificates = createServerFn({ method: "POST" })
 
 export const saveDigitalCertificate = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(
+  .validator(
     z.object({
       pfxBase64: z.string().min(1),
       password: z.string().min(1),
@@ -198,7 +198,7 @@ export const saveDigitalCertificate = createServerFn({ method: "POST" })
 
 export const saveCloudCertificate = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(
+  .validator(
     z.object({
       cpf: z.string().min(11),
       slotAlias: z.string().min(1),
@@ -280,7 +280,7 @@ const safeIdOriginSchema = z.string().url().optional();
 
 export const initiateSafeIdSignatureAuth = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(z.object({ origin: safeIdOriginSchema }).optional())
+  .validator(z.object({ origin: safeIdOriginSchema }).optional())
   .handler(async ({ data, context }) => {
     const redirectUri = resolveSafeIdRedirectUri(data?.origin);
     const profile = await requireProfessional(context.supabase, context.userId);
@@ -320,7 +320,7 @@ export const initiateSafeIdSignatureAuth = createServerFn({ method: "POST" })
   });
 
 export const completeSafeIdOAuthCallback = createServerFn({ method: "POST" })
-  .inputValidator(
+  .validator(
     z.object({
       code: z.string().min(1),
       state: z.string().uuid(),
@@ -348,7 +348,7 @@ export const completeSafeIdOAuthCallback = createServerFn({ method: "POST" })
 
 export const getSafeIdSignatureAuthStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(z.object({ origin: safeIdOriginSchema }).optional())
+  .validator(z.object({ origin: safeIdOriginSchema }).optional())
   .handler(async ({ data, context }) => {
     const profile = await requireProfessional(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -403,7 +403,7 @@ export const revokeSafeIdSession = createServerFn({ method: "POST" })
 
 export const signPrescriptionPdf = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(
+  .validator(
     z.object({
       pdfBase64: z.string().min(1),
       reason: z.string().optional(),

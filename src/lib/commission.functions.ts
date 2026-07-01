@@ -27,7 +27,7 @@ export interface LogCommissionAuditInput {
 
 export const logCommissionAuditEvent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: LogCommissionAuditInput) => d)
+  .validator((d: LogCommissionAuditInput) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const { data: profile, error } = await supabase

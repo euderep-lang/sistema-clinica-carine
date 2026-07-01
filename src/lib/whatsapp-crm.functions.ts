@@ -147,7 +147,7 @@ export const getCrmMetrics = createServerFn({ method: "GET" })
 
 export const closeWaConversation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { conversationId: string; reason: string }) => d)
+  .validator((d: { conversationId: string; reason: string }) => d)
   .handler(async ({ data, context }) => {
     const profile = await requireCrmAccess(context.supabase, context.userId);
     const now = new Date().toISOString();
@@ -182,7 +182,7 @@ export const closeWaConversation = createServerFn({ method: "POST" })
 
 export const reopenWaConversation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { conversationId: string }) => d)
+  .validator((d: { conversationId: string }) => d)
   .handler(async ({ data, context }) => {
     const profile = await requireCrmAccess(context.supabase, context.userId);
     const now = new Date().toISOString();
@@ -212,7 +212,7 @@ export const reopenWaConversation = createServerFn({ method: "POST" })
 
 export const linkWaPatient = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { conversationId: string; patientId: string | null }) => d)
+  .validator((d: { conversationId: string; patientId: string | null }) => d)
   .handler(async ({ data, context }) => {
     const profile = await requireCrmAccess(context.supabase, context.userId);
 
@@ -279,7 +279,7 @@ export const getWaQuickReplies = createServerFn({ method: "GET" })
 
 export const humanizeWaQuickReply = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(
+  .validator(
     (d: {
       message: string;
       conversationId?: string | null;
@@ -337,7 +337,7 @@ export const seedWaQuickReplies = createServerFn({ method: "POST" })
 
 export const upsertWaQuickReply = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { id?: string; name: string; content: string; category?: string; shortcut?: string }) => d)
+  .validator((d: { id?: string; name: string; content: string; category?: string; shortcut?: string }) => d)
   .handler(async ({ data, context }) => {
     const profile = await requireCrmAccess(context.supabase, context.userId);
     const row = {
@@ -366,7 +366,7 @@ export const upsertWaQuickReply = createServerFn({ method: "POST" })
 
 export const deleteWaQuickReply = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { id: string }) => d)
+  .validator((d: { id: string }) => d)
   .handler(async ({ data, context }) => {
     await requireCrmAccess(context.supabase, context.userId);
     const { error } = await context.supabase.from("wa_quick_replies" as never).delete().eq("id", data.id);
@@ -376,7 +376,7 @@ export const deleteWaQuickReply = createServerFn({ method: "POST" })
 
 export const searchWaMessages = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(
+  .validator(
     (d: { conversationId: string; query: string; relatedConversationIds?: string[] }) => d,
   )
   .handler(async ({ data, context }) => {
@@ -400,7 +400,7 @@ export const searchWaMessages = createServerFn({ method: "POST" })
 
 export const searchWaMessagesGlobal = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { query: string; limit?: number }) => d)
+  .validator((d: { query: string; limit?: number }) => d)
   .handler(async ({ data, context }) => {
     await requireCrmAccess(context.supabase, context.userId);
     const q = data.query.trim();
@@ -427,7 +427,7 @@ export const searchWaMessagesGlobal = createServerFn({ method: "POST" })
 
 export const getWaPatientContext = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { patientId: string }) => d)
+  .validator((d: { patientId: string }) => d)
   .handler(async ({ data, context }) => {
     await requireCrmAccess(context.supabase, context.userId);
     const now = new Date().toISOString();
@@ -458,7 +458,7 @@ export const getWaPatientContext = createServerFn({ method: "POST" })
 
 export const assignWaConversation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { conversationId: string }) => d)
+  .validator((d: { conversationId: string }) => d)
   .handler(async ({ data, context }) => {
     const profile = await requireCrmAccess(context.supabase, context.userId);
     const now = new Date().toISOString();
@@ -484,7 +484,7 @@ export const assignWaConversation = createServerFn({ method: "POST" })
 /** Atribui conversas abertas sem responsável ao recepcionista padrão da clínica. */
 export const assignWaQueueToReception = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { allOpen?: boolean }) => d)
+  .validator((d: { allOpen?: boolean }) => d)
   .handler(async ({ data, context }) => {
     const profile = await requireCrmAccess(context.supabase, context.userId);
     const result = await assignOpenConversationsToReception(profile.tenant_id, {
@@ -507,7 +507,7 @@ export const assignWaQueueToReception = createServerFn({ method: "POST" })
 
 export const toggleWaConversationTag = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { conversationId: string; tagId: string; apply: boolean }) => d)
+  .validator((d: { conversationId: string; tagId: string; apply: boolean }) => d)
   .handler(async ({ data, context }) => {
     await requireCrmAccess(context.supabase, context.userId);
 
@@ -552,7 +552,7 @@ export const toggleWaConversationTag = createServerFn({ method: "POST" })
 
 export const sendWaAfterHoursTest = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { conversationId: string; text: string }) => d)
+  .validator((d: { conversationId: string; text: string }) => d)
   .handler(async ({ data, context }) => {
     const profile = await requireCrmAccess(context.supabase, context.userId);
     if (!isWhatsAppConfigured()) throw new Error("WhatsApp não configurado");
@@ -580,7 +580,7 @@ export const sendWaAfterHoursTest = createServerFn({ method: "POST" })
 
 export const fetchWaContactPhoto = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { conversationId: string }) => d)
+  .validator((d: { conversationId: string }) => d)
   .handler(async ({ data, context }) => {
     await requireCrmAccess(context.supabase, context.userId);
 
@@ -668,7 +668,7 @@ export const getWaTagRules = createServerFn({ method: "GET" })
 
 export const upsertWaTagRule = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(
+  .validator(
     (d: {
       id?: string;
       tagId: string;
@@ -706,7 +706,7 @@ export const upsertWaTagRule = createServerFn({ method: "POST" })
 
 export const deleteWaTagRule = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { id: string }) => d)
+  .validator((d: { id: string }) => d)
   .handler(async ({ data, context }) => {
     await requireCrmAccess(context.supabase, context.userId);
     const { error } = await context.supabase.from("wa_tag_rules" as never).delete().eq("id", data.id);
@@ -720,7 +720,7 @@ export const deleteWaTagRule = createServerFn({ method: "POST" })
 
 export const getWaTasks = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { conversationId?: string; onlyOpen?: boolean }) => d)
+  .validator((d: { conversationId?: string; onlyOpen?: boolean }) => d)
   .handler(async ({ data, context }) => {
     const profile = await requireCrmAccess(context.supabase, context.userId);
     let q = context.supabase
@@ -742,7 +742,7 @@ export const getWaTasks = createServerFn({ method: "POST" })
 
 export const createWaTask = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(
+  .validator(
     (d: {
       conversationId?: string;
       title: string;
@@ -793,7 +793,7 @@ export const createWaTask = createServerFn({ method: "POST" })
 
 export const completeWaTask = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { taskId: string }) => d)
+  .validator((d: { taskId: string }) => d)
   .handler(async ({ data, context }) => {
     await requireCrmAccess(context.supabase, context.userId);
     const now = new Date().toISOString();
@@ -907,7 +907,7 @@ export const getWaPipelineBoard = createServerFn({ method: "GET" })
 
 export const createWaDeal = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(
+  .validator(
     (d: { conversationId: string; title?: string; valueCents?: number; stageId?: string }) => d,
   )
   .handler(async ({ data, context }) => {
@@ -967,7 +967,7 @@ export const createWaDeal = createServerFn({ method: "POST" })
 
 export const moveWaDealStage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { dealId: string; stageId: string }) => d)
+  .validator((d: { dealId: string; stageId: string }) => d)
   .handler(async ({ data, context }) => {
     await requireCrmAccess(context.supabase, context.userId);
     const now = new Date().toISOString();
@@ -1026,7 +1026,7 @@ export const getWaPipelineConfig = createServerFn({ method: "GET" })
 
 export const saveWaPipelineConfig = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(
+  .validator(
     (d: {
       pipelineName: string;
       stages: { id?: string; name: string; color: string; win_probability: number }[];
@@ -1111,7 +1111,7 @@ export const saveWaPipelineConfig = createServerFn({ method: "POST" })
 
 export const suggestWaDealStage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { conversationId: string }) => d)
+  .validator((d: { conversationId: string }) => d)
   .handler(async ({ data, context }) => {
     const profile = await requireCrmAccess(context.supabase, context.userId);
     const pipelineId = await ensurePipelineForTenant(context.supabase, profile.tenant_id);
@@ -1188,7 +1188,7 @@ export const getMetaWaTemplates = createServerFn({ method: "GET" })
 
 export const sendWaBroadcast = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(
+  .validator(
     (d: {
       name: string;
       templateName: string;
@@ -1303,7 +1303,7 @@ export const processWaFollowUps = createServerFn({ method: "POST" })
 
 export const setupPostConsultationFollowUp = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(
+  .validator(
     (d: {
       patientId: string;
       appointmentId?: string | null;
@@ -1328,7 +1328,7 @@ export const setupPostConsultationFollowUp = createServerFn({ method: "POST" })
 
 export const triggerAppointmentFollowUp = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(
+  .validator(
     (d: {
       appointmentId: string;
       patientId: string;
@@ -1351,7 +1351,7 @@ export const triggerAppointmentFollowUp = createServerFn({ method: "POST" })
 
 export const triggerAppointmentStatusFollowUp = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(
+  .validator(
     (d: {
       appointmentId: string;
       patientId: string;
@@ -1375,7 +1375,7 @@ export const triggerAppointmentStatusFollowUp = createServerFn({ method: "POST" 
 
 export const markWaObjection = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { conversationId: string; objectionType: ObjectionType }) => d)
+  .validator((d: { conversationId: string; objectionType: ObjectionType }) => d)
   .handler(async ({ data, context }) => {
     const profile = await requireCrmAccess(context.supabase, context.userId);
     const suggestedMessage = await markConversationObjection({

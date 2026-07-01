@@ -110,7 +110,7 @@ function validateProfessionalCpf(role: TenantUserRole, cpf?: string | null) {
 
 export const createTenantUser = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: CreateUserInput) => data)
+  .validator((data: CreateUserInput) => data)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
@@ -180,7 +180,7 @@ export const createTenantUser = createServerFn({ method: "POST" })
 
 export const getTenantUserEmail = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: { user_id: string }) => data)
+  .validator((data: { user_id: string }) => data)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const { data: caller } = await supabase.from("profiles").select("role, tenant_id").eq("id", userId).maybeSingle();
@@ -197,7 +197,7 @@ export const getTenantUserEmail = createServerFn({ method: "POST" })
 
 export const updateTenantUser = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: UpdateUserInput) => data)
+  .validator((data: UpdateUserInput) => data)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const { data: caller, error: callerErr } = await supabase
@@ -298,7 +298,7 @@ export const updateTenantUser = createServerFn({ method: "POST" })
 
 export const resetTenantUserPassword = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: { user_id: string; password: string }) => data)
+  .validator((data: { user_id: string; password: string }) => data)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const { data: caller } = await supabase.from("profiles").select("role, tenant_id").eq("id", userId).maybeSingle();
@@ -330,7 +330,7 @@ export const resetTenantUserPassword = createServerFn({ method: "POST" })
 
 export const deleteTenantUser = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: { user_id: string }) => data)
+  .validator((data: { user_id: string }) => data)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const { data: caller } = await supabase

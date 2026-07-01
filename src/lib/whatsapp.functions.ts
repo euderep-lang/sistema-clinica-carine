@@ -53,7 +53,7 @@ export const getWhatsAppStatus = createServerFn({ method: "GET" }).handler(async
 
 export const sendWaText = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { conversationId: string; text: string; replyToMessageId?: string }) => d)
+  .validator((d: { conversationId: string; text: string; replyToMessageId?: string }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const profile = await requireCrmAccess(supabase, userId);
@@ -167,7 +167,7 @@ export const sendWaText = createServerFn({ method: "POST" })
 
 export const sendWaMedia = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { conversationId: string; base64: string; mimeType: string; filename: string; mediaType: "image" | "audio" | "video" | "document"; caption?: string }) => d)
+  .validator((d: { conversationId: string; base64: string; mimeType: string; filename: string; mediaType: "image" | "audio" | "video" | "document"; caption?: string }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const profile = await requireCrmAccess(supabase, userId);
@@ -261,7 +261,7 @@ export const sendWaMedia = createServerFn({ method: "POST" })
 
 export const sendWaContact = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { conversationId: string; contactName: string; contactPhone: string }) => d)
+  .validator((d: { conversationId: string; contactName: string; contactPhone: string }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const profile = await requireCrmAccess(supabase, userId);
@@ -320,7 +320,7 @@ export const sendWaContact = createServerFn({ method: "POST" })
 
 export const sendWaClinicLocation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { conversationId: string }) => d)
+  .validator((d: { conversationId: string }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const profile = await requireCrmAccess(supabase, userId);
@@ -393,7 +393,7 @@ export const sendWaClinicLocation = createServerFn({ method: "POST" })
 
 export const transferWaConversation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { conversationId: string; toUserId: string; note?: string }) => d)
+  .validator((d: { conversationId: string; toUserId: string; note?: string }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const profile = await requireCrmAccess(supabase, userId);
@@ -449,7 +449,7 @@ export const transferWaConversation = createServerFn({ method: "POST" })
 
 export const markWaConversationRead = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { conversationId: string }) => d)
+  .validator((d: { conversationId: string }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     await supabase
@@ -469,7 +469,7 @@ export const markWaConversationRead = createServerFn({ method: "POST" })
 
 export const scheduleWaMessage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { conversationId: string; body: string; sendAt: string }) => d)
+  .validator((d: { conversationId: string; body: string; sendAt: string }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const profile = await requireCrmAccess(supabase, userId);
@@ -508,7 +508,7 @@ export const scheduleWaMessage = createServerFn({ method: "POST" })
 
 export const listScheduledWaMessages = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { conversationId: string }) => d)
+  .validator((d: { conversationId: string }) => d)
   .handler(async ({ data, context }) => {
     await requireCrmAccess(context.supabase, context.userId);
     const { data: rows, error } = await context.supabase
@@ -524,7 +524,7 @@ export const listScheduledWaMessages = createServerFn({ method: "POST" })
 
 export const cancelScheduledWaMessage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { id: string }) => d)
+  .validator((d: { id: string }) => d)
   .handler(async ({ data, context }) => {
     await requireCrmAccess(context.supabase, context.userId);
     const { error } = await context.supabase
@@ -538,7 +538,7 @@ export const cancelScheduledWaMessage = createServerFn({ method: "POST" })
 
 export const markWaConversationUnread = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { conversationId: string }) => d)
+  .validator((d: { conversationId: string }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     await requireCrmAccess(supabase, userId);
@@ -560,7 +560,7 @@ export const markWaConversationUnread = createServerFn({ method: "POST" })
 
 export const fetchWaMediaUrl = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { mediaId: string; mimeType?: string }) => d)
+  .validator((d: { mediaId: string; mimeType?: string }) => d)
   .handler(async ({ data, context }) => {
     await requireCrmAccess(context.supabase, context.userId);
     if (!isWhatsAppConfigured()) throw new Error(configError());
@@ -569,7 +569,7 @@ export const fetchWaMediaUrl = createServerFn({ method: "POST" })
 
 export const startWaConversation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { phone: string; patientId?: string; name?: string; text: string }) => d)
+  .validator((d: { phone: string; patientId?: string; name?: string; text: string }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const profile = await requireCrmAccess(supabase, userId);

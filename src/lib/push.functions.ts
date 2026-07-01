@@ -11,7 +11,7 @@ export const getWebPushConfig = createServerFn({ method: "GET" }).handler(async 
 
 export const savePushSubscription = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(
+  .validator(
     (d: { endpoint: string; p256dh: string; auth: string; userAgent?: string }) => d,
   )
   .handler(async ({ data, context }) => {
@@ -46,7 +46,7 @@ export const savePushSubscription = createServerFn({ method: "POST" })
 
 export const deletePushSubscription = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { endpoint: string }) => d)
+  .validator((d: { endpoint: string }) => d)
   .handler(async ({ data, context }) => {
     const { userId } = context;
     await supabaseAdmin

@@ -38,7 +38,7 @@ async function requireAuditAccess(
 
 export const listAuditLogs = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(
+  .validator(
     (d: {
       from?: string;
       to?: string;
