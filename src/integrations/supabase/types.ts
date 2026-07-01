@@ -1263,6 +1263,8 @@ export type Database = {
       profiles: {
         Row: {
           active: boolean | null
+          ai_budget_instructions: string | null
+          ai_meal_plan_instructions: string | null
           appointment_types: string[] | null
           avatar_url: string | null
           commission_pct: number | null
@@ -1286,6 +1288,8 @@ export type Database = {
         }
         Insert: {
           active?: boolean | null
+          ai_budget_instructions?: string | null
+          ai_meal_plan_instructions?: string | null
           appointment_types?: string[] | null
           avatar_url?: string | null
           commission_pct?: number | null
@@ -1309,6 +1313,8 @@ export type Database = {
         }
         Update: {
           active?: boolean | null
+          ai_budget_instructions?: string | null
+          ai_meal_plan_instructions?: string | null
           appointment_types?: string[] | null
           avatar_url?: string | null
           commission_pct?: number | null

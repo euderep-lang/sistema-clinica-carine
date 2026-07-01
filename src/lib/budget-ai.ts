@@ -175,7 +175,7 @@ export async function addMedicationToCatalog(opts: {
 export async function streamBudgetChat(
   messages: ChatMessage[],
   medicamentosContext: string,
-  opts: { onToken: (delta: string) => void; signal?: AbortSignal },
+  opts: { onToken: (delta: string) => void; signal?: AbortSignal; patientId?: string | null },
 ): Promise<string> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
@@ -187,7 +187,11 @@ export async function streamBudgetChat(
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ messages, medicamentos_context: medicamentosContext }),
+    body: JSON.stringify({
+      messages,
+      medicamentos_context: medicamentosContext,
+      patient_id: opts.patientId ?? null,
+    }),
     signal: opts.signal,
   });
 

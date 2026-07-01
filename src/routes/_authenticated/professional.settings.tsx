@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Calendar, FileImage, Settings, ShieldCheck, UserCircle, type LucideIcon } from "lucide-react";
+import { Calendar, Bot, FileImage, Settings, ShieldCheck, UserCircle, type LucideIcon } from "lucide-react";
+import { SectionAssistenteIa } from "@/components/professional/section-assistente-ia";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionAgendaTipos } from "@/components/professional/section-agenda-tipos";
@@ -13,7 +14,7 @@ export const Route = createFileRoute("/_authenticated/professional/settings")({
   component: ProfessionalSettingsPage,
 });
 
-type TabId = "perfil" | "agenda" | "timbrado" | "certificado";
+type TabId = "perfil" | "agenda" | "timbrado" | "certificado" | "ia";
 
 const TABS: { id: TabId; label: string; icon: LucideIcon; description: string }[] = [
   {
@@ -39,6 +40,12 @@ const TABS: { id: TabId; label: string; icon: LucideIcon; description: string }[
     label: "Certificado digital",
     icon: ShieldCheck,
     description: "Certificado A1 ou em nuvem SafeID para assinar receitas com validade ICP-Brasil.",
+  },
+  {
+    id: "ia",
+    label: "Assistente IA",
+    icon: Bot,
+    description: "Treine a IA de orçamentos e plano terapêutico com suas regras e preferências.",
   },
 ];
 
@@ -80,6 +87,7 @@ function ProfessionalSettingsPage() {
             {tab === "agenda" && <SectionAgendaTipos />}
             {tab === "timbrado" && <SectionPapelTimbrado />}
             {tab === "certificado" && <SectionCertificadoDigital />}
+            {tab === "ia" && <SectionAssistenteIa />}
           </div>
         </div>
       </div>

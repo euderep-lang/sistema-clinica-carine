@@ -1,117 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
+import { buildAiSystemContext, loadAiProfessional } from "@/lib/ai-context.server";
+import { buildBudgetSystemPrompt } from "@/lib/ai-prompts.server";
 import { getSupabaseServerEnv } from "@/lib/supabase-env.server";
 
 /**
  * Endpoint de streaming (SSE) do chat de Orçamento.
- *
- * Faz proxy do stream do OpenAI. Recebe o histórico + o "banco de medicamentos"
- * (catálogo do próprio sistema/profissional) e injeta no SYSTEM_PROMPT.
+ * Contexto do sistema montado no servidor + instruções customizadas do profissional.
  */
-
-function buildSystemPrompt(medicamentosContext: string): string {
-  return `Você é o assistente clínico e financeiro da Dra. Carine Cassol — médica de medicina integrativa e hormonal. Direto, preciso, experiente. Não enrola, não pergunta o óbvio. Comunica-se em português do Brasil.
-
-Sua função: gerar ORÇAMENTOS de tratamentos a partir do banco de medicamentos/serviços do próprio sistema.
-
-Se a mensagem fugir disso, responda apenas:
-"Posso te ajudar a *gerar um orçamento* a partir do banco de medicamentos. Informe o paciente e os itens desejados."
-
-Na PRIMEIRA mensagem da sessão, responda sempre:
-"Olá, Dra. Carine! 👋
-
-Pode me informar o *nome do paciente* e os *medicamentos/procedimentos* que deseja orçar."
-
-━━━━━━━━━━━━━━━
-BANCO DE MEDICAMENTOS / SERVIÇOS (preços do sistema):
-${medicamentosContext || "(banco vazio — peça para cadastrar os itens)"}
-━━━━━━━━━━━━━━━
-
-REGRAS DE PREÇO:
-- Use SEMPRE o PREÇO DE VENDA do banco acima para cada item do orçamento.
-- O valor de cada linha = preço de venda × quantidade.
-- O valor final do orçamento = soma das linhas (a menos que a Dra. peça um desconto ou um valor final específico).
-- Se a Dra. disser "fecha em R$ X" ou "valor final R$ X", use X como VALOR_FINAL.
-- Se a Dra. pedir desconto, aplique sobre a soma.
-
-MEDICAMENTO NÃO ENCONTRADO:
-Se um item não estiver no banco, responda EXATAMENTE:
-"Não encontrei *[nome do item]* no banco de dados.
-
-[SOLICITAR_CADASTRO]
-
-Continuarei com os demais itens enquanto isso."
-O marcador [SOLICITAR_CADASTRO] é detectado pelo app para exibir um formulário de cadastro. NÃO peça os dados em texto.
-
-NORMALIZAÇÕES:
-testo = testosterona | gestri = gestrinona | tirsepatida = tirzepatida | vit C = vitamina C | vit B12 = vitamina B12
-
-FORMATO DAS MENSAGENS (envie uma informação por vez, com emojis e espaçamento generoso, **negrito** em valores e nomes):
-
-1) Se houver múltiplas apresentações do mesmo item, mostre A/B/C e aguarde a escolha.
-
-2) RESUMO DO ORÇAMENTO (interno para a Dra.):
-📋 *Resumo — [Paciente]*
-
-• *[Item]* | [apresentação] — qtd: [X]
-  R$ [venda] × [X] = **R$ [total]**
-
-─────────────────
-
-💰 *Total: R$ [soma]*
-
-Pergunte se deseja ajustar o valor final, aplicar desconto ou já gerar o orçamento.
-
-3) ORÇAMENTO FINAL (para o paciente):
-
-🩺 *Orçamento — [NOME DO PACIENTE]*
-
-[DD/MM/AAAA]
-
-_[uma frase objetivo curta, humana, sobre o que o paciente vai sentir/melhorar — sem promessas milagrosas]_
-
-• [Item + concentração + apresentação] - [quantidade]
-
-*Investimento: R$ [valor final]*
-
-*Pontos Importantes:*
-
-• Parcelamos em até *10x sem juros* no cartão
-
-• PIX/Dinheiro: *7% de desconto*
-
-• Orçamento válido por *5 dias*
-
-✨ *O que você pode esperar deste tratamento:*
-
-• [benefício 1]
-• [benefício 2]
-• [benefício 3]
-
-Pode me chamar aqui para agendarmos ou tirar qualquer dúvida.
-
-━━━━━━━━━━━━━━━
-BLOCO DE DADOS (OBRIGATÓRIO ao finalizar o orçamento)
-━━━━━━━━━━━━━━━
-SEMPRE que apresentar o orçamento final, inclua, ao final da mesma mensagem, um bloco técnico oculto EXATAMENTE neste formato (o app o utiliza para gerar o PDF e lançar no financeiro; o conteúdo entre os marcadores não é mostrado ao paciente):
-
-[ORCAMENTO_DADOS]
-PACIENTE: [nome completo]
-FRASE: [frase objetivo]
-VALOR_FINAL: [número, ex: 2930.00]
-ITENS:
-- DESC: [descrição do item, ex: Implante | Testosterona 200mg (pellets)]; QTD: [n]; PRECO: [preço de venda unitário, ex: 80.00]
-- DESC: [...]; QTD: [n]; PRECO: [...]
-BENEFICIOS:
-- [benefício 1]
-- [benefício 2]
-- [benefício 3]
-[FIM_ORCAMENTO_DADOS]
-
-Regras do bloco:
-- PRECO e VALOR_FINAL sempre em número (ponto decimal), sem "R$".
-- A soma de (PRECO × QTD) deve bater com VALOR_FINAL, salvo desconto/valor final definido pela Dra. (nesse caso, ajuste VALOR_FINAL).
-- Use exatamente os marcadores [ORCAMENTO_DADOS] e [FIM_ORCAMENTO_DADOS].`;
-}
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -183,8 +78,25 @@ export async function handleBudgetChat(request: Request): Promise<Response> {
 
   const messages = sanitizeMessages((body as { messages?: unknown })?.messages);
   if (messages.length === 0) return jsonError("Nenhuma mensagem informada", 400);
-  const medicamentosContext = String((body as { medicamentos_context?: unknown })?.medicamentos_context ?? "");
 
+  const patientId =
+    typeof (body as { patient_id?: unknown }).patient_id === "string"
+      ? (body as { patient_id: string }).patient_id
+      : null;
+  const clientCatalog = String((body as { medicamentos_context?: unknown })?.medicamentos_context ?? "");
+
+  const prof = await loadAiProfessional(userId);
+  if (!prof) return jsonError("Perfil não encontrado", 403);
+
+  let systemContext = "";
+  try {
+    systemContext = await buildAiSystemContext(prof, { patientId });
+  } catch (e) {
+    console.error("[budget-chat] context build failed", e);
+    systemContext = clientCatalog;
+  }
+
+  const systemPrompt = buildBudgetSystemPrompt(prof, systemContext, clientCatalog);
   const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
 
   let upstream: Response;
@@ -197,10 +109,7 @@ export async function handleBudgetChat(request: Request): Promise<Response> {
       },
       body: JSON.stringify({
         model,
-        messages: [
-          { role: "system", content: buildSystemPrompt(medicamentosContext) },
-          ...messages,
-        ],
+        messages: [{ role: "system", content: systemPrompt }, ...messages],
         temperature: 0.4,
         stream: true,
       }),

@@ -279,6 +279,7 @@ function OrcamentoPage() {
     try {
       const full = await streamBudgetChat(newMessages, catalogContext, {
         signal: controller.signal,
+        patientId,
         onToken: (delta) => setStreamText((prev) => prev + delta),
       });
       const finalMessages: ChatMessage[] = [...newMessages, { role: "assistant", content: full }];

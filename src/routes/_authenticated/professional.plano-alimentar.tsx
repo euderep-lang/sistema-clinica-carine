@@ -343,6 +343,7 @@ function PlanoAlimentarPage() {
     try {
       const full = await streamMealPlanChat(newMessages, {
         signal: controller.signal,
+        patientId,
         onToken: (delta) => setStreamText((prev) => prev + delta),
       });
       const finalMessages: ChatMessage[] = [

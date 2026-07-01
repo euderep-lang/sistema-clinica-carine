@@ -177,7 +177,7 @@ export function fileToDataUrl(file: File | Blob): Promise<string> {
  */
 export async function streamMealPlanChat(
   messages: ChatMessage[],
-  opts: { onToken: (delta: string) => void; signal?: AbortSignal },
+  opts: { onToken: (delta: string) => void; signal?: AbortSignal; patientId?: string | null },
 ): Promise<string> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
@@ -189,7 +189,7 @@ export async function streamMealPlanChat(
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, patient_id: opts.patientId ?? null }),
     signal: opts.signal,
   });
 
