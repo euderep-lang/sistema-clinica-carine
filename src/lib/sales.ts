@@ -144,10 +144,11 @@ export async function addSaleItems(billId: string, items: SaleItemInput[]) {
   };
 }
 
-export async function updateSaleItem(itemId: string, quantity: number) {
+export async function updateSaleItem(itemId: string, quantity: number, unitPrice?: number) {
   const { data, error } = await supabase.rpc("update_sale_item" as never, {
     p_item_id: itemId,
     p_quantity: quantity,
+    p_unit_price: unitPrice != null && unitPrice > 0 ? unitPrice : null,
   } as never);
   if (error) throw new Error(error.message);
   return data as { bill_id: string; amount: number; status: string };

@@ -17,6 +17,11 @@ import { generateReceiptPDF } from "@/lib/financial-pdf";
 import { loadLetterheadForPdf, resolveLetterheadProfessionalId, DEFAULT_LETTERHEAD_MARGINS } from "@/lib/letterhead";
 import { receiveBillPayment } from "@/lib/sales";
 import { activePaymentMethods, getCachedPaymentMethodConfigs, loadPaymentMethodConfigs, paymentLabel } from "@/lib/payment-methods";
+import {
+  RetroactivePaymentDateField,
+  resolvePaymentDate,
+  validatePaymentDate,
+} from "@/components/professional/retroactive-payment-date-field";
 
 interface Patient { id: string; full_name: string; }
 interface Bill {
@@ -45,6 +50,7 @@ export function ReceivePaymentDialog({ open, onOpenChange, onSaved, defaultPatie
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("cash");
   const [paidDate, setPaidDate] = useState(todayISO());
+  const [retroactivePayment, setRetroactivePayment] = useState(false);
   const [notes, setNotes] = useState("");
   const [partial, setPartial] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -58,6 +64,7 @@ export function ReceivePaymentDialog({ open, onOpenChange, onSaved, defaultPatie
   useEffect(() => {
     if (!open) return;
     setStep(1); setSelected({}); setAmount(""); setNotes(""); setPartial(false); setDone(null); setInstallments("1");
+    setPaidDate(todayISO()); setRetroactivePayment(false);
     if (defaultPatientId) setPatientId(defaultPatientId);
     (async () => {
       const { data } = await supabase.from("patients").select("id, full_name").eq("active", true).order("full_name");
@@ -91,6 +98,12 @@ export function ReceivePaymentDialog({ open, onOpenChange, onSaved, defaultPatie
 
   const confirm = async () => {
     if (!tenant || selectedBills.length === 0) return;
+    const dateError = validatePaymentDate(paidDate);
+    if (dateError) {
+      toast.error(dateError);
+      return;
+    }
+    const effectivePayDate = resolvePaymentDate(paidDate, retroactivePayment);
     setSaving(true);
     try {
       const received = parseBRLInput(amount);
@@ -103,7 +116,7 @@ export function ReceivePaymentDialog({ open, onOpenChange, onSaved, defaultPatie
           b.id,
           pay,
           method,
-          paidDate,
+          effectivePayDate,
           notes || undefined,
           0,
           selectedMethod?.supports_installments ? Number(installments) || 1 : 1,
@@ -197,7 +210,13 @@ export function ReceivePaymentDialog({ open, onOpenChange, onSaved, defaultPatie
                 </div>
               </div>
             )}
-            <div><Label>Data do pagamento</Label><Input type="date" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} /></div>
+            <RetroactivePaymentDateField
+              value={paidDate}
+              onChange={setPaidDate}
+              retroactive={retroactivePayment}
+              onRetroactiveChange={setRetroactivePayment}
+              suggestedDate={selectedBills[0]?.due_date}
+            />
             <div className="flex items-center gap-2"><Switch checked={partial} onCheckedChange={setPartial} /><Label>Pagamento parcial</Label></div>
             <div><Label>Observações</Label><Input value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
           </div>
@@ -214,7 +233,7 @@ export function ReceivePaymentDialog({ open, onOpenChange, onSaved, defaultPatie
                 <p><strong>{selectedBills.length}</strong> cobrança(s) selecionada(s)</p>
                 <p>Valor a receber: <strong>{fmt(parseBRLInput(amount))}</strong></p>
                 <p>Forma: <strong>{paymentLabel(method)}</strong></p>
-                <p>Data: <strong>{fmtDate(paidDate)}</strong></p>
+                <p>Data: <strong>{fmtDate(resolvePaymentDate(paidDate, retroactivePayment))}</strong></p>
                 {partial && <p className="text-orange-600">Pagamento parcial — saldo remanescente continuará em aberto.</p>}
               </div>
             )}

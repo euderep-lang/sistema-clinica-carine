@@ -28,7 +28,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
-import { fmt } from "@/lib/currency";
+import { fmt, parseBRLInput } from "@/lib/currency";
 import { AUTOMATION_QUEUED_MESSAGE } from "@/lib/automation-messages";
 
 interface Procedure {
@@ -76,6 +76,7 @@ export function FinishConsultationDialog({
   const [priceTable, setPriceTable] = useState("particular");
   const [search, setSearch] = useState("");
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [prices, setPrices] = useState<Record<string, string>>({});
   const [patientName, setPatientName] = useState("Paciente");
   const [checkoffOpen, setCheckoffOpen] = useState(false);
   const [checkoffTarget, setCheckoffTarget] = useState<SessionCheckoffTarget | null>(null);
@@ -130,6 +131,7 @@ export function FinishConsultationDialog({
     setLoading(true);
     setSearch("");
     setQuantities({});
+    setPrices({});
     setRoomId("geral");
     setPriceTable("particular");
 
@@ -177,14 +179,25 @@ export function FinishConsultationDialog({
     [procedures, quantities],
   );
 
-  const estimatedTotal = selectedNew.reduce(
-    (sum, p) => sum + p.default_price * (quantities[p.id] ?? 0),
-    0,
-  );
+  const estimatedTotal = selectedNew.reduce((sum, p) => {
+    const qty = quantities[p.id] ?? 0;
+    const price = parseBRLInput(prices[p.id] ?? "") || p.default_price;
+    return sum + price * qty;
+  }, 0);
 
   const setQty = (id: string, value: string) => {
     const n = Math.max(0, parseInt(value, 10) || 0);
     setQuantities((prev) => ({ ...prev, [id]: n }));
+    if (n > 0) {
+      setPrices((prev) => {
+        if (prev[id]) return prev;
+        const proc = procedures.find((p) => p.id === id);
+        return {
+          ...prev,
+          [id]: proc && proc.default_price > 0 ? proc.default_price.toFixed(2).replace(".", ",") : "",
+        };
+      });
+    }
   };
 
   const finish = async () => {
@@ -195,10 +208,14 @@ export function FinishConsultationDialog({
       p_patient_id: patientId,
       p_room_id: roomId === "geral" ? null : roomId,
       p_price_table: priceTable,
-      p_new_items: selectedNew.map((p) => ({
-        service_id: p.id,
-        quantity: quantities[p.id],
-      })),
+      p_new_items: selectedNew.map((p) => {
+        const price = parseBRLInput(prices[p.id] ?? "") || p.default_price;
+        return {
+          service_id: p.id,
+          quantity: quantities[p.id],
+          unit_price: price,
+        };
+      }),
       p_session_items: [],
     });
     setSaving(false);
@@ -307,11 +324,24 @@ export function FinishConsultationDialog({
                     >
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{proc.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {fmt(proc.default_price)}
-                          {proc.session_count > 1 && ` · ${proc.session_count} sessões`}
-                        </p>
+                        {proc.session_count > 1 && (
+                          <p className="text-xs text-muted-foreground">{proc.session_count} sessões</p>
+                        )}
                       </div>
+                      <Input
+                        placeholder="0,00"
+                        value={
+                          prices[proc.id] ??
+                          ((quantities[proc.id] ?? 0) > 0
+                            ? proc.default_price.toFixed(2).replace(".", ",")
+                            : "")
+                        }
+                        disabled={(quantities[proc.id] ?? 0) <= 0}
+                        onChange={(e) =>
+                          setPrices((prev) => ({ ...prev, [proc.id]: e.target.value }))
+                        }
+                        className="h-8 w-24 shrink-0 text-right tabular-nums"
+                      />
                       <Input
                         type="number"
                         min={0}

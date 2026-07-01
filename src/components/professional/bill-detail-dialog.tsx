@@ -68,6 +68,7 @@ import {
 } from "@/lib/sales";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
+import { RetroactivePaymentDateField, resolvePaymentDate, validatePaymentDate } from "@/components/professional/retroactive-payment-date-field";
 
 function formatBRLInput(value: number): string {
   if (value <= 0) return "";
@@ -139,6 +140,7 @@ export function BillDetailDialog({
   const [discountMode, setDiscountMode] = useState<DiscountMode>("amount");
   const [payMethod, setPayMethod] = useState("pix");
   const [payDate, setPayDate] = useState(todayISO());
+  const [retroactivePayment, setRetroactivePayment] = useState(false);
   const [payNotes, setPayNotes] = useState("");
   const [creditInstallments, setCreditInstallments] = useState("1");
   const [paySaving, setPaySaving] = useState(false);
@@ -151,8 +153,10 @@ export function BillDetailDialog({
   const [services, setServices] = useState<PickerService[]>([]);
   const [serviceSearch, setServiceSearch] = useState("");
   const [addQuantities, setAddQuantities] = useState<Record<string, number>>({});
+  const [addPrices, setAddPrices] = useState<Record<string, string>>({});
   const [addSaving, setAddSaving] = useState(false);
   const [itemQty, setItemQty] = useState<Record<string, string>>({});
+  const [itemPrice, setItemPrice] = useState<Record<string, string>>({});
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
   const [removeItemTarget, setRemoveItemTarget] = useState<SaleChargeItem | null>(null);
   const [removingItem, setRemovingItem] = useState(false);
@@ -224,6 +228,9 @@ export function BillDetailDialog({
       setItemQty(
         Object.fromEntries(chargeItems.map((it) => [it.id, String(it.quantity)])),
       );
+      setItemPrice(
+        Object.fromEntries(chargeItems.map((it) => [it.id, formatBRLInput(Number(it.unit_price))])),
+      );
       setPayments(billPayments);
       setDiscounts(billDiscounts);
       setServices(
@@ -239,12 +246,14 @@ export function BillDetailDialog({
       setPayDiscountPercent("");
       setDiscountMode("amount");
       setPayDate(todayISO());
+      setRetroactivePayment(false);
       setPayMethod("pix");
       setCreditInstallments("1");
       setPayNotes("");
       setAddingItems(false);
       setServiceSearch("");
       setAddQuantities({});
+      setAddPrices({});
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -338,14 +347,23 @@ export function BillDetailDialog({
     [services, addQuantities],
   );
 
-  const addTotal = addSelection.reduce(
-    (sum, s) => sum + s.default_price * (addQuantities[s.id] ?? 0),
-    0,
-  );
+  const addTotal = addSelection.reduce((sum, s) => {
+    const qty = addQuantities[s.id] ?? 0;
+    const price =
+      parseBRLInput(addPrices[s.id] ?? formatBRLInput(s.default_price)) || s.default_price;
+    return sum + price * qty;
+  }, 0);
 
   const setAddQty = (id: string, value: string) => {
     const n = Math.max(0, parseInt(value, 10) || 0);
     setAddQuantities((prev) => ({ ...prev, [id]: n }));
+    if (n > 0) {
+      setAddPrices((prev) => {
+        if (prev[id]) return prev;
+        const svc = services.find((s) => s.id === id);
+        return { ...prev, [id]: svc ? formatBRLInput(svc.default_price) : "" };
+      });
+    }
   };
 
   const submitAddItems = async () => {
@@ -354,12 +372,22 @@ export function BillDetailDialog({
     try {
       const result = await addSaleItems(
         bill.id,
-        addSelection.map((s) => ({ service_id: s.id, quantity: addQuantities[s.id] ?? 1 })),
+        addSelection.map((s) => {
+          const price =
+            parseBRLInput(addPrices[s.id] ?? formatBRLInput(s.default_price)) ||
+            s.default_price;
+          return {
+            service_id: s.id,
+            quantity: addQuantities[s.id] ?? 1,
+            unit_price: price,
+          };
+        }),
       );
       toast.success(`${fmt(result.added_total)} adicionado(s) à conta`);
       setAddingItems(false);
       setServiceSearch("");
       setAddQuantities({});
+      setAddPrices({});
       await refreshAll();
     } catch (e) {
       toast.error((e as Error).message);
@@ -368,21 +396,31 @@ export function BillDetailDialog({
     }
   };
 
-  const commitItemQty = async (item: SaleChargeItem) => {
-    const raw = itemQty[item.id];
-    const next = Math.max(1, parseInt(raw ?? "", 10) || 0);
-    if (next === item.quantity) {
+  const commitItem = async (item: SaleChargeItem) => {
+    const rawQty = itemQty[item.id];
+    const nextQty = Math.max(1, parseInt(rawQty ?? "", 10) || 0);
+    const parsedPrice = parseBRLInput(itemPrice[item.id] ?? "");
+    const nextPrice = parsedPrice > 0 ? parsedPrice : Number(item.unit_price);
+    if (nextQty === item.quantity && nextPrice === Number(item.unit_price)) {
       setItemQty((prev) => ({ ...prev, [item.id]: String(item.quantity) }));
+      setItemPrice((prev) => ({
+        ...prev,
+        [item.id]: formatBRLInput(Number(item.unit_price)),
+      }));
       return;
     }
     setSavingItemId(item.id);
     try {
-      await updateSaleItem(item.id, next);
-      toast.success("Quantidade atualizada");
+      await updateSaleItem(item.id, nextQty, nextPrice);
+      toast.success("Item atualizado");
       await refreshAll();
     } catch (e) {
       toast.error((e as Error).message);
       setItemQty((prev) => ({ ...prev, [item.id]: String(item.quantity) }));
+      setItemPrice((prev) => ({
+        ...prev,
+        [item.id]: formatBRLInput(Number(item.unit_price)),
+      }));
     } finally {
       setSavingItemId(null);
     }
@@ -415,6 +453,12 @@ export function BillDetailDialog({
       toast.error(`Recebido + desconto (${fmt(settlementTotal)}) não pode passar de ${fmt(outstanding)} em aberto`);
       return;
     }
+    const dateError = validatePaymentDate(payDate);
+    if (dateError) {
+      toast.error(dateError);
+      return;
+    }
+    const effectivePayDate = resolvePaymentDate(payDate, retroactivePayment);
     if (value > 0 && supportsInstallments && (!creditInstallments || installmentCount < 1)) {
       toast.error("Informe o parcelamento");
       return;
@@ -436,23 +480,31 @@ export function BillDetailDialog({
         bill.id,
         value,
         value > 0 ? payMethod : "other",
-        payDate,
+        effectivePayDate,
         notes,
         discount,
         supportsInstallments ? installmentCount : 1,
       );
       toast.success(
         value > 0 && discount > 0
-          ? "Pagamento e desconto registrados"
+          ? retroactivePayment
+            ? `Pagamento e desconto registrados em ${fmtDate(effectivePayDate)}`
+            : "Pagamento e desconto registrados"
           : discount > 0
-            ? "Desconto aplicado"
-            : "Pagamento registrado",
+            ? retroactivePayment
+              ? `Desconto aplicado em ${fmtDate(effectivePayDate)}`
+              : "Desconto aplicado"
+            : retroactivePayment
+              ? `Pagamento registrado em ${fmtDate(effectivePayDate)}`
+              : "Pagamento registrado",
       );
       setPayNotes("");
       setPayDiscount("");
       setPayDiscountPercent("");
       setDiscountMode("amount");
       setCreditInstallments("1");
+      setRetroactivePayment(false);
+      setPayDate(todayISO());
       await refreshAll();
     } catch (e) {
       toast.error((e as Error).message);
@@ -570,12 +622,23 @@ export function BillDetailDialog({
                                 </span>
                               )}
                             </p>
-                            <p className="text-xs text-muted-foreground">
-                              {fmt(item.unit_price)} / un
-                            </p>
+                            <p className="text-xs text-muted-foreground">/ un</p>
                           </div>
                           {canAddItems ? (
                             <>
+                              <Input
+                                placeholder="0,00"
+                                value={itemPrice[item.id] ?? formatBRLInput(Number(item.unit_price))}
+                                disabled={savingItemId === item.id}
+                                onChange={(e) =>
+                                  setItemPrice((prev) => ({ ...prev, [item.id]: e.target.value }))
+                                }
+                                onBlur={() => void commitItem(item)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") e.currentTarget.blur();
+                                }}
+                                className="h-8 w-24 shrink-0 text-right tabular-nums"
+                              />
                               <Input
                                 type="number"
                                 min={1}
@@ -584,14 +647,21 @@ export function BillDetailDialog({
                                 onChange={(e) =>
                                   setItemQty((prev) => ({ ...prev, [item.id]: e.target.value }))
                                 }
-                                onBlur={() => void commitItemQty(item)}
+                                onBlur={() => void commitItem(item)}
                                 onKeyDown={(e) => {
                                   if (e.key === "Enter") e.currentTarget.blur();
                                 }}
                                 className="h-8 w-14 shrink-0 text-center"
                               />
                               <span className="w-20 shrink-0 text-right font-medium tabular-nums">
-                                {fmt(item.total_price)}
+                                {fmt(
+                                  (parseBRLInput(itemPrice[item.id] ?? "") ||
+                                    Number(item.unit_price)) *
+                                    (Math.max(
+                                      1,
+                                      parseInt(itemQty[item.id] ?? String(item.quantity), 10) || 0,
+                                    )),
+                                )}
                               </span>
                               <Button
                                 type="button"
@@ -633,6 +703,7 @@ export function BillDetailDialog({
                           onClick={() => {
                             setAddingItems(false);
                             setAddQuantities({});
+                            setAddPrices({});
                             setServiceSearch("");
                           }}
                         >
@@ -662,11 +733,26 @@ export function BillDetailDialog({
                               >
                                 <div className="min-w-0 flex-1">
                                   <p className="truncate text-sm font-medium">{svc.name}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {fmt(svc.default_price)}
-                                    {svc.session_count > 1 && ` · ${svc.session_count} sessões`}
-                                  </p>
+                                  {svc.session_count > 1 && (
+                                    <p className="text-xs text-muted-foreground">
+                                      {svc.session_count} sessões
+                                    </p>
+                                  )}
                                 </div>
+                                <Input
+                                  placeholder="0,00"
+                                  value={
+                                    addPrices[svc.id] ??
+                                    ((addQuantities[svc.id] ?? 0) > 0
+                                      ? formatBRLInput(svc.default_price)
+                                      : "")
+                                  }
+                                  disabled={(addQuantities[svc.id] ?? 0) <= 0}
+                                  onChange={(e) =>
+                                    setAddPrices((prev) => ({ ...prev, [svc.id]: e.target.value }))
+                                  }
+                                  className="h-8 w-24 shrink-0 text-right tabular-nums"
+                                />
                                 <Input
                                   type="number"
                                   min={0}
@@ -858,15 +944,13 @@ export function BillDetailDialog({
                       Saldo em aberto: <strong>{fmt(outstanding)}</strong>. Recebido + desconto abatem esse valor.
                       Para quitar só com desconto, deixe valor recebido vazio.
                     </p>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">Data</Label>
-                      <Input
-                        type="date"
-                        value={payDate}
-                        onChange={(e) => setPayDate(e.target.value)}
-                        className="h-10"
-                      />
-                    </div>
+                    <RetroactivePaymentDateField
+                      value={payDate}
+                      onChange={setPayDate}
+                      retroactive={retroactivePayment}
+                      onRetroactiveChange={setRetroactivePayment}
+                      suggestedDate={bill.due_date}
+                    />
                     {settlementTotal > 0 && (
                       <p className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
                         Abatimento de <strong>{fmt(settlementTotal)}</strong>

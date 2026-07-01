@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { todayISO } from "@/lib/locale";
+import { todayISO, fmtDate } from "@/lib/locale";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { fmt, parseBRLInput } from "@/lib/currency";
 import { receiveBillPayment } from "@/lib/sales";
 import { activePaymentMethods, getCachedPaymentMethodConfigs, loadPaymentMethodConfigs } from "@/lib/payment-methods";
+import {
+  RetroactivePaymentDateField,
+  resolvePaymentDate,
+  validatePaymentDate,
+} from "@/components/professional/retroactive-payment-date-field";
 
 interface BillQuickReceiveDialogProps {
   open: boolean;
@@ -37,6 +42,8 @@ export function BillQuickReceiveDialog({
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("pix");
   const [paidDate, setPaidDate] = useState(todayISO());
+  const [retroactivePayment, setRetroactivePayment] = useState(false);
+  const [dueDate, setDueDate] = useState<string | null>(null);
   const [installments, setInstallments] = useState("1");
   const [methods, setMethods] = useState(() =>
     activePaymentMethods(getCachedPaymentMethodConfigs()),
@@ -49,7 +56,7 @@ export function BillQuickReceiveDialog({
       setLoading(true);
       const { data, error } = await supabase
         .from("bills_receivable")
-        .select("description, amount, paid_amount")
+        .select("description, amount, paid_amount, due_date")
         .eq("id", billId)
         .maybeSingle();
       if (error || !data) {
@@ -62,6 +69,8 @@ export function BillQuickReceiveDialog({
       setOutstanding(rest);
       setAmount(rest.toFixed(2).replace(".", ","));
       setPaidDate(todayISO());
+      setRetroactivePayment(false);
+      setDueDate(data.due_date ?? null);
       setInstallments("1");
       try {
         const configs = await loadPaymentMethodConfigs();
@@ -80,18 +89,28 @@ export function BillQuickReceiveDialog({
       toast.error("Informe o valor recebido");
       return;
     }
+    const dateError = validatePaymentDate(paidDate);
+    if (dateError) {
+      toast.error(dateError);
+      return;
+    }
+    const effectivePayDate = resolvePaymentDate(paidDate, retroactivePayment);
     setSaving(true);
     try {
       await receiveBillPayment(
         billId,
         value,
         method,
-        paidDate,
+        effectivePayDate,
         undefined,
         0,
         selectedMethod?.supports_installments ? Number(installments) || 1 : 1,
       );
-      toast.success("Pagamento registrado");
+      toast.success(
+        retroactivePayment
+          ? `Pagamento registrado em ${fmtDate(effectivePayDate)}`
+          : "Pagamento registrado",
+      );
       onOpenChange(false);
       onSaved();
     } catch (e) {
@@ -158,10 +177,13 @@ export function BillQuickReceiveDialog({
                 </div>
               </div>
             )}
-            <div>
-              <Label>Data do pagamento</Label>
-              <Input type="date" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} />
-            </div>
+            <RetroactivePaymentDateField
+              value={paidDate}
+              onChange={setPaidDate}
+              retroactive={retroactivePayment}
+              onRetroactiveChange={setRetroactivePayment}
+              suggestedDate={dueDate ?? undefined}
+            />
           </div>
         )}
         <DialogFooter>
