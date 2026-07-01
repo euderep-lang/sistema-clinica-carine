@@ -1,6 +1,7 @@
 import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
-import { Activity, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { ClinicOsIcon } from "@/components/clinicos-icon";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,9 +88,7 @@ function ResetPasswordPage() {
     <div className="flex min-h-dvh items-center justify-center px-6 py-10">
       <div className="w-full max-w-[22rem] space-y-8">
         <div className="flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Activity className="size-5" strokeWidth={2.25} />
-          </div>
+          <ClinicOsIcon variant="on-light" size="md" />
           <div>
             <h1 className="font-display text-xl font-semibold">Definir nova senha</h1>
             <p className="text-sm text-muted-foreground">Escolha uma senha segura</p>

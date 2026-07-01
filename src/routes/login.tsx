@@ -1,6 +1,7 @@
 import { createFileRoute, Link, Navigate, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
-import { Activity, Loader2, ShieldCheck } from "lucide-react";
+import { Loader2, ShieldCheck } from "lucide-react";
+import { ClinicOsIcon } from "@/components/clinicos-icon";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -49,12 +50,10 @@ function LoginPage() {
     <div className="grid min-h-dvh lg:grid-cols-[1.05fr_1fr]">
       <aside className="relative hidden flex-col justify-between bg-primary px-10 py-12 text-primary-foreground lg:flex">
         <div className="flex items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-xl bg-primary-foreground/15">
-            <Activity className="size-6" strokeWidth={2.25} />
-          </div>
+          <ClinicOsIcon variant="on-dark" size="lg" />
           <div>
-            <p className="font-display text-xl font-semibold">ClinicOS</p>
-            <p className="text-sm text-primary-foreground/80">Gestão clínica profissional</p>
+            <p className="font-brand text-xl font-semibold">ClinicOS</p>
+            <p className="font-brand text-sm text-primary-foreground/80">Gestão clínica profissional</p>
           </div>
         </div>
 
@@ -81,12 +80,10 @@ function LoginPage() {
         <div className="w-full max-w-[22rem] space-y-8">
           <div className="space-y-2 lg:hidden">
             <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <Activity className="size-5" strokeWidth={2.25} />
-              </div>
+              <ClinicOsIcon variant="on-light" size="md" />
               <div>
-                <h1 className="font-display text-xl font-semibold text-foreground">ClinicOS</h1>
-                <p className="text-sm text-muted-foreground">Gestão clínica profissional</p>
+                <h1 className="font-brand text-xl font-semibold text-foreground">ClinicOS</h1>
+                <p className="font-brand text-sm text-muted-foreground">Gestão clínica profissional</p>
               </div>
             </div>
           </div>

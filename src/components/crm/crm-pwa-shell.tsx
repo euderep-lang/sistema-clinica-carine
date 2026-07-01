@@ -15,6 +15,7 @@ import { useAuth } from "@/lib/mock-auth";
 import { CRM_PWA_THEME } from "@/lib/crm-pwa";
 import { performAppSignOut } from "@/lib/crm-sign-out";
 import { useCrmViewportLock } from "@/hooks/use-crm-viewport-lock";
+import { ClinicOsIcon } from "@/components/clinicos-icon";
 
 export type CrmPwaTab = "inbox" | "pipeline" | "analytics";
 
@@ -92,9 +93,7 @@ export function CrmPwaShell({ children, activeTab, hideBottomNav, header }: CrmP
               <ArrowLeft className="size-6" strokeWidth={2} />
             </button>
           ) : (
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-sm font-bold">
-              {(tenant?.name ?? "C").slice(0, 1).toUpperCase()}
-            </div>
+            <ClinicOsIcon variant="on-dark" size="md" className="shrink-0" />
           )}
           <div className="min-w-0 flex-1">
             <p className="truncate text-[17px] font-medium leading-tight">

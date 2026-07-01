@@ -16,7 +16,6 @@ import {
   TrendingDown,
   TrendingUp,
   LineChart,
-  Activity,
   CalendarCheck,
   ClipboardList,
   Salad,
@@ -42,6 +41,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useAuth, type Role } from "@/lib/mock-auth";
 import { canAccessFeature, featureForPath } from "@/lib/permissions";
+import { ClinicOsIcon } from "@/components/clinicos-icon";
 import { cn } from "@/lib/utils";
 import {
   crmHighlightButtonActive,
@@ -238,14 +238,13 @@ export function ClinicSidebar() {
           aria-label="Ir para o painel"
           className="flex w-full cursor-pointer items-center gap-3 rounded-md px-1 py-0.5 transition-colors duration-200 hover:bg-sidebar-accent group-data-[collapsible=icon]:size-[2.7rem] group-data-[collapsible=icon]:justify-center"
         >
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground group-data-[collapsible=icon]:size-[2.7rem]">
-            <Activity
-              className="size-[1.125rem] group-data-[collapsible=icon]:size-[1.35rem]"
-              strokeWidth={2.25}
-            />
-          </div>
+          <ClinicOsIcon
+            variant="auto"
+            size="md"
+            className="group-data-[collapsible=icon]:size-[1.3365rem]"
+          />
           <div className="flex min-w-0 flex-col group-data-[collapsible=icon]:hidden">
-            <span className="font-display text-[0.9375rem] font-semibold leading-none text-sidebar-foreground">
+            <span className="font-brand text-[0.9375rem] font-semibold leading-none text-sidebar-foreground">
               ClinicOS
             </span>
             <span className="mt-1 truncate text-xs text-muted-foreground">{tenant?.name}</span>

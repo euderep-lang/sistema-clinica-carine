@@ -2,6 +2,18 @@
 @source "../src";
 @import "tw-animate-css";
 
+@font-face {
+  font-family: "Myriad Variable Concept";
+  src:
+    local("Myriad Variable Concept"),
+    local("MyriadVariableConcept-Roman"),
+    local("Myriad Pro"),
+    local("MyriadPro-Regular");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 /*
@@ -13,6 +25,7 @@
 @theme inline {
   --font-sans: "Noto Sans", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-brand: "Myriad Variable Concept", "Myriad Pro", Myriad, ui-sans-serif, system-ui, sans-serif;
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -219,6 +232,10 @@
 @layer utilities {
   .font-display {
     font-family: var(--font-display);
+  }
+
+  .font-brand {
+    font-family: var(--font-brand);
   }
 
   .app-canvas {

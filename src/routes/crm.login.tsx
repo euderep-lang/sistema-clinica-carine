@@ -1,6 +1,7 @@
 import { createFileRoute, Link, Navigate, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
-import { Loader2, MessageCircle } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { ClinicOsIcon } from "@/components/clinicos-icon";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -76,12 +77,7 @@ function CrmLoginPage() {
       <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-10">
         <div className="w-full max-w-[22rem] space-y-8">
           <div className="space-y-4 text-center">
-            <div
-              className="mx-auto flex size-16 items-center justify-center rounded-2xl shadow-lg"
-              style={{ backgroundColor: CRM_PWA_THEME }}
-            >
-              <MessageCircle className="size-8" strokeWidth={2} />
-            </div>
+            <ClinicOsIcon variant="on-dark" size="xl" className="mx-auto" />
             <div className="space-y-1">
               <h1 className="text-2xl font-semibold">WhatsApp CRM</h1>
               <p className="text-sm text-white/70">

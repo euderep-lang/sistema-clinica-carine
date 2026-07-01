@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState, type FormEvent } from "react";
-import { Activity, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { ClinicOsIcon } from "@/components/clinicos-icon";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -92,9 +93,7 @@ function PreCadastroPage() {
     <div className="min-h-dvh bg-muted/30 px-4 py-10">
       <div className="mx-auto max-w-lg space-y-6">
         <div className="flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Activity className="size-5" />
-          </div>
+          <ClinicOsIcon variant="on-light" size="md" />
           <div>
             <h1 className="font-display text-xl font-semibold">Pré-cadastro</h1>
             <p className="text-sm text-muted-foreground">{clinicName}</p>

@@ -1,5 +1,6 @@
 import { createFileRoute, Navigate, useNavigate } from "@tanstack/react-router";
 import { LayoutDashboard, Paperclip } from "lucide-react";
+import { ClinicOsIcon } from "@/components/clinicos-icon";
 import { dashboardPathFor, useAuth } from "@/lib/mock-auth";
 
 export const Route = createFileRoute("/inicio")({
@@ -21,9 +22,7 @@ function CentralHub() {
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col">
         <div className="flex flex-1 flex-col justify-center">
           <div className="mb-8 text-center">
-            <div className="mx-auto mb-4 grid size-16 place-items-center rounded-2xl bg-primary text-2xl font-bold text-primary-foreground shadow-lg">
-              {(tenant?.name ?? "C").slice(0, 1).toUpperCase()}
-            </div>
+            <ClinicOsIcon variant="on-light" size="xl" className="mx-auto mb-4" />
             <h1 className="font-display text-2xl font-bold text-foreground">
               {tenant?.name ?? "ClinicOS"}
             </h1>
