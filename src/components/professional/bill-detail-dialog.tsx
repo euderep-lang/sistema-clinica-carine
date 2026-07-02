@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { todayISO } from "@/lib/locale";
-import { Loader2, Plus, RotateCcw, Search, ShoppingBag, Trash2, X } from "lucide-react";
+import { Loader2, Plus, RotateCcw, Search, ShoppingBag, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -18,12 +18,12 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -377,6 +377,17 @@ export function BillDetailDialog({
     }
   };
 
+  const resetAddItemsForm = () => {
+    setServiceSearch("");
+    setAddQuantities({});
+    setAddPrices({});
+  };
+
+  const closeAddItemsDialog = () => {
+    setAddingItems(false);
+    resetAddItemsForm();
+  };
+
   const submitAddItems = async () => {
     if (!bill || addSelection.length === 0) return;
     setAddSaving(true);
@@ -395,10 +406,7 @@ export function BillDetailDialog({
         }),
       );
       toast.success(`${fmt(result.added_total)} adicionado(s) à conta`);
-      setAddingItems(false);
-      setServiceSearch("");
-      setAddQuantities({});
-      setAddPrices({});
+      closeAddItemsDialog();
       await refreshAll();
     } catch (e) {
       toast.error((e as Error).message);
@@ -557,7 +565,7 @@ export function BillDetailDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="flex max-h-[92vh] max-w-5xl flex-col gap-0 overflow-hidden p-0">
+        <DialogContent className="flex max-h-[92vh] w-[min(96vw,1400px)] max-w-[1400px] flex-col gap-0 overflow-hidden p-0">
           <DialogHeader className="shrink-0 space-y-0 border-b px-6 py-4 pr-12">
             <DialogTitle className="text-lg">
               {bill.patients?.full_name ?? "Paciente"}
@@ -607,15 +615,15 @@ export function BillDetailDialog({
               <Loader2 className="size-8 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 lg:grid-cols-2">
-              <div className="flex min-h-0 flex-col border-b lg:border-b-0 lg:border-r">
-                <section className="shrink-0 border-b p-5">
+            <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-y-auto lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:overflow-hidden">
+              <div className="flex min-h-0 flex-col lg:overflow-y-auto lg:border-r">
+                <section className="border-b p-5">
                   <div className="mb-3 flex items-center justify-between gap-2">
                     <h3 className="flex items-center gap-2 text-sm font-semibold">
                       <ShoppingBag className="size-4 text-primary" />
                       O que comprou nesta conta
                     </h3>
-                    {canAddItems && !addingItems && (
+                    {canAddItems && (
                       <Button
                         type="button"
                         size="sm"
@@ -629,197 +637,142 @@ export function BillDetailDialog({
                     )}
                   </div>
                   {items.length > 0 ? (
-                    <ul className="space-y-2">
-                      {items.map((item) => (
-                        <li
-                          key={item.id}
-                          className="flex items-center gap-2 rounded-md bg-muted/40 px-3 py-2 text-sm"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate">
-                              {item.services?.name ?? "Procedimento"}
-                              {item.services && item.services.session_count > 1 && (
-                                <span className="ml-1 text-xs text-muted-foreground">
-                                  ({item.services.session_count} sessões/un)
-                                </span>
+                    <div className="overflow-hidden rounded-lg border bg-background">
+                      {canAddItems && (
+                        <div className="hidden border-b bg-muted/40 px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[minmax(0,1fr)_7.5rem_4.5rem_10.5rem_2.5rem] sm:items-center sm:gap-3">
+                          <span>Item</span>
+                          <span className="text-right">Preço un.</span>
+                          <span className="text-center">Qtd</span>
+                          <span className="text-right">Subtotal</span>
+                          <span />
+                        </div>
+                      )}
+                      <ul className="divide-y">
+                        {items.map((item) => {
+                          const name = item.services?.name ?? "Procedimento";
+                          const qtyVal = Math.max(
+                            1,
+                            parseInt(itemQty[item.id] ?? String(item.quantity), 10) || 0,
+                          );
+                          const unitVal =
+                            parseBRLInput(itemPrice[item.id] ?? "") || Number(item.unit_price);
+                          const lineTotal = unitVal * qtyVal;
+
+                          return (
+                            <li
+                              key={item.id}
+                              className="px-4 py-3 sm:grid sm:grid-cols-[minmax(0,1fr)_7.5rem_4.5rem_10.5rem_2.5rem] sm:items-center sm:gap-3"
+                            >
+                              <div className="min-w-0 pb-2 sm:pb-0">
+                                <p className="text-sm font-medium leading-snug break-words">
+                                  {name}
+                                </p>
+                                {item.services && item.services.session_count > 1 && (
+                                  <p className="mt-0.5 text-xs text-muted-foreground">
+                                    {item.services.session_count} sessões por unidade
+                                  </p>
+                                )}
+                              </div>
+
+                              {canAddItems ? (
+                                <>
+                                  <div className="grid grid-cols-2 gap-2 sm:contents">
+                                    <div className="space-y-1 sm:space-y-0">
+                                      <Label className="text-[11px] text-muted-foreground sm:sr-only">
+                                        Preço un.
+                                      </Label>
+                                      <Input
+                                        placeholder="0,00"
+                                        value={
+                                          itemPrice[item.id] ??
+                                          formatBRLInput(Number(item.unit_price))
+                                        }
+                                        disabled={savingItemId === item.id}
+                                        onChange={(e) =>
+                                          setItemPrice((prev) => ({
+                                            ...prev,
+                                            [item.id]: e.target.value,
+                                          }))
+                                        }
+                                        onBlur={() => void commitItem(item)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") e.currentTarget.blur();
+                                        }}
+                                        className="h-9 w-full text-right tabular-nums"
+                                      />
+                                    </div>
+                                    <div className="space-y-1 sm:space-y-0">
+                                      <Label className="text-[11px] text-muted-foreground sm:sr-only">
+                                        Qtd
+                                      </Label>
+                                      <Input
+                                        type="number"
+                                        min={1}
+                                        value={itemQty[item.id] ?? String(item.quantity)}
+                                        disabled={savingItemId === item.id}
+                                        onChange={(e) =>
+                                          setItemQty((prev) => ({
+                                            ...prev,
+                                            [item.id]: e.target.value,
+                                          }))
+                                        }
+                                        onBlur={() => void commitItem(item)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") e.currentTarget.blur();
+                                        }}
+                                        className="h-9 w-full text-center tabular-nums"
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="mt-2 flex items-center justify-between gap-2 sm:mt-0 sm:block sm:text-right">
+                                    <span className="text-[11px] text-muted-foreground sm:hidden">
+                                      Subtotal
+                                    </span>
+                                    <span className="text-sm font-semibold tabular-nums whitespace-nowrap">
+                                      {fmt(lineTotal)}
+                                    </span>
+                                  </div>
+                                  <div className="mt-2 flex justify-end sm:mt-0 sm:justify-center">
+                                    <Button
+                                      type="button"
+                                      size="icon"
+                                      variant="ghost"
+                                      className="size-9 text-destructive hover:text-destructive"
+                                      title="Remover item"
+                                      disabled={savingItemId === item.id}
+                                      onClick={() => setRemoveItemTarget(item)}
+                                    >
+                                      {savingItemId === item.id ? (
+                                        <Loader2 className="size-4 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="size-4" />
+                                      )}
+                                    </Button>
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="mt-2 text-sm font-medium tabular-nums sm:col-span-4 sm:mt-0 sm:text-right">
+                                  {item.quantity}x · {fmt(item.total_price)}
+                                </div>
                               )}
-                            </p>
-                            <p className="text-xs text-muted-foreground">/ un</p>
-                          </div>
-                          {canAddItems ? (
-                            <>
-                              <Input
-                                placeholder="0,00"
-                                value={itemPrice[item.id] ?? formatBRLInput(Number(item.unit_price))}
-                                disabled={savingItemId === item.id}
-                                onChange={(e) =>
-                                  setItemPrice((prev) => ({ ...prev, [item.id]: e.target.value }))
-                                }
-                                onBlur={() => void commitItem(item)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") e.currentTarget.blur();
-                                }}
-                                className="h-8 w-24 shrink-0 text-right tabular-nums"
-                              />
-                              <Input
-                                type="number"
-                                min={1}
-                                value={itemQty[item.id] ?? String(item.quantity)}
-                                disabled={savingItemId === item.id}
-                                onChange={(e) =>
-                                  setItemQty((prev) => ({ ...prev, [item.id]: e.target.value }))
-                                }
-                                onBlur={() => void commitItem(item)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") e.currentTarget.blur();
-                                }}
-                                className="h-8 w-14 shrink-0 text-center"
-                              />
-                              <span className="w-20 shrink-0 text-right font-medium tabular-nums">
-                                {fmt(
-                                  (parseBRLInput(itemPrice[item.id] ?? "") ||
-                                    Number(item.unit_price)) *
-                                    (Math.max(
-                                      1,
-                                      parseInt(itemQty[item.id] ?? String(item.quantity), 10) || 0,
-                                    )),
-                                )}
-                              </span>
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="ghost"
-                                className="size-8 shrink-0 text-destructive hover:text-destructive"
-                                title="Remover item"
-                                disabled={savingItemId === item.id}
-                                onClick={() => setRemoveItemTarget(item)}
-                              >
-                                {savingItemId === item.id ? (
-                                  <Loader2 className="size-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="size-4" />
-                                )}
-                              </Button>
-                            </>
-                          ) : (
-                            <span className="font-medium">
-                              {item.quantity}x · {fmt(item.total_price)}
-                            </span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
                   ) : (
                     <p className="text-sm text-muted-foreground">{bill.description}</p>
                   )}
-
-                  {addingItems && (
-                    <div className="mt-4 rounded-lg border bg-muted/20 p-3">
-                      <div className="mb-2 flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold">Fazer uma venda</p>
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="size-7"
-                          onClick={() => {
-                            setAddingItems(false);
-                            setAddQuantities({});
-                            setAddPrices({});
-                            setServiceSearch("");
-                          }}
-                        >
-                          <X className="size-4" />
-                        </Button>
-                      </div>
-                      <div className="relative mb-2">
-                        <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                          value={serviceSearch}
-                          onChange={(e) => setServiceSearch(e.target.value)}
-                          placeholder="Buscar procedimento ou produto"
-                          className="h-9 pl-9"
-                        />
-                      </div>
-                      <ScrollArea className="h-44 rounded-md border bg-background">
-                        {filteredServices.length === 0 ? (
-                          <p className="py-10 text-center text-sm text-muted-foreground">
-                            Nenhum item encontrado.
-                          </p>
-                        ) : (
-                          <ul className="divide-y">
-                            {filteredServices.map((svc) => (
-                              <li
-                                key={svc.id}
-                                className="flex items-center gap-3 px-3 py-2 hover:bg-muted/40"
-                              >
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-sm font-medium">{svc.name}</p>
-                                  {svc.session_count > 1 && (
-                                    <p className="text-xs text-muted-foreground">
-                                      {svc.session_count} sessões
-                                    </p>
-                                  )}
-                                </div>
-                                <Input
-                                  placeholder="0,00"
-                                  value={
-                                    addPrices[svc.id] ??
-                                    ((addQuantities[svc.id] ?? 0) > 0
-                                      ? formatBRLInput(svc.default_price)
-                                      : "")
-                                  }
-                                  disabled={(addQuantities[svc.id] ?? 0) <= 0}
-                                  onChange={(e) =>
-                                    setAddPrices((prev) => ({ ...prev, [svc.id]: e.target.value }))
-                                  }
-                                  className="h-8 w-24 shrink-0 text-right tabular-nums"
-                                />
-                                <Input
-                                  type="number"
-                                  min={0}
-                                  value={addQuantities[svc.id] ?? 0}
-                                  onChange={(e) => setAddQty(svc.id, e.target.value)}
-                                  className="h-8 w-16 shrink-0 text-center"
-                                />
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </ScrollArea>
-                      <div className="mt-3 flex items-center justify-between gap-3">
-                        <span className="text-sm text-muted-foreground">
-                          {addTotal > 0 ? (
-                            <>
-                              Total: <span className="font-semibold text-foreground">{fmt(addTotal)}</span>
-                            </>
-                          ) : (
-                            "Selecione a quantidade"
-                          )}
-                        </span>
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() => void submitAddItems()}
-                          disabled={addSaving || addSelection.length === 0}
-                        >
-                          {addSaving && <Loader2 className="mr-2 size-4 animate-spin" />}
-                          Adicionar à conta
-                        </Button>
-                      </div>
-                    </div>
-                  )}
                 </section>
 
-                <section className="flex min-h-0 flex-1 flex-col p-5">
+                <section className="p-5">
                   <h3 className="mb-3 text-sm font-semibold">Histórico</h3>
-                  <ScrollArea className="min-h-0 flex-1">
-                    {historyEntries.length === 0 ? (
-                      <p className="py-6 text-center text-sm text-muted-foreground">
-                        Nenhum lançamento registrado.
-                      </p>
-                    ) : (
-                      <ul className="space-y-2 pr-3">
+                  {historyEntries.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-muted-foreground">
+                      Nenhum lançamento registrado.
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
                         {historyEntries.map((entry) =>
                           entry.kind === "payment" ? (
                             (() => {
@@ -882,7 +835,6 @@ export function BillDetailDialog({
                         )}
                       </ul>
                     )}
-                  </ScrollArea>
                 </section>
               </div>
 
@@ -1092,11 +1044,139 @@ export function BillDetailDialog({
                 ) : (
                   <p className="text-sm text-muted-foreground">
                     Esta cobrança está quitada ou cancelada.
+                    {canAddItems && bill.status === "paid" && (
+                      <> Use &quot;Adicionar itens&quot; — o saldo em aberto será recalculado.</>
+                    )}
                   </p>
                 )}
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={addingItems}
+        onOpenChange={(o) => {
+          if (!o) closeAddItemsDialog();
+          else setAddingItems(true);
+        }}
+      >
+        <DialogContent className="flex max-h-[90vh] w-[min(96vw,820px)] max-w-[820px] flex-col gap-0 overflow-hidden p-0 sm:rounded-lg">
+          <DialogHeader className="shrink-0 border-b px-6 py-4 pr-12">
+            <DialogTitle>Adicionar itens</DialogTitle>
+            <DialogDescription>
+              Selecione procedimentos ou produtos para incluir na conta de{" "}
+              {bill.patients?.full_name ?? "paciente"}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+            {bill.status === "paid" && outstanding <= 0 && (
+              <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+                Esta conta está quitada. Novos itens aumentam o total e geram saldo em aberto para
+                recebimento.
+              </p>
+            )}
+
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={serviceSearch}
+                onChange={(e) => setServiceSearch(e.target.value)}
+                placeholder="Buscar procedimento ou produto"
+                className="h-10 pl-9"
+                autoFocus
+              />
+            </div>
+
+            <div className="overflow-x-auto rounded-lg border bg-background">
+              {filteredServices.length === 0 ? (
+                <p className="py-12 text-center text-sm text-muted-foreground">
+                  Nenhum item encontrado.
+                </p>
+              ) : (
+                <div className="min-w-[520px]">
+                  <div className="grid grid-cols-[minmax(0,1fr)_7.5rem_4.5rem_10.5rem] items-center gap-3 border-b bg-muted/40 px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    <span>Item</span>
+                    <span className="text-right">Preço un.</span>
+                    <span className="text-center">Qtd</span>
+                    <span className="text-right">Subtotal</span>
+                  </div>
+                  <ul className="divide-y">
+                    {filteredServices.map((svc) => {
+                      const qty = addQuantities[svc.id] ?? 0;
+                      const unitPrice =
+                        parseBRLInput(addPrices[svc.id] ?? formatBRLInput(svc.default_price)) ||
+                        svc.default_price;
+                      const lineTotal = qty > 0 ? unitPrice * qty : 0;
+                      return (
+                        <li
+                          key={svc.id}
+                          className={`grid grid-cols-[minmax(0,1fr)_7.5rem_4.5rem_10.5rem] items-center gap-3 px-4 py-3 ${qty > 0 ? "bg-primary/5" : ""}`}
+                        >
+                          <div className="min-w-0 self-start py-1">
+                            <p className="text-sm font-medium leading-snug break-words">{svc.name}</p>
+                            {svc.session_count > 1 && (
+                              <p className="mt-0.5 text-xs text-muted-foreground">
+                                {svc.session_count} sessões por unidade
+                              </p>
+                            )}
+                          </div>
+                          <Input
+                            placeholder={formatBRLInput(svc.default_price)}
+                            value={addPrices[svc.id] ?? formatBRLInput(svc.default_price)}
+                            onChange={(e) =>
+                              setAddPrices((prev) => ({ ...prev, [svc.id]: e.target.value }))
+                            }
+                            className="h-9 w-full text-right tabular-nums"
+                          />
+                          <Input
+                            type="number"
+                            min={0}
+                            value={qty}
+                            onChange={(e) => setAddQty(svc.id, e.target.value)}
+                            className="h-9 w-full text-center tabular-nums"
+                          />
+                          <div
+                            className={`py-1 text-right text-sm font-semibold tabular-nums whitespace-nowrap ${qty > 0 ? "text-foreground" : "text-muted-foreground"}`}
+                          >
+                            {qty > 0 ? fmt(lineTotal) : "—"}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="shrink-0 flex-col gap-3 border-t px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <span className="text-sm text-muted-foreground">
+              {addTotal > 0 ? (
+                <>
+                  {addSelection.length} item(ns) · Total{" "}
+                  <span className="font-semibold text-foreground">{fmt(addTotal)}</span>
+                </>
+              ) : (
+                "Informe a quantidade de pelo menos um item"
+              )}
+            </span>
+            <div className="flex w-full gap-2 sm:w-auto">
+              <Button type="button" variant="outline" onClick={closeAddItemsDialog} disabled={addSaving}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void submitAddItems()}
+                disabled={addSaving || addSelection.length === 0}
+              >
+                {addSaving && <Loader2 className="mr-2 size-4 animate-spin" />}
+                Adicionar à conta
+              </Button>
+            </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

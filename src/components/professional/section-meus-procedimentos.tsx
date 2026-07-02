@@ -256,11 +256,11 @@ export function SectionMeusProcedimentos() {
                   </TableCell>
                   <TableCell>{fmt(item.default_price)}</TableCell>
                   <TableCell>
-                    {item.session_count > 1 ? (
-                      <Badge variant="secondary">{item.session_count} sessões</Badge>
-                    ) : (
-                      "Avulso"
-                    )}
+                    <Badge variant="secondary">
+                      {item.session_count === 1
+                        ? "1 sessão/un."
+                        : `${item.session_count} sessões/un.`}
+                    </Badge>
                   </TableCell>
                   <TableCell>{item.duration_minutes ?? 30} min</TableCell>
                   <TableCell>
@@ -325,7 +325,7 @@ export function SectionMeusProcedimentos() {
                   min={1}
                   value={sessions}
                   onChange={(e) => setSessions(e.target.value)}
-                  placeholder="1 = avulso, 10 = pacote"
+                  placeholder="1 = 1 baixa por unidade vendida"
                 />
               </div>
             </div>
