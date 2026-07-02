@@ -69,6 +69,11 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
 import { RetroactivePaymentDateField, resolvePaymentDate, validatePaymentDate } from "@/components/professional/retroactive-payment-date-field";
+import {
+  PaymentFeeBearerField,
+  requiresFeeBearerChoice,
+} from "@/components/professional/payment-fee-bearer-field";
+import type { FeeBearer } from "@/lib/payment-methods";
 
 function formatBRLInput(value: number): string {
   if (value <= 0) return "";
@@ -143,6 +148,7 @@ export function BillDetailDialog({
   const [retroactivePayment, setRetroactivePayment] = useState(false);
   const [payNotes, setPayNotes] = useState("");
   const [creditInstallments, setCreditInstallments] = useState("1");
+  const [feeBearer, setFeeBearer] = useState<FeeBearer | null>(null);
   const [paySaving, setPaySaving] = useState(false);
 
   const [reversePaymentTarget, setReversePaymentTarget] = useState<BillPaymentRow | null>(null);
@@ -197,6 +203,10 @@ export function BillDetailDialog({
   }, [methodConfigs, payMethod, payValue, supportsInstallments, installmentCount]);
 
   useEffect(() => {
+    setFeeBearer(null);
+  }, [payMethod, creditInstallments, payAmount]);
+
+  useEffect(() => {
     if (!open) return;
     loadPaymentMethodConfigs()
       .then(setMethodConfigs)
@@ -249,6 +259,7 @@ export function BillDetailDialog({
       setRetroactivePayment(false);
       setPayMethod("pix");
       setCreditInstallments("1");
+      setFeeBearer(null);
       setPayNotes("");
       setAddingItems(false);
       setServiceSearch("");
@@ -463,6 +474,15 @@ export function BillDetailDialog({
       toast.error("Informe o parcelamento");
       return;
     }
+    if (
+      value > 0 &&
+      feePreview &&
+      requiresFeeBearerChoice(feePreview.fee, value) &&
+      !feeBearer
+    ) {
+      toast.error("Informe quem assume as taxas");
+      return;
+    }
     setPaySaving(true);
     try {
       let notes = buildPaymentNotes(
@@ -484,6 +504,7 @@ export function BillDetailDialog({
         notes,
         discount,
         supportsInstallments ? installmentCount : 1,
+        feeBearer ?? "company",
       );
       toast.success(
         value > 0 && discount > 0
@@ -503,6 +524,7 @@ export function BillDetailDialog({
       setPayDiscountPercent("");
       setDiscountMode("amount");
       setCreditInstallments("1");
+      setFeeBearer(null);
       setRetroactivePayment(false);
       setPayDate(todayISO());
       await refreshAll();
@@ -1028,11 +1050,14 @@ export function BillDetailDialog({
                         )}
                       </div>
                     )}
-                    {feePreview && feePreview.fee > 0 && payValue > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        Taxa estimada: <strong>{fmt(feePreview.fee)}</strong> · Líquido:{" "}
-                        <strong>{fmt(feePreview.net)}</strong>
-                      </p>
+                    {feePreview && payValue > 0 && (
+                      <PaymentFeeBearerField
+                        fee={feePreview.fee}
+                        net={feePreview.net}
+                        amount={payValue}
+                        value={feeBearer}
+                        onChange={setFeeBearer}
+                      />
                     )}
                     <div className="space-y-1.5">
                       <Label className="text-xs">Observações</Label>
@@ -1047,7 +1072,14 @@ export function BillDetailDialog({
                     <Button
                       className="mt-auto w-full"
                       onClick={() => void submitPayment()}
-                      disabled={paySaving || settlementTotal <= 0}
+                      disabled={
+                        paySaving ||
+                        settlementTotal <= 0 ||
+                        (payValue > 0 &&
+                          feePreview != null &&
+                          requiresFeeBearerChoice(feePreview.fee, payValue) &&
+                          !feeBearer)
+                      }
                     >
                       {paySaving && <Loader2 className="mr-2 size-4 animate-spin" />}
                       {discountValue > 0 && payValue <= 0

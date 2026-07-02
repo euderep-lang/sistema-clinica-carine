@@ -64,6 +64,14 @@ export function computeTotalOpenBalance(bills: CompetenceBill[]): number {
     );
 }
 
+export function computeOpenBudgetsStats(bills: CompetenceBill[]): { count: number; total: number } {
+  const openBudgets = bills.filter((bill) => isBudgetBill(bill));
+  return {
+    count: openBudgets.length,
+    total: openBudgets.reduce((sum, bill) => sum + Number(bill.amount), 0),
+  };
+}
+
 function openBalance(bill: CompetenceBill): number {
   return Math.max(0, Number(bill.amount) - Number(bill.paid_amount));
 }
@@ -154,7 +162,16 @@ export function filterTotalOpenBills(bills: CompetenceBill[]): CompetenceBill[] 
   );
 }
 
-export type FinancialSummaryKind = "production" | "received" | "pending" | "totalOpen";
+export function filterOpenBudgetBills(bills: CompetenceBill[]): CompetenceBill[] {
+  return bills.filter((bill) => isBudgetBill(bill));
+}
+
+export type FinancialSummaryKind =
+  | "production"
+  | "received"
+  | "pending"
+  | "totalOpen"
+  | "openBudgets";
 
 export const FINANCIAL_SUMMARY_META: Record<
   FinancialSummaryKind,
@@ -176,6 +193,10 @@ export const FINANCIAL_SUMMARY_META: Record<
     title: "Total em aberto",
     description: "Todas as faturas com saldo pendente.",
   },
+  openBudgets: {
+    title: "Orçamentos em aberto",
+    description: "Orçamentos ainda não convertidos em venda.",
+  },
 };
 
 export function financialSummaryDescription(
@@ -183,7 +204,7 @@ export function financialSummaryDescription(
   period: { from: string; to: string } | null,
   formatDate: (iso: string) => string,
 ): string {
-  if (kind === "totalOpen" || !period) {
+  if (kind === "totalOpen" || kind === "openBudgets" || !period) {
     return FINANCIAL_SUMMARY_META[kind].description;
   }
   const range = `${formatDate(period.from)} – ${formatDate(period.to)}`;

@@ -68,9 +68,9 @@ function ProfessionalAgendaPage() {
   const weekStart = useMemo(() => startOfWeekMonday(date), [date]);
   const weekEnd = useMemo(() => shiftDate(weekStart, 6), [weekStart]);
 
-  const load = async () => {
+  const load = async (opts?: { silent?: boolean }) => {
     if (!profile) return;
-    setLoading(true);
+    if (!opts?.silent) setLoading(true);
     let q = supabase
       .from("appointments")
       .select("id,date,start_time,end_time,status,type,modality,patient_id,patients(full_name,phone),rooms(name)")
@@ -87,7 +87,7 @@ function ProfessionalAgendaPage() {
     const { data, error } = await q;
     if (error) toast.error(error.message);
     setRows((data ?? []) as ProfessionalAgendaAppointment[]);
-    setLoading(false);
+    if (!opts?.silent) setLoading(false);
   };
 
   useEffect(() => {
@@ -430,9 +430,29 @@ function ProfessionalAgendaPage() {
         defaultProfessionalId={profile?.role === "professional" ? profile.id : undefined}
         defaultDate={date}
         appointmentSource="professional"
-        onSaved={(savedDate) => {
-          setDate(savedDate);
-          void load();
+        onSaved={(savedDate, snapshot) => {
+          if (snapshot) {
+            setRows((prev) => {
+              if (prev.some((r) => r.id === snapshot.id)) return prev;
+              const row: ProfessionalAgendaAppointment = {
+                id: snapshot.id,
+                date: snapshot.date,
+                start_time: snapshot.start_time,
+                end_time: snapshot.end_time,
+                status: "scheduled",
+                type: snapshot.type,
+                modality: snapshot.modality,
+                patient_id: snapshot.patient_id,
+                patients: { full_name: snapshot.patient_name, phone: null },
+                rooms: null,
+              };
+              return [...prev, row].sort(
+                (a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time),
+              );
+            });
+          }
+          if (savedDate !== date) setDate(savedDate);
+          else void load({ silent: true });
         }}
       />
 

@@ -67,8 +67,10 @@ import {
 import { DateRangeFilter, firstDayOfMonth, todayISO } from "@/components/professional/date-range-filter";
 import {
   computeCompetencePeriodStats,
+  computeOpenBudgetsStats,
   computeTotalOpenBalance,
   filterBillsForCompetencePeriod,
+  filterOpenBudgetBills,
   filterPendingMonthBills,
   filterProductionBills,
   filterReceivedBills,
@@ -173,7 +175,7 @@ export function FinancialCobrancasTab({
   }, [rows, period]);
 
   const filtered = useMemo(() => {
-    let list = periodRows;
+    let list = status === "budget" ? rows : periodRows;
     if (status !== "all") {
       list = list.filter((r) => {
         const eff = isOverdue(r.due_date, r.status) ? "overdue" : r.status;
@@ -187,7 +189,7 @@ export function FinancialCobrancasTab({
         r.description.toLowerCase().includes(q) ||
         (r.patients?.full_name?.toLowerCase().includes(q) ?? false),
     );
-  }, [periodRows, search, status]);
+  }, [periodRows, rows, search, status]);
 
   const stats = useMemo(() => {
     if (!period) return { production: 0, received: 0, pending: 0 };
@@ -195,23 +197,28 @@ export function FinancialCobrancasTab({
   }, [periodRows, period]);
 
   const totalOpen = useMemo(() => computeTotalOpenBalance(rows), [rows]);
+  const openBudgets = useMemo(() => computeOpenBudgetsStats(rows), [rows]);
 
   const summaryBills = useMemo((): SaleBillRow[] => {
-    if (!period || !summaryKind) return [];
+    if (!summaryKind) return [];
+    if (!period && summaryKind !== "totalOpen" && summaryKind !== "openBudgets") return [];
 
     let filtered: SaleBillRow[];
     switch (summaryKind) {
       case "production":
-        filtered = filterProductionBills(rows, period) as SaleBillRow[];
+        filtered = filterProductionBills(rows, period!) as SaleBillRow[];
         break;
       case "received":
-        filtered = filterReceivedBills(rows, period) as SaleBillRow[];
+        filtered = filterReceivedBills(rows, period!) as SaleBillRow[];
         break;
       case "pending":
-        filtered = filterPendingMonthBills(rows, period) as SaleBillRow[];
+        filtered = filterPendingMonthBills(rows, period!) as SaleBillRow[];
         break;
       case "totalOpen":
         filtered = filterTotalOpenBills(rows) as SaleBillRow[];
+        break;
+      case "openBudgets":
+        filtered = filterOpenBudgetBills(rows) as SaleBillRow[];
         break;
       default:
         filtered = [];
@@ -334,7 +341,7 @@ export function FinancialCobrancasTab({
             : "Selecione um período válido"
         }
       >
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-6">
           <StatCard
             label="Produção"
             value={fmt(stats.production)}
@@ -365,6 +372,17 @@ export function FinancialCobrancasTab({
             icon={HandCoins}
             tone="danger"
             onClick={() => setSummaryKind("totalOpen")}
+          />
+          <StatCard
+            label="Orçamentos em aberto"
+            value={fmt(openBudgets.total)}
+            sub={
+              openBudgets.count === 1
+                ? "1 orçamento"
+                : `${openBudgets.count} orçamentos`
+            }
+            icon={Receipt}
+            onClick={() => setSummaryKind("openBudgets")}
           />
           {scope === "professional" ? (
             <StatCard label="Comissão estimada" value={fmt(commissionEst)} sub={`${commissionPct}% sobre recebido`} icon={Wallet} />

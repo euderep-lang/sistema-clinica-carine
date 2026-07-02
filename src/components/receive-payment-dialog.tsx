@@ -16,7 +16,12 @@ import { parseBRLInput, fmt, fmtDate } from "@/lib/currency";
 import { generateReceiptPDF } from "@/lib/financial-pdf";
 import { loadLetterheadForPdf, resolveLetterheadProfessionalId, DEFAULT_LETTERHEAD_MARGINS } from "@/lib/letterhead";
 import { receiveBillPayment } from "@/lib/sales";
-import { activePaymentMethods, getCachedPaymentMethodConfigs, loadPaymentMethodConfigs, paymentLabel } from "@/lib/payment-methods";
+import { activePaymentMethods, calculatePaymentFee, getCachedPaymentMethodConfigs, loadPaymentMethodConfigs, paymentLabel } from "@/lib/payment-methods";
+import type { FeeBearer } from "@/lib/payment-methods";
+import {
+  PaymentFeeBearerField,
+  requiresFeeBearerChoice,
+} from "@/components/professional/payment-fee-bearer-field";
 import {
   RetroactivePaymentDateField,
   resolvePaymentDate,
@@ -59,11 +64,26 @@ export function ReceivePaymentDialog({ open, onOpenChange, onSaved, defaultPatie
     activePaymentMethods(getCachedPaymentMethodConfigs()),
   );
   const [installments, setInstallments] = useState("1");
+  const [feeBearer, setFeeBearer] = useState<FeeBearer | null>(null);
   const selectedMethod = methods.find((m) => m.value === method);
+  const payValue = parseBRLInput(amount);
+  const installmentCount = Number(installments) || 1;
+  const feePreview = useMemo(() => {
+    if (!selectedMethod || payValue <= 0) return null;
+    return calculatePaymentFee(
+      payValue,
+      selectedMethod,
+      selectedMethod.supports_installments ? installmentCount : 1,
+    );
+  }, [selectedMethod, payValue, installmentCount]);
+
+  useEffect(() => {
+    setFeeBearer(null);
+  }, [method, installments, amount]);
 
   useEffect(() => {
     if (!open) return;
-    setStep(1); setSelected({}); setAmount(""); setNotes(""); setPartial(false); setDone(null); setInstallments("1");
+    setStep(1); setSelected({}); setAmount(""); setNotes(""); setPartial(false); setDone(null); setInstallments("1"); setFeeBearer(null);
     setPaidDate(todayISO()); setRetroactivePayment(false);
     if (defaultPatientId) setPatientId(defaultPatientId);
     (async () => {
@@ -104,9 +124,18 @@ export function ReceivePaymentDialog({ open, onOpenChange, onSaved, defaultPatie
       return;
     }
     const effectivePayDate = resolvePaymentDate(paidDate, retroactivePayment);
+    const received = parseBRLInput(amount);
+    if (
+      received > 0 &&
+      feePreview &&
+      requiresFeeBearerChoice(feePreview.fee, received) &&
+      !feeBearer
+    ) {
+      toast.error("Informe quem assume as taxas");
+      return;
+    }
     setSaving(true);
     try {
-      const received = parseBRLInput(amount);
       let remaining = received;
       for (const b of selectedBills) {
         const outstanding = Number(b.amount) - Number(b.paid_amount);
@@ -120,6 +149,7 @@ export function ReceivePaymentDialog({ open, onOpenChange, onSaved, defaultPatie
           notes || undefined,
           0,
           selectedMethod?.supports_installments ? Number(installments) || 1 : 1,
+          feeBearer ?? "company",
         );
         remaining -= pay;
         if (partial && remaining <= 0) break;
@@ -217,6 +247,15 @@ export function ReceivePaymentDialog({ open, onOpenChange, onSaved, defaultPatie
               onRetroactiveChange={setRetroactivePayment}
               suggestedDate={selectedBills[0]?.due_date}
             />
+            {feePreview && payValue > 0 && (
+              <PaymentFeeBearerField
+                fee={feePreview.fee}
+                net={feePreview.net}
+                amount={payValue}
+                value={feeBearer}
+                onChange={setFeeBearer}
+              />
+            )}
             <div className="flex items-center gap-2"><Switch checked={partial} onCheckedChange={setPartial} /><Label>Pagamento parcial</Label></div>
             <div><Label>Observações</Label><Input value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
           </div>
@@ -243,7 +282,19 @@ export function ReceivePaymentDialog({ open, onOpenChange, onSaved, defaultPatie
           {step > 1 && !done && <Button variant="ghost" onClick={() => setStep((s) => s - 1)}>Voltar</Button>}
           {step === 1 && <Button onClick={() => patientId && setStep(2)} disabled={!patientId}>Continuar</Button>}
           {step === 2 && <Button onClick={() => selectedBills.length > 0 && setStep(3)} disabled={selectedBills.length === 0}>Continuar</Button>}
-          {step === 3 && <Button onClick={() => setStep(4)}>Continuar</Button>}
+          {step === 3 && (
+            <Button
+              onClick={() => setStep(4)}
+              disabled={
+                payValue > 0 &&
+                feePreview != null &&
+                requiresFeeBearerChoice(feePreview.fee, payValue) &&
+                !feeBearer
+              }
+            >
+              Continuar
+            </Button>
+          )}
           {step === 4 && !done && <Button onClick={confirm} disabled={saving}>Confirmar Recebimento</Button>}
           {done && <Button onClick={() => onOpenChange(false)}>Fechar</Button>}
         </DialogFooter>

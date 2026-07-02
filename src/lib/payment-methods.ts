@@ -4,6 +4,9 @@ import { PAYMENT_LABEL, PAYMENT_METHODS } from "@/lib/currency";
 /** Mapa de taxas por nº de parcelas: { "1": 2.5, "2": 3.1, ... }. */
 export type InstallmentFees = Record<string, number>;
 
+/** Quem assume a taxa de transação no recebimento. */
+export type FeeBearer = "company" | "client";
+
 export interface PaymentMethodConfig {
   id: string;
   method: string;

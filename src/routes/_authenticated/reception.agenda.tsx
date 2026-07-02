@@ -48,9 +48,8 @@ import { checkAppointmentConflicts } from "@/lib/appointment-conflicts";
 import { patchFormForProfessional } from "@/lib/appointment-professional";
 import { useAuth } from "@/lib/mock-auth";
 import { printWithLetterhead } from "@/lib/letterhead-print";
-import {
-  triggerAppointmentFollowUp,
-} from "@/lib/whatsapp-crm.functions";
+import { runAppointmentFollowUpInBackground } from "@/lib/appointment-follow-up-client";
+import { triggerAppointmentFollowUp } from "@/lib/whatsapp-crm.functions";
 import { AUTOMATION_QUEUED_MESSAGE } from "@/lib/automation-messages";
 import { cn } from "@/lib/utils";
 
@@ -135,9 +134,9 @@ function AgendaPage() {
     }
   };
 
-  const load = async () => {
+  const load = async (opts?: { silent?: boolean }) => {
     if (!profile) return;
-    setLoading(true);
+    if (!opts?.silent) setLoading(true);
     const { data, error } = await supabase
       .from("appointments")
       .select("id,date,start_time,end_time,status,type,modality,specialty,notes,patient_id,professional_id,room_id,patients(full_name,phone),profiles!appointments_professional_id_fkey(full_name),rooms(name,color)")
@@ -146,7 +145,7 @@ function AgendaPage() {
       .order("start_time");
     if (error) toast.error(error.message);
     setRows(((data ?? []) as unknown) as Appointment[]);
-    setLoading(false);
+    if (!opts?.silent) setLoading(false);
   };
 
   useEffect(() => {
@@ -279,34 +278,50 @@ function AgendaPage() {
       })
       .select("id")
       .single();
-    setSaving(false);
     if (error) {
+      setSaving(false);
       toast.error(error.message);
       return;
     }
-    try {
-      const notify = await followUpFn({
-        data: {
-          appointmentId: created.id,
-          patientId: form.patient_id,
-          professionalId: form.professional_id,
-          startsAt: new Date(`${form.date}T${form.start_time}:00`).toISOString(),
-        },
-      });
-      if (!notify.conversationId) {
-        toast.warning(
-          "Consulta salva, mas o paciente não tem telefone válido para WhatsApp. Cadastre o celular no prontuário.",
-        );
-      }
-    } catch (e) {
-      toast.warning(
-        `Consulta salva. A confirmação por WhatsApp será reenviada automaticamente em instantes.${e instanceof Error && e.message ? ` (${e.message})` : ""}`,
-      );
-    }
+
+    const prof = professionals.find((p) => p.id === form.professional_id);
+    const room = form.room_id !== "none" ? rooms.find((r) => r.id === form.room_id) : null;
+    const optimistic: Appointment = {
+      id: created.id,
+      date: form.date,
+      start_time: form.start_time,
+      end_time: form.end_time || addOneHour(form.start_time),
+      status: "scheduled",
+      type: form.type || "consultation",
+      modality: form.modality || DEFAULT_APPOINTMENT_MODALITY,
+      specialty: form.specialty || null,
+      notes: form.notes || null,
+      patient_id: form.patient_id,
+      professional_id: form.professional_id,
+      room_id: form.room_id === "none" ? null : form.room_id,
+      patients: { full_name: patientLabel, phone: null },
+      profiles: { full_name: prof?.full_name ?? "—" },
+      rooms: room ? { name: room.name, color: room.color } : null,
+    };
+
+    setSaving(false);
     toast.success("Consulta agendada");
     setOpen(false);
-    setDate(form.date);
-    load();
+    if (form.date !== date) {
+      setDate(form.date);
+    } else {
+      setRows((prev) =>
+        [...prev, optimistic].sort((a, b) => a.start_time.localeCompare(b.start_time)),
+      );
+      void load({ silent: true });
+    }
+
+    runAppointmentFollowUpInBackground(followUpFn, {
+      appointmentId: created.id,
+      patientId: form.patient_id,
+      professionalId: form.professional_id,
+      startsAt: new Date(`${form.date}T${form.start_time}:00`).toISOString(),
+    });
   };
 
   const updateStatus = async (id: string, status: string) => {

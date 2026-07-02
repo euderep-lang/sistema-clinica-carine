@@ -10,7 +10,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -18,15 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
 import {
   MEDICATIONS,
-  FORMS,
-  ROUTES as VIAS,
-  FREQUENCIES,
-  DOSE_UNITS,
-  QUANTITY_MODES,
   TYPE_LABEL,
-  formatPrescriptionQuantity,
-  parsePrescriptionQuantity,
-  type QuantityMode,
   type RxType,
 } from "@/lib/medications";
 import { maskCPF, ageFromBirthDate, formatPatientAddress } from "@/lib/patient-utils";
@@ -64,8 +55,7 @@ interface ItemForm {
   medication: string;
   concentration: string;
   pharmaceutical_form: string;
-  quantityMode: QuantityMode;
-  quantityValue: string;
+  quantity: string;
   doseValue: string;
   doseUnit: string;
   route: string;
@@ -78,19 +68,14 @@ const emptyItem = (): ItemForm => ({
   medication: "",
   concentration: "",
   pharmaceutical_form: "",
-  quantityMode: "unidade",
-  quantityValue: "",
+  quantity: "",
   doseValue: "",
-  doseUnit: "comprimido(s)",
-  route: "Oral",
-  frequency: "1x ao dia",
+  doseUnit: "",
+  route: "",
+  frequency: "",
   duration: "",
   instructions: "",
 });
-
-function itemQuantityLabel(it: ItemForm) {
-  return formatPrescriptionQuantity(it.quantityMode, it.quantityValue, it.pharmaceutical_form);
-}
 
 interface PatientLite {
   id: string;
@@ -201,17 +186,15 @@ function mapDbItemsToForm(
 ): ItemForm[] {
   return srcItems.map((it) => {
     const [dv, ...du] = (it.dosage ?? "").split(" ");
-    const parsedQty = parsePrescriptionQuantity(it.quantity);
     return {
       medication: it.medication,
       concentration: it.concentration ?? "",
       pharmaceutical_form: it.pharmaceutical_form ?? "",
-      quantityMode: parsedQty.mode,
-      quantityValue: parsedQty.value,
+      quantity: it.quantity ?? "",
       doseValue: dv ?? "",
-      doseUnit: du.join(" ") || "comprimido(s)",
-      route: it.route ?? "Oral",
-      frequency: it.frequency ?? "1x ao dia",
+      doseUnit: du.join(" ") || "",
+      route: it.route ?? "",
+      frequency: it.frequency ?? "",
       duration: it.duration ?? "",
       instructions: it.instructions ?? "",
     };
@@ -379,7 +362,7 @@ function NewPrescription() {
       medication: it.medication,
       concentration: it.concentration || null,
       pharmaceutical_form: it.pharmaceutical_form || null,
-      quantity: itemQuantityLabel(it) || null,
+      quantity: it.quantity.trim() || null,
       dosage: [it.doseValue, it.doseUnit].filter(Boolean).join(" ").trim() || null,
       route: it.route || null,
       frequency: it.frequency || null,
@@ -693,75 +676,52 @@ function NewPrescription() {
                     </div>
                     <div className="space-y-1">
                       <Label>Forma farmacêutica</Label>
-                      <Select value={it.pharmaceutical_form} onValueChange={(v) => updateItem(i, { pharmaceutical_form: v })}>
-                        <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                        <SelectContent>{FORMS.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}</SelectContent>
-                      </Select>
+                      <Input
+                        value={it.pharmaceutical_form}
+                        placeholder="ex: Comprimido"
+                        onChange={(e) => updateItem(i, { pharmaceutical_form: e.target.value })}
+                      />
                     </div>
                     <div className="space-y-1 md:col-span-2">
                       <Label>Quantidade a dispensar</Label>
-                      <div className="flex flex-wrap gap-2">
-                        <Select
-                          value={it.quantityMode}
-                          onValueChange={(v) => updateItem(i, { quantityMode: v as QuantityMode })}
-                        >
-                          <SelectTrigger className="w-36">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {QUANTITY_MODES.map((m) => (
-                              <SelectItem key={m.value} value={m.value}>
-                                {m.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Input
-                          className="w-24"
-                          type="number"
-                          min={1}
-                          step={1}
-                          value={it.quantityValue}
-                          placeholder={it.quantityMode === "caixa" ? "1" : "30"}
-                          onChange={(e) => updateItem(i, { quantityValue: e.target.value })}
-                        />
-                        <span className="flex items-center text-sm text-muted-foreground">
-                          {it.quantityMode === "caixa"
-                            ? "caixa(s)"
-                            : it.pharmaceutical_form
-                              ? it.pharmaceutical_form.toLowerCase() + "(s)"
-                              : "unidade(s)"}
-                        </span>
-                      </div>
-                      {itemQuantityLabel(it) && (
-                        <p className="text-xs text-muted-foreground">
-                          Na receita: <strong>{itemQuantityLabel(it)}</strong>
-                        </p>
-                      )}
+                      <Input
+                        value={it.quantity}
+                        placeholder="ex: 30 comprimidos ou 1 caixa"
+                        onChange={(e) => updateItem(i, { quantity: e.target.value })}
+                      />
                     </div>
                     <div className="space-y-1">
                       <Label>Dose</Label>
                       <div className="flex gap-2">
-                        <Input className="w-20" value={it.doseValue} onChange={(e) => updateItem(i, { doseValue: e.target.value })} />
-                        <Select value={it.doseUnit} onValueChange={(v) => updateItem(i, { doseUnit: v })}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>{DOSE_UNITS.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
-                        </Select>
+                        <Input
+                          className="w-20"
+                          value={it.doseValue}
+                          placeholder="1"
+                          onChange={(e) => updateItem(i, { doseValue: e.target.value })}
+                        />
+                        <Input
+                          className="flex-1"
+                          value={it.doseUnit}
+                          placeholder="comprimido(s)"
+                          onChange={(e) => updateItem(i, { doseUnit: e.target.value })}
+                        />
                       </div>
                     </div>
                     <div className="space-y-1">
                       <Label>Via</Label>
-                      <Select value={it.route} onValueChange={(v) => updateItem(i, { route: v })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>{VIAS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
-                      </Select>
+                      <Input
+                        value={it.route}
+                        placeholder="ex: Oral"
+                        onChange={(e) => updateItem(i, { route: e.target.value })}
+                      />
                     </div>
                     <div className="space-y-1">
                       <Label>Frequência</Label>
-                      <Select value={it.frequency} onValueChange={(v) => updateItem(i, { frequency: v })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>{FREQUENCIES.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}</SelectContent>
-                      </Select>
+                      <Input
+                        value={it.frequency}
+                        placeholder="ex: 1x ao dia"
+                        onChange={(e) => updateItem(i, { frequency: e.target.value })}
+                      />
                     </div>
                     <div className="space-y-1">
                       <Label>Duração</Label>

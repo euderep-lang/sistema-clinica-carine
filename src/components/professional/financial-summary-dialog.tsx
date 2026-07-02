@@ -79,7 +79,18 @@ export function FinancialSummaryDialog({
       ? "Total recebido"
       : kind === "pending" || kind === "totalOpen"
         ? "Total em aberto"
-        : "Total";
+        : kind === "openBudgets"
+          ? "Total em orçamentos"
+          : "Total";
+
+  const countLabel =
+    kind === "openBudgets"
+      ? bills.length === 1
+        ? "orçamento"
+        : "orçamentos"
+      : bills.length === 1
+        ? "fatura"
+        : "faturas";
 
   const colSpan =
     kind === "received"
@@ -101,7 +112,7 @@ export function FinancialSummaryDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
           <p className="pt-1 text-sm font-medium text-foreground">
-            {totalLabel}: {fmt(total)} · {bills.length} {bills.length === 1 ? "fatura" : "faturas"}
+            {totalLabel}: {fmt(total)} · {bills.length} {countLabel}
           </p>
         </DialogHeader>
         <div
@@ -146,7 +157,12 @@ export function FinancialSummaryDialog({
                 </TableRow>
               ) : (
                 bills.map((bill) => {
-                  const eff = isOverdue(bill.due_date, bill.status) ? "overdue" : bill.status;
+                  const eff =
+                    bill.status === "budget"
+                      ? "budget"
+                      : isOverdue(bill.due_date, bill.status)
+                        ? "overdue"
+                        : bill.status;
                   const open = billOpenAmount(bill.amount, bill.paid_amount);
                   return (
                     <TableRow

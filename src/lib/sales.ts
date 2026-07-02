@@ -1,5 +1,6 @@
 import { addMonthsISO } from "@/lib/locale";
 import { supabase } from "@/integrations/supabase/client";
+import type { FeeBearer } from "@/lib/payment-methods";
 import { archiveEntity, fetchRowForTrash } from "@/lib/trash";
 
 export interface SaleItemInput {
@@ -225,6 +226,7 @@ export async function receiveBillPayment(
   notes?: string,
   discount = 0,
   installments = 1,
+  feeBearer: FeeBearer = "company",
 ) {
   const { data, error } = await supabase.rpc("receive_bill_payment" as never, {
     p_bill_id: billId,
@@ -234,6 +236,7 @@ export async function receiveBillPayment(
     p_notes: notes ?? null,
     p_discount: discount > 0 ? discount : 0,
     p_installments: installments > 1 ? installments : 1,
+    p_fee_bearer: feeBearer,
   } as never);
   if (error) throw new Error(error.message);
   return data as {

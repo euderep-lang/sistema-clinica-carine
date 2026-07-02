@@ -30,6 +30,7 @@ import { patchFormForProfessional, type AppointmentProfessionalOption } from "@/
 import { addOneHour, todayISO } from "@/lib/agenda-utils";
 import { checkAppointmentConflicts } from "@/lib/appointment-conflicts";
 import type { AppointmentSource } from "@/lib/appointment-source";
+import { runAppointmentFollowUpInBackground } from "@/lib/appointment-follow-up-client";
 import { triggerAppointmentFollowUp } from "@/lib/whatsapp-crm.functions";
 import { useAuth } from "@/lib/mock-auth";
 import { PatientSearchField } from "@/components/patient-search-field";
@@ -40,7 +41,19 @@ type Professional = AppointmentProfessionalOption;
 interface NewAppointmentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSaved?: (date: string) => void;
+  onSaved?: (
+    date: string,
+    snapshot?: {
+      id: string;
+      date: string;
+      start_time: string;
+      end_time: string;
+      type: string;
+      modality: string;
+      patient_id: string;
+      patient_name: string;
+    },
+  ) => void;
   defaultDate?: string;
   /** Profissional pré-selecionado ao abrir o formulário. */
   defaultProfessionalId?: string;
@@ -189,36 +202,32 @@ export function NewAppointmentDialog({
         source: resolvedSource,
         wa_conversation_id: waConversationId ?? null,
       })
-      .select("id")
+      .select("id, date, start_time, end_time, type, modality, patient_id")
       .single();
-    setSaving(false);
     if (error) {
+      setSaving(false);
       toast.error(error.message);
       return;
     }
-    const startsAt = new Date(`${form.date}T${form.start_time}:00`);
-    try {
-      const notify = await followUpFn({
-        data: {
-          appointmentId: created.id,
-          patientId: form.patient_id,
-          professionalId,
-          startsAt: startsAt.toISOString(),
-        },
-      });
-      if (!notify.conversationId) {
-        toast.warning(
-          "Consulta salva, mas o paciente não tem telefone válido para WhatsApp. Cadastre o celular no prontuário.",
-        );
-      }
-    } catch (e) {
-      toast.warning(
-        `Consulta salva. A confirmação por WhatsApp será reenviada automaticamente em instantes.${e instanceof Error && e.message ? ` (${e.message})` : ""}`,
-      );
-    }
+    setSaving(false);
     toast.success("Consulta agendada");
     onOpenChange(false);
-    onSaved?.(form.date);
+    onSaved?.(form.date, {
+      id: created.id,
+      date: form.date,
+      start_time: form.start_time,
+      end_time: form.end_time || addOneHour(form.start_time),
+      type: form.type || "consultation",
+      modality: form.modality || DEFAULT_APPOINTMENT_MODALITY,
+      patient_id: form.patient_id,
+      patient_name: patientLabel,
+    });
+    runAppointmentFollowUpInBackground(followUpFn, {
+      appointmentId: created.id,
+      patientId: form.patient_id,
+      professionalId,
+      startsAt: new Date(`${form.date}T${form.start_time}:00`).toISOString(),
+    });
   };
 
   return (

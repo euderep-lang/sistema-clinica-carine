@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { todayISO, fmtDate } from "@/lib/locale";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -15,7 +15,12 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { fmt, parseBRLInput } from "@/lib/currency";
 import { receiveBillPayment } from "@/lib/sales";
-import { activePaymentMethods, getCachedPaymentMethodConfigs, loadPaymentMethodConfigs } from "@/lib/payment-methods";
+import { activePaymentMethods, calculatePaymentFee, getCachedPaymentMethodConfigs, loadPaymentMethodConfigs } from "@/lib/payment-methods";
+import type { FeeBearer } from "@/lib/payment-methods";
+import {
+  PaymentFeeBearerField,
+  requiresFeeBearerChoice,
+} from "@/components/professional/payment-fee-bearer-field";
 import {
   RetroactivePaymentDateField,
   resolvePaymentDate,
@@ -45,10 +50,25 @@ export function BillQuickReceiveDialog({
   const [retroactivePayment, setRetroactivePayment] = useState(false);
   const [dueDate, setDueDate] = useState<string | null>(null);
   const [installments, setInstallments] = useState("1");
+  const [feeBearer, setFeeBearer] = useState<FeeBearer | null>(null);
   const [methods, setMethods] = useState(() =>
     activePaymentMethods(getCachedPaymentMethodConfigs()),
   );
   const selectedMethod = methods.find((m) => m.value === method);
+  const payValue = parseBRLInput(amount);
+  const installmentCount = Number(installments) || 1;
+  const feePreview = useMemo(() => {
+    if (!selectedMethod || payValue <= 0) return null;
+    return calculatePaymentFee(
+      payValue,
+      selectedMethod,
+      selectedMethod.supports_installments ? installmentCount : 1,
+    );
+  }, [selectedMethod, payValue, installmentCount]);
+
+  useEffect(() => {
+    setFeeBearer(null);
+  }, [method, installments, amount]);
 
   useEffect(() => {
     if (!open || !billId) return;
@@ -72,6 +92,7 @@ export function BillQuickReceiveDialog({
       setRetroactivePayment(false);
       setDueDate(data.due_date ?? null);
       setInstallments("1");
+      setFeeBearer(null);
       try {
         const configs = await loadPaymentMethodConfigs();
         setMethods(activePaymentMethods(configs));
@@ -95,6 +116,14 @@ export function BillQuickReceiveDialog({
       return;
     }
     const effectivePayDate = resolvePaymentDate(paidDate, retroactivePayment);
+    if (
+      feePreview &&
+      requiresFeeBearerChoice(feePreview.fee, value) &&
+      !feeBearer
+    ) {
+      toast.error("Informe quem assume as taxas");
+      return;
+    }
     setSaving(true);
     try {
       await receiveBillPayment(
@@ -105,6 +134,7 @@ export function BillQuickReceiveDialog({
         undefined,
         0,
         selectedMethod?.supports_installments ? Number(installments) || 1 : 1,
+        feeBearer ?? "company",
       );
       toast.success(
         retroactivePayment
@@ -184,13 +214,32 @@ export function BillQuickReceiveDialog({
               onRetroactiveChange={setRetroactivePayment}
               suggestedDate={dueDate ?? undefined}
             />
+            {feePreview && payValue > 0 && (
+              <PaymentFeeBearerField
+                fee={feePreview.fee}
+                net={feePreview.net}
+                amount={payValue}
+                value={feeBearer}
+                onChange={setFeeBearer}
+              />
+            )}
           </div>
         )}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancelar
           </Button>
-          <Button onClick={() => void confirm()} disabled={saving || loading}>
+          <Button
+            onClick={() => void confirm()}
+            disabled={
+              saving ||
+              loading ||
+              (payValue > 0 &&
+                feePreview != null &&
+                requiresFeeBearerChoice(feePreview.fee, payValue) &&
+                !feeBearer)
+            }
+          >
             {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
             Confirmar
           </Button>

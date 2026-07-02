@@ -78,13 +78,24 @@ export async function checkAppointmentConflicts(
     return { hasConflict: false, conflicts: [], message: "" };
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("appointments")
     .select(
       "id, start_time, end_time, status, type, professional_id, room_id, patient_id, patients(full_name)",
     )
     .eq("tenant_id", input.tenantId)
-    .eq("date", input.date);
+    .eq("date", input.date)
+    .not("status", "in", '("cancelled","no_show","rescheduled")');
+
+  if (professionalId && roomId) {
+    query = query.or(`professional_id.eq.${professionalId},room_id.eq.${roomId}`);
+  } else if (professionalId) {
+    query = query.eq("professional_id", professionalId);
+  } else if (roomId) {
+    query = query.eq("room_id", roomId);
+  }
+
+  const { data, error } = await query;
 
   if (error) throw new Error(error.message);
 

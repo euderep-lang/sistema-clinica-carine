@@ -9,6 +9,7 @@ import { getPublicHealthStatus } from "./lib/production-env.server";
 import { handleWaFollowUpsCron } from "./lib/wa-cron.server";
 import { handleWhatsAppWebhook } from "./lib/whatsapp-webhook.server";
 import { getWhatsAppWebhookStatus } from "./lib/whatsapp-webhook-status.server";
+import { serveSiteClinicaStatic } from "./lib/siteclinica-static.server";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -71,6 +72,9 @@ export default {
       if (pathname === "/api/budget/chat") {
         return handleBudgetChat(request);
       }
+
+      const siteClinica = await serveSiteClinicaStatic(request);
+      if (siteClinica) return siteClinica;
 
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
