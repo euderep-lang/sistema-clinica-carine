@@ -94,6 +94,8 @@ export function BudgetFormDialog({
   const [validUntil, setValidUntil] = useState("");
   const [status, setStatus] = useState<(typeof EDITABLE_STATUSES)[number]>("draft");
   const [discountPercent, setDiscountPercent] = useState("0");
+  const [discountValueInput, setDiscountValueInput] = useState("");
+  const [discountSource, setDiscountSource] = useState<"percent" | "value">("percent");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<BudgetItemForm[]>([emptyItem()]);
   const [converted, setConverted] = useState(false);
@@ -105,6 +107,8 @@ export function BudgetFormDialog({
     setValidUntil(shiftDateISO(todayISO(), 15));
     setStatus("draft");
     setDiscountPercent("0");
+    setDiscountValueInput("");
+    setDiscountSource("percent");
     setNotes("");
     setItems([emptyItem()]);
     setConverted(false);
@@ -167,7 +171,10 @@ export function BudgetFormDialog({
         setDate(budget.date);
         setValidUntil(budget.valid_until ?? "");
         setStatus(budget.status as (typeof EDITABLE_STATUSES)[number]);
+        const loadedDiscount = Number(budget.discount_value ?? 0);
         setDiscountPercent(String(budget.discount_percent ?? 0));
+        setDiscountValueInput(loadedDiscount > 0 ? fmt(loadedDiscount) : "");
+        setDiscountSource("percent");
         setNotes(budget.notes ?? "");
         setItems(
           budgetItems?.length
@@ -205,11 +212,58 @@ export function BudgetFormDialog({
   );
 
   const discountValue = useMemo(() => {
+    if (discountSource === "value") {
+      return Math.min(subtotal, parseBRLInput(discountValueInput) || 0);
+    }
     const pct = Number(discountPercent.replace(",", ".")) || 0;
     return Math.round(subtotal * (pct / 100) * 100) / 100;
-  }, [subtotal, discountPercent]);
+  }, [subtotal, discountPercent, discountValueInput, discountSource]);
+
+  const discountPercentSaved = useMemo(() => {
+    if (subtotal <= 0) return 0;
+    return Math.round((discountValue / subtotal) * 10000) / 100;
+  }, [subtotal, discountValue]);
 
   const finalValue = Math.max(0, Math.round((subtotal - discountValue) * 100) / 100);
+
+  useEffect(() => {
+    if (discountSource === "percent") {
+      const pct = Number(discountPercent.replace(",", ".")) || 0;
+      const value = Math.round(subtotal * (pct / 100) * 100) / 100;
+      setDiscountValueInput(value > 0 ? fmt(value) : "");
+      return;
+    }
+    const value = Math.min(subtotal, parseBRLInput(discountValueInput) || 0);
+    if (subtotal > 0) {
+      setDiscountPercent(String(Math.round((value / subtotal) * 10000) / 100));
+    } else {
+      setDiscountPercent("0");
+    }
+    if (value > 0) {
+      setDiscountValueInput(fmt(value));
+    }
+    // Recalcula o campo complementar quando o subtotal muda (itens adicionados/removidos).
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handlers cobrem edição manual
+  }, [subtotal]);
+
+  const onDiscountPercentChange = (raw: string) => {
+    setDiscountSource("percent");
+    setDiscountPercent(raw);
+    const pct = Number(raw.replace(",", ".")) || 0;
+    const value = Math.round(subtotal * (pct / 100) * 100) / 100;
+    setDiscountValueInput(value > 0 ? fmt(value) : "");
+  };
+
+  const onDiscountValueChange = (raw: string) => {
+    setDiscountSource("value");
+    setDiscountValueInput(raw);
+    const value = Math.min(subtotal, parseBRLInput(raw) || 0);
+    if (subtotal > 0) {
+      setDiscountPercent(String(Math.round((value / subtotal) * 10000) / 100));
+    } else {
+      setDiscountPercent("0");
+    }
+  };
 
   const updateItem = (index: number, patch: Partial<BudgetItemForm>) => {
     setItems((arr) => arr.map((it, i) => (i === index ? { ...it, ...patch } : it)));
@@ -252,7 +306,7 @@ export function BudgetFormDialog({
         status,
         notes: notes.trim() || null,
         subtotal,
-        discount_percent: Number(discountPercent.replace(",", ".")) || 0,
+        discount_percent: discountPercentSaved,
         discount_value: discountValue,
         final_value: finalValue,
       };
@@ -474,13 +528,23 @@ export function BudgetFormDialog({
               )}
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-4">
               <div className="space-y-1">
                 <Label>Desconto (%)</Label>
                 <Input
                   value={discountPercent}
-                  onChange={(e) => setDiscountPercent(e.target.value)}
+                  onChange={(e) => onDiscountPercentChange(e.target.value)}
                   disabled={readOnly}
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Desconto (R$)</Label>
+                <Input
+                  value={discountValueInput}
+                  onChange={(e) => onDiscountValueChange(e.target.value)}
+                  disabled={readOnly}
+                  placeholder="R$ 0,00"
                 />
               </div>
               <div className="rounded-lg border bg-muted/40 p-3 sm:col-span-2">

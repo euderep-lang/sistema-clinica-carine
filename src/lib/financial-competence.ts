@@ -23,6 +23,11 @@ function billCompetenceDate(bill: CompetenceBill): string {
   return bill.competence_date ?? bill.due_date;
 }
 
+/** Data exibida no card "Recebimentos" — alinhada ao filtro do período. */
+export function billReceivedDisplayDate(bill: CompetenceBill): string | null {
+  return bill.paid_date ?? bill.competence_date ?? bill.due_date ?? null;
+}
+
 function isInstallmentSale(bill: CompetenceBill): boolean {
   return (bill.installment_count ?? 0) > 1 && Boolean(bill.consultation_charge_id);
 }

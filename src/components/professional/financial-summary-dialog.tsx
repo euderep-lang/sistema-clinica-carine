@@ -23,7 +23,10 @@ import {
   isOverdue,
 } from "@/lib/currency";
 import { paymentLabel } from "@/lib/payment-methods";
-import type { FinancialSummaryKind } from "@/lib/financial-competence";
+import {
+  billReceivedDisplayDate,
+  type FinancialSummaryKind,
+} from "@/lib/financial-competence";
 import { billOpenAmount } from "@/lib/nfse";
 import type { SaleBillRow } from "@/lib/sales";
 
@@ -164,6 +167,8 @@ export function FinancialSummaryDialog({
                         ? "overdue"
                         : bill.status;
                   const open = billOpenAmount(bill.amount, bill.paid_amount);
+                  const receivedDate =
+                    kind === "received" ? billReceivedDisplayDate(bill) : null;
                   return (
                     <TableRow
                       key={bill.id}
@@ -179,7 +184,9 @@ export function FinancialSummaryDialog({
                       {kind === "received" ? (
                         <>
                           <TableCell className="text-center tabular-nums">{fmt(bill.paid_amount)}</TableCell>
-                          <TableCell className="text-center">{bill.paid_date ? fmtDate(bill.paid_date) : "—"}</TableCell>
+                          <TableCell className="text-center">
+                            {receivedDate ? fmtDate(receivedDate) : "—"}
+                          </TableCell>
                           <TableCell className="text-center text-sm">
                             {bill.payment_method ? paymentLabel(bill.payment_method) : "—"}
                           </TableCell>
