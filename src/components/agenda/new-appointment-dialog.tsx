@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,10 @@ import { runAppointmentFollowUpInBackground } from "@/lib/appointment-follow-up-
 import { triggerAppointmentFollowUp } from "@/lib/whatsapp-crm.functions";
 import { useAuth } from "@/lib/mock-auth";
 import { PatientSearchField } from "@/components/patient-search-field";
+import {
+  AppointmentBillingSection,
+  type AppointmentBillingHandle,
+} from "@/components/agenda/appointment-billing-section";
 
 type Room = { id: string; name: string };
 type Professional = AppointmentProfessionalOption;
@@ -79,6 +83,7 @@ export function NewAppointmentDialog({
 }: NewAppointmentDialogProps) {
   const { profile } = useAuth();
   const followUpFn = useServerFn(triggerAppointmentFollowUp);
+  const billingRef = useRef<AppointmentBillingHandle>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [professionalId, setProfessionalId] = useState("");
@@ -127,7 +132,9 @@ export function NewAppointmentDialog({
         supabase.from("rooms").select("id, name").order("name"),
         supabase
           .from("profiles")
-          .select("id, full_name, specialty, appointment_types")
+          .select(
+            "id, full_name, specialty, appointment_types, consultation_service_id, online_consultation_service_id",
+          )
           .eq("role", "professional")
           .eq("active", true)
           .order("full_name"),
@@ -209,6 +216,9 @@ export function NewAppointmentDialog({
       toast.error(error.message);
       return;
     }
+
+    await billingRef.current?.runBilling(created.id);
+
     setSaving(false);
     toast.success("Consulta agendada");
     onOpenChange(false);
@@ -375,6 +385,15 @@ export function NewAppointmentDialog({
               onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
             />
           </div>
+          {(form.type === "consultation" || form.type === "return") && (
+            <div className="md:col-span-2">
+              <AppointmentBillingSection
+                ref={billingRef}
+                professional={professionals.find((p) => p.id === professionalId)}
+                modality={form.modality}
+              />
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

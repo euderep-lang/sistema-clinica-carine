@@ -1,5 +1,5 @@
 import { fmtDateFull } from "@/lib/locale";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { CalendarDays, ChevronLeft, ChevronRight, Eye, LayoutGrid, List, Lock, MapPin, PlayCircle, Plus, Video } from "lucide-react";
 import { toast } from "sonner";
@@ -45,6 +45,7 @@ import {
   PROFESSIONAL_AGENDA_STATUS_VALUES,
 } from "@/lib/appointment-types";
 import { useAuth } from "@/lib/mock-auth";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { AUTOMATION_QUEUED_MESSAGE } from "@/lib/automation-messages";
 import { cn } from "@/lib/utils";
 
@@ -57,8 +58,15 @@ type ViewMode = "weekly" | "daily" | "list";
 function ProfessionalAgendaPage() {
   const { profile } = useAuth();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
+  const userPickedView = useRef(false);
   const { requestStatusChange, cancelConfirmDialog } = useAppointmentCancelConfirm();
   const [viewMode, setViewMode] = useState<ViewMode>("weekly");
+
+  // No celular a visão semanal (7 colunas) fica espremida — usa a diária por padrão.
+  useEffect(() => {
+    if (!userPickedView.current && isMobile) setViewMode("daily");
+  }, [isMobile]);
   const [date, setDate] = useState(todayISO());
   const [rows, setRows] = useState<ProfessionalAgendaAppointment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -219,7 +227,13 @@ function ProfessionalAgendaPage() {
             <span className="text-sm capitalize text-muted-foreground">{dateLabel}</span>
           </div>
 
-          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
+          <Tabs
+            value={viewMode}
+            onValueChange={(v) => {
+              userPickedView.current = true;
+              setViewMode(v as ViewMode);
+            }}
+          >
             <TabsList>
               <TabsTrigger value="weekly" className="gap-1.5">
                 <CalendarDays className="size-4" />

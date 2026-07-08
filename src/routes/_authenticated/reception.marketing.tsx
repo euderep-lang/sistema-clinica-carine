@@ -107,7 +107,7 @@ function AniversariantesTab({ tenantId, tenantName, userId }: { tenantId: string
       </div>
 
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="overflow-x-auto p-0">
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-muted-foreground uppercase tracking-wide">
               <tr><th className="p-3"></th><th>Nome</th><th>Aniversário</th><th>Idade que fará</th><th>Telefone</th><th>Situação</th><th></th></tr>
@@ -225,7 +225,7 @@ function InativosTab({ tenantId, tenantName, userId }: { tenantId: string; tenan
       )}
 
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="overflow-x-auto p-0">
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-muted-foreground uppercase tracking-wide">
               <tr>
@@ -409,7 +409,7 @@ function CampanhasTab({ tenantId, tenantName, userId }: { tenantId: string; tena
 
       <Card>
         <CardHeader><CardTitle className="text-base">Histórico de Campanhas</CardTitle></CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="overflow-x-auto p-0">
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-muted-foreground uppercase tracking-wide"><tr><th className="p-3">Data</th><th>Segmento</th><th>Canal</th><th>Total</th><th>Modelo</th></tr></thead>
             <tbody>
@@ -506,7 +506,7 @@ function RelatorioTab() {
 
       <Card>
         <CardHeader><CardTitle className="text-base">Detalhamento por modelo</CardTitle></CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="overflow-x-auto p-0">
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-muted-foreground uppercase tracking-wide"><tr><th className="p-3">Nome</th><th>Canal</th><th>Vezes usado</th><th>Último uso</th></tr></thead>
             <tbody>

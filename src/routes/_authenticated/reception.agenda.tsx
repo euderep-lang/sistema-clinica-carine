@@ -1,5 +1,5 @@
 import { fmtDateLong } from "@/lib/locale";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { Building2, CalendarDays, LayoutGrid, List, Lock, MapPin, Plus, Video } from "lucide-react";
@@ -15,6 +15,10 @@ import { AgendaRoomsOverview } from "@/components/agenda/agenda-rooms-overview";
 import { AgendaTimelineView, type AgendaRow } from "@/components/agenda/agenda-timeline-view";
 import { useAppointmentCancelConfirm } from "@/components/agenda/use-appointment-cancel-confirm";
 import { PatientSearchField } from "@/components/patient-search-field";
+import {
+  AppointmentBillingSection,
+  type AppointmentBillingHandle,
+} from "@/components/agenda/appointment-billing-section";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,6 +51,7 @@ import {
 import { checkAppointmentConflicts } from "@/lib/appointment-conflicts";
 import { patchFormForProfessional } from "@/lib/appointment-professional";
 import { useAuth } from "@/lib/mock-auth";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { printWithLetterhead } from "@/lib/letterhead-print";
 import { runAppointmentFollowUpInBackground } from "@/lib/appointment-follow-up-client";
 import { triggerAppointmentFollowUp } from "@/lib/whatsapp-crm.functions";
@@ -57,7 +62,14 @@ export const Route = createFileRoute("/_authenticated/reception/agenda")({
   component: AgendaPage,
 });
 
-type Professional = { id: string; full_name: string; specialty: string | null; appointment_types: string[] | null };
+type Professional = {
+  id: string;
+  full_name: string;
+  specialty: string | null;
+  appointment_types: string[] | null;
+  consultation_service_id?: string | null;
+  online_consultation_service_id?: string | null;
+};
 type Room = { id: string; name: string; color: string | null };
 type Appointment = {
   id: string;
@@ -88,8 +100,16 @@ const STATUS_CLASS: Record<string, string> = {
 function AgendaPage() {
   const { profile } = useAuth();
   const followUpFn = useServerFn(triggerAppointmentFollowUp);
+  const billingRef = useRef<AppointmentBillingHandle>(null);
+  const isMobile = useIsMobile();
+  const userPickedView = useRef(false);
   const { requestStatusChange, cancelConfirmDialog } = useAppointmentCancelConfirm();
   const [viewMode, setViewMode] = useState<"timeline" | "rooms" | "list">("timeline");
+
+  // No celular a timeline (colunas por profissional) fica larga — usa a lista por padrão.
+  useEffect(() => {
+    if (!userPickedView.current && isMobile) setViewMode("list");
+  }, [isMobile]);
   const [date, setDate] = useState(todayISO());
   const [timeFrom, setTimeFrom] = useState("08:00");
   const [timeTo, setTimeTo] = useState("22:00");
@@ -152,7 +172,7 @@ function AgendaPage() {
     if (!profile) return;
     (async () => {
       const [professionalsRes, roomsRes] = await Promise.all([
-        supabase.from("profiles").select("id,full_name,specialty,appointment_types").eq("tenant_id", profile.tenant_id).eq("role", "professional").eq("active", true).order("full_name"),
+        supabase.from("profiles").select("id,full_name,specialty,appointment_types,consultation_service_id,online_consultation_service_id").eq("tenant_id", profile.tenant_id).eq("role", "professional").eq("active", true).order("full_name"),
         supabase.from("rooms").select("id,name,color").eq("tenant_id", profile.tenant_id).eq("active", true).order("name"),
       ]);
       setProfessionals((professionalsRes.data ?? []) as Professional[]);
@@ -284,6 +304,8 @@ function AgendaPage() {
       return;
     }
 
+    await billingRef.current?.runBilling(created.id);
+
     const prof = professionals.find((p) => p.id === form.professional_id);
     const room = form.room_id !== "none" ? rooms.find((r) => r.id === form.room_id) : null;
     const optimistic: Appointment = {
@@ -375,7 +397,7 @@ function AgendaPage() {
             <p className="text-sm text-muted-foreground">Visualize em grade ou lista, com filtros por data, horário, profissional e consultório.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "timeline" | "rooms" | "list")}>
+            <Tabs value={viewMode} onValueChange={(v) => { userPickedView.current = true; setViewMode(v as "timeline" | "rooms" | "list"); }}>
               <TabsList>
                 <TabsTrigger value="timeline" className="gap-1.5">
                   <LayoutGrid className="size-4" /> Grade
@@ -632,6 +654,15 @@ function AgendaPage() {
               <Label>Observações</Label>
               <Textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
             </div>
+            {(form.type === "consultation" || form.type === "return") && (
+              <div className="md:col-span-2">
+                <AppointmentBillingSection
+                  ref={billingRef}
+                  professional={professionals.find((p) => p.id === form.professional_id)}
+                  modality={form.modality}
+                />
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>

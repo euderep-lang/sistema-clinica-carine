@@ -13,8 +13,8 @@ export function PageSection({ title, description, actions, children, className }
   return (
     <section className={cn("space-y-4", className)}>
       {(title || actions) && (
-        <div className="flex items-center justify-between gap-4">
-          <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="min-w-0">
             {title && (
               <h2 className="font-display text-base font-semibold text-foreground">{title}</h2>
             )}
@@ -22,7 +22,7 @@ export function PageSection({ title, description, actions, children, className }
               <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
             )}
           </div>
-          {actions}
+          {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         </div>
       )}
       {children}

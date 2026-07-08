@@ -57,10 +57,15 @@ interface InventoryLink {
   quantity: string;
 }
 
+const NO_CONSULTATION_SERVICE = "__none__";
+
 export function SectionMeusProcedimentos() {
   const { profile } = useAuth();
   const [items, setItems] = useState<Procedure[]>([]);
   const [inventoryOptions, setInventoryOptions] = useState<InventoryOption[]>([]);
+  const [consultationServiceId, setConsultationServiceId] = useState<string>(NO_CONSULTATION_SERVICE);
+  const [onlineConsultationServiceId, setOnlineConsultationServiceId] =
+    useState<string>(NO_CONSULTATION_SERVICE);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Procedure | null>(null);
   const [name, setName] = useState("");
@@ -94,9 +99,43 @@ export function SectionMeusProcedimentos() {
     setInventoryOptions((data ?? []) as InventoryOption[]);
   };
 
+  const loadConsultationMapping = async () => {
+    if (!profile) return;
+    const { data } = await supabase
+      .from("profiles")
+      .select("consultation_service_id, online_consultation_service_id")
+      .eq("id", profile.id)
+      .maybeSingle();
+    setConsultationServiceId(
+      (data as { consultation_service_id?: string | null } | null)?.consultation_service_id ??
+        NO_CONSULTATION_SERVICE,
+    );
+    setOnlineConsultationServiceId(
+      (data as { online_consultation_service_id?: string | null } | null)
+        ?.online_consultation_service_id ?? NO_CONSULTATION_SERVICE,
+    );
+  };
+
+  const saveConsultationMapping = async (
+    field: "consultation_service_id" | "online_consultation_service_id",
+    value: string,
+  ) => {
+    if (!profile) return;
+    const dbValue = value === NO_CONSULTATION_SERVICE ? null : value;
+    if (field === "consultation_service_id") setConsultationServiceId(value);
+    else setOnlineConsultationServiceId(value);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ [field]: dbValue })
+      .eq("id", profile.id);
+    if (error) toast.error(error.message);
+    else toast.success("Consulta padrão atualizada");
+  };
+
   useEffect(() => {
     load();
     loadInventory();
+    loadConsultationMapping();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile]);
 
@@ -226,6 +265,60 @@ export function SectionMeusProcedimentos() {
           Novo procedimento
         </Button>
       </div>
+
+      <Card className="space-y-3 p-4">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Consulta padrão por modalidade</h3>
+          <p className="text-xs text-muted-foreground">
+            Escolha qual procedimento representa a sua consulta. Ao agendar, a fatura da consulta é
+            lançada automaticamente com esse preço (presencial ou online).
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label className="text-xs">Consulta presencial</Label>
+            <Select
+              value={consultationServiceId}
+              onValueChange={(v) => void saveConsultationMapping("consultation_service_id", v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o procedimento" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_CONSULTATION_SERVICE}>Não lançar automaticamente</SelectItem>
+                {items
+                  .filter((i) => i.active)
+                  .map((i) => (
+                    <SelectItem key={i.id} value={i.id}>
+                      {i.name} — {fmt(i.default_price)}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Consulta online</Label>
+            <Select
+              value={onlineConsultationServiceId}
+              onValueChange={(v) => void saveConsultationMapping("online_consultation_service_id", v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o procedimento" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_CONSULTATION_SERVICE}>Não lançar automaticamente</SelectItem>
+                {items
+                  .filter((i) => i.active)
+                  .map((i) => (
+                    <SelectItem key={i.id} value={i.id}>
+                      {i.name} — {fmt(i.default_price)}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </Card>
 
       <Card>
         <Table>

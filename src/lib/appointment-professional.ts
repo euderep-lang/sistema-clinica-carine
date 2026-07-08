@@ -5,6 +5,8 @@ export type AppointmentProfessionalOption = {
   full_name: string;
   specialty: string | null;
   appointment_types: string[] | null;
+  consultation_service_id?: string | null;
+  online_consultation_service_id?: string | null;
 };
 
 /** Campos derivados ao escolher o profissional no agendamento. */

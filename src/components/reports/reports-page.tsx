@@ -566,11 +566,11 @@ function PacientesReport() {
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <Card><CardHeader><CardTitle className="text-base">Top 10 — Mais consultas</CardTitle></CardHeader>
-          <CardContent className="p-0"><table className="w-full text-sm"><thead className="text-left text-xs text-muted-foreground uppercase"><tr><th className="p-2">Paciente</th><th>Consultas</th><th>Última</th></tr></thead>
+          <CardContent className="overflow-x-auto p-0"><table className="w-full text-sm"><thead className="text-left text-xs text-muted-foreground uppercase"><tr><th className="p-2">Paciente</th><th>Consultas</th><th>Última</th></tr></thead>
             <tbody>{topVisits.map(r => <tr key={r.id} className="border-t"><td className="p-2">{r.name}</td><td>{r.count}</td><td>{r.last ? fmtDate(r.last) : "—"}</td></tr>)}</tbody></table></CardContent>
         </Card>
         <Card><CardHeader><CardTitle className="text-base">Top 10 — Maior receita</CardTitle></CardHeader>
-          <CardContent className="p-0"><table className="w-full text-sm"><thead className="text-left text-xs text-muted-foreground uppercase"><tr><th className="p-2">Paciente</th><th>Total pago</th><th>Última consulta</th></tr></thead>
+          <CardContent className="overflow-x-auto p-0"><table className="w-full text-sm"><thead className="text-left text-xs text-muted-foreground uppercase"><tr><th className="p-2">Paciente</th><th>Total pago</th><th>Última consulta</th></tr></thead>
             <tbody>{topRevenue.map(r => <tr key={r.id} className="border-t"><td className="p-2">{r.name}</td><td>{fmt(r.total)}</td><td>{r.last ? fmtDate(r.last) : "—"}</td></tr>)}</tbody></table></CardContent>
         </Card>
       </div>
