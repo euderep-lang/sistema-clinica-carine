@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { fmtDateFromDate, fmtTimeFromDate } from "@/lib/locale";
+import { fmtDateFromDate, fmtTimeFromDate, zonedDateFromWallClock } from "@/lib/locale";
 import { renderTemplate } from "@/lib/settings-helpers";
 import { normalizeBrazilPhone, phonesMatch } from "@/lib/wa-phone";
 import { getDefaultReceptionAssignee } from "@/lib/wa-crm-assign.server";
@@ -600,9 +600,10 @@ async function resolveFollowUpTemplateContext(input: {
     if (appt) {
       const apptRow = appt as { date?: string | null; start_time?: string | null };
       if (apptRow.date && apptRow.start_time) {
-        const day = String(apptRow.date).slice(0, 10);
-        const time = String(apptRow.start_time).slice(0, 5);
-        ctx.appointmentAt = new Date(`${day}T${time}:00`);
+        ctx.appointmentAt = zonedDateFromWallClock(
+          String(apptRow.date),
+          String(apptRow.start_time),
+        );
       }
       const profId = (appt as { professional_id?: string | null }).professional_id;
       if (profId) {

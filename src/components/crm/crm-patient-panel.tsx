@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { fmtDateTimeFromDate, fmtDate } from "@/lib/locale";
+import { fmtDateTimeFromDate, fmtDate, zonedDateFromWallClock } from "@/lib/locale";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { Calendar, ExternalLink, Loader2 } from "lucide-react";
@@ -74,7 +74,7 @@ export function CrmPatientPanel({ patientId, patientName, conversationId }: Prop
                 <ul className="space-y-1">
                   {upcoming.map((a) => (
                     <li key={a.id} className="text-xs">
-                      {fmtDateTimeFromDate(new Date(`${a.date}T${a.start_time}`), {
+                      {fmtDateTimeFromDate(zonedDateFromWallClock(a.date, a.start_time), {
                         day: "2-digit",
                         month: "short",
                         hour: "2-digit",

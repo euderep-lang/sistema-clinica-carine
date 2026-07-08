@@ -28,6 +28,7 @@ import {
 } from "@/lib/appointment-types";
 import { patchFormForProfessional, type AppointmentProfessionalOption } from "@/lib/appointment-professional";
 import { addOneHour, todayISO } from "@/lib/agenda-utils";
+import { zonedDateFromWallClock } from "@/lib/locale";
 import { checkAppointmentConflicts } from "@/lib/appointment-conflicts";
 import type { AppointmentSource } from "@/lib/appointment-source";
 import { runAppointmentFollowUpInBackground } from "@/lib/appointment-follow-up-client";
@@ -236,7 +237,7 @@ export function NewAppointmentDialog({
       appointmentId: created.id,
       patientId: form.patient_id,
       professionalId,
-      startsAt: new Date(`${form.date}T${form.start_time}:00`).toISOString(),
+      startsAt: zonedDateFromWallClock(form.date, form.start_time).toISOString(),
     });
   };
 

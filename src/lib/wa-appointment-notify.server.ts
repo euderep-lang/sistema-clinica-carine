@@ -3,6 +3,7 @@
  * Garante confirmação WhatsApp mesmo sem o CRM aberto.
  */
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { zonedDateFromWallClock } from "@/lib/locale";
 import {
   onAppointmentBooked,
   onAppointmentStatusChange,
@@ -30,10 +31,9 @@ type AppointmentRow = {
 };
 
 function appointmentStartsAt(appt: AppointmentRow): Date {
-  const date =
-    typeof appt.date === "string" ? appt.date.slice(0, 10) : String(appt.date).slice(0, 10);
-  const time = appt.start_time.slice(0, 5);
-  return new Date(`${date}T${time}:00`);
+  // date + start_time são horário "de parede" de São Paulo; converte para o
+  // instante UTC correto (o runtime da Vercel é UTC).
+  return zonedDateFromWallClock(String(appt.date), String(appt.start_time));
 }
 
 async function markQueueRow(

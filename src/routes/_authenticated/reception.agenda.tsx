@@ -1,4 +1,4 @@
-import { fmtDateLong } from "@/lib/locale";
+import { fmtDateLong, zonedDateFromWallClock } from "@/lib/locale";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -13,6 +13,7 @@ import { AgendaRescheduleDialog } from "@/components/agenda/agenda-reschedule-di
 import { ScheduleBlockDialog } from "@/components/agenda/schedule-block-dialog";
 import { AgendaRoomsOverview } from "@/components/agenda/agenda-rooms-overview";
 import { AgendaTimelineView, type AgendaRow } from "@/components/agenda/agenda-timeline-view";
+import { AgendaWeekView } from "@/components/agenda/agenda-week-view";
 import { useAppointmentCancelConfirm } from "@/components/agenda/use-appointment-cancel-confirm";
 import { PatientSearchField } from "@/components/patient-search-field";
 import {
@@ -45,6 +46,8 @@ import {
 import {
   addOneHour,
   formatTimeInterval,
+  shiftDate,
+  startOfWeekMonday,
   timeToMinutes,
   todayISO,
 } from "@/lib/agenda-utils";
@@ -104,9 +107,9 @@ function AgendaPage() {
   const isMobile = useIsMobile();
   const userPickedView = useRef(false);
   const { requestStatusChange, cancelConfirmDialog } = useAppointmentCancelConfirm();
-  const [viewMode, setViewMode] = useState<"timeline" | "rooms" | "list">("timeline");
+  const [viewMode, setViewMode] = useState<"week" | "timeline" | "rooms" | "list">("week");
 
-  // No celular a timeline (colunas por profissional) fica larga — usa a lista por padrão.
+  // No celular a grade (7 colunas / colunas por profissional) fica larga — usa a lista por padrão.
   useEffect(() => {
     if (!userPickedView.current && isMobile) setViewMode("list");
   }, [isMobile]);
@@ -154,15 +157,24 @@ function AgendaPage() {
     }
   };
 
+  const weekStart = useMemo(() => startOfWeekMonday(date), [date]);
+  const weekEnd = useMemo(() => shiftDate(weekStart, 6), [weekStart]);
+
   const load = async (opts?: { silent?: boolean }) => {
     if (!profile) return;
     if (!opts?.silent) setLoading(true);
-    const { data, error } = await supabase
+    let q = supabase
       .from("appointments")
       .select("id,date,start_time,end_time,status,type,modality,specialty,notes,patient_id,professional_id,room_id,patients(full_name,phone),profiles!appointments_professional_id_fkey(full_name),rooms(name,color)")
       .eq("tenant_id", profile.tenant_id)
-      .eq("date", date)
+      .order("date")
       .order("start_time");
+    if (viewMode === "week") {
+      q = q.gte("date", weekStart).lte("date", weekEnd);
+    } else {
+      q = q.eq("date", date);
+    }
+    const { data, error } = await q;
     if (error) toast.error(error.message);
     setRows(((data ?? []) as unknown) as Appointment[]);
     if (!opts?.silent) setLoading(false);
@@ -183,7 +195,7 @@ function AgendaPage() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, date]);
+  }, [profile, date, viewMode, weekStart, weekEnd]);
 
   const filteredRows = useMemo(() => {
     const fromMin = timeToMinutes(timeFrom);
@@ -233,6 +245,31 @@ function AgendaPage() {
       patient_id: "",
       date,
       end_time: addOneHour(f.start_time),
+      professional_id: defaultProfId ?? "",
+      specialty: patch.specialty,
+      type: patch.type,
+      modality: DEFAULT_APPOINTMENT_MODALITY,
+    }));
+    setOpen(true);
+  };
+
+  /** Clique em um horário vago da grade semanal → abre o novo agendamento já preenchido. */
+  const handleSlotClick = (day: string, time: string) => {
+    setPatientLabel("");
+    const defaultProfId =
+      filterProfessional !== "all"
+        ? filterProfessional
+        : professionals.length === 1
+          ? professionals[0].id
+          : form.professional_id;
+    const professional = professionals.find((p) => p.id === defaultProfId);
+    const patch = patchFormForProfessional(professional, form.type);
+    setForm((f) => ({
+      ...f,
+      patient_id: "",
+      date: day,
+      start_time: time,
+      end_time: addOneHour(time),
       professional_id: defaultProfId ?? "",
       specialty: patch.specialty,
       type: patch.type,
@@ -342,7 +379,7 @@ function AgendaPage() {
       appointmentId: created.id,
       patientId: form.patient_id,
       professionalId: form.professional_id,
-      startsAt: new Date(`${form.date}T${form.start_time}:00`).toISOString(),
+      startsAt: zonedDateFromWallClock(form.date, form.start_time).toISOString(),
     });
   };
 
@@ -397,10 +434,13 @@ function AgendaPage() {
             <p className="text-sm text-muted-foreground">Visualize em grade ou lista, com filtros por data, horário, profissional e consultório.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Tabs value={viewMode} onValueChange={(v) => { userPickedView.current = true; setViewMode(v as "timeline" | "rooms" | "list"); }}>
+            <Tabs value={viewMode} onValueChange={(v) => { userPickedView.current = true; setViewMode(v as "week" | "timeline" | "rooms" | "list"); }}>
               <TabsList>
+                <TabsTrigger value="week" className="gap-1.5">
+                  <CalendarDays className="size-4" /> Semana
+                </TabsTrigger>
                 <TabsTrigger value="timeline" className="gap-1.5">
-                  <LayoutGrid className="size-4" /> Grade
+                  <LayoutGrid className="size-4" /> Dia
                 </TabsTrigger>
                 <TabsTrigger value="rooms" className="gap-1.5">
                   <Building2 className="size-4" /> Consultórios
@@ -425,7 +465,16 @@ function AgendaPage() {
           <div className="print:hidden">{filtersPanel}</div>
 
           <div className="min-w-0 flex-1">
-            {viewMode === "timeline" ? (
+            {viewMode === "week" ? (
+              <AgendaWeekView
+                weekStart={weekStart}
+                rows={filteredRows}
+                loading={loading}
+                onSlotClick={handleSlotClick}
+                onReschedule={openReschedule}
+                onStatusChange={handleStatusChange}
+              />
+            ) : viewMode === "timeline" ? (
               <AgendaTimelineView
                 date={date}
                 rows={filteredRows}

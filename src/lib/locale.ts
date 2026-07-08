@@ -188,6 +188,36 @@ export function formatYMD(year: number, monthIndex: number, day: number): string
   return `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+/**
+ * Constrói um Date (instante UTC correto) a partir de uma data e hora "de parede"
+ * no fuso informado (padrão São Paulo). Ex.: ("2026-07-09", "08:00") → Date cujo
+ * horário em São Paulo é exatamente 08:00, INDEPENDENTE do fuso do runtime.
+ *
+ * Necessário porque `new Date("2026-07-09T08:00:00")` é interpretado no fuso local
+ * do processo (na Vercel o servidor roda em UTC), o que deslocava os horários em 3h
+ * nas mensagens/lembretes do WhatsApp.
+ */
+export function zonedDateFromWallClock(
+  dateISO: string,
+  timeHHMM: string,
+  timeZone = TIMEZONE,
+): Date {
+  const [y, m, d] = dateISO.slice(0, 10).split("-").map(Number);
+  const [hh, mm] = timeHHMM.slice(0, 5).split(":").map(Number);
+  const utcGuess = Date.UTC(y, (m || 1) - 1, d || 1, hh || 0, mm || 0, 0);
+  const parts = datePartsInTimezone(new Date(utcGuess), timeZone);
+  const tzAsUTC = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second,
+  );
+  const offset = tzAsUTC - utcGuess;
+  return new Date(utcGuess - offset);
+}
+
 export function addMonthsISO(iso: string, months: number): string {
   const d = parseDateOnly(iso.slice(0, 10));
   d.setUTCMonth(d.getUTCMonth() + months);

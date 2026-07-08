@@ -23,7 +23,11 @@ function messageContent(m: WaMessage): string {
 
 function fmt(dt: string): string {
   try {
-    return new Date(dt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+    return new Date(dt).toLocaleString("pt-BR", {
+      dateStyle: "short",
+      timeStyle: "short",
+      timeZone: "America/Sao_Paulo",
+    });
   } catch {
     return dt;
   }
@@ -44,7 +48,11 @@ export function exportWaConversationToPdf(
     conversation.patients?.full_name ??
     conversation.contact_phone;
   const clinic = options?.clinicName ?? "Clínica";
-  const generatedAt = new Date().toLocaleString("pt-BR", { dateStyle: "long", timeStyle: "short" });
+  const generatedAt = new Date().toLocaleString("pt-BR", {
+    dateStyle: "long",
+    timeStyle: "short",
+    timeZone: "America/Sao_Paulo",
+  });
 
   const rows = messages
     .map((m) => {
