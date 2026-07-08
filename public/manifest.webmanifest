@@ -13,13 +13,13 @@
   "categories": ["business", "medical", "productivity"],
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "/appicon-crm-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/appicon-crm-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
@@ -45,12 +45,12 @@
     {
       "name": "Conversas",
       "url": "/crm/inbox",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/appicon-crm-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Funil",
       "url": "/crm/pipeline",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/appicon-crm-192.png", "sizes": "192x192" }]
     }
   ]
 }
