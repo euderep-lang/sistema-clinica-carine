@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { isMobileViewport } from "@/lib/crm-pwa";
 
 const BODY_CLASS = "crm-mobile-app";
+const NO_ZOOM_VIEWPORT =
+  "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover";
 
 /** Trava o frame do CRM no mobile (estilo app WhatsApp) e sincroniza com visualViewport/teclado. */
 export function useCrmViewportLock(active: boolean) {
@@ -11,6 +13,18 @@ export function useCrmViewportLock(active: boolean) {
     const root = document.documentElement;
     const body = document.body;
     body.classList.add(BODY_CLASS);
+
+    // Bloqueia zoom (pinça e duplo-toque) enquanto o CRM está ativo — comportamento
+    // de app nativo. No Android a meta viewport resolve; no iOS (que ignora
+    // user-scalable) prevenimos os gestos de pinça manualmente.
+    const viewportMeta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+    const previousViewport = viewportMeta?.getAttribute("content") ?? null;
+    viewportMeta?.setAttribute("content", NO_ZOOM_VIEWPORT);
+
+    const preventGesture = (e: Event) => e.preventDefault();
+    document.addEventListener("gesturestart", preventGesture);
+    document.addEventListener("gesturechange", preventGesture);
+    document.addEventListener("gestureend", preventGesture);
 
     const applyViewport = () => {
       const vv = window.visualViewport;
@@ -40,6 +54,10 @@ export function useCrmViewportLock(active: boolean) {
       window.visualViewport?.removeEventListener("resize", applyViewport);
       window.visualViewport?.removeEventListener("scroll", applyViewport);
       window.removeEventListener("orientationchange", applyViewport);
+      document.removeEventListener("gesturestart", preventGesture);
+      document.removeEventListener("gesturechange", preventGesture);
+      document.removeEventListener("gestureend", preventGesture);
+      if (previousViewport !== null) viewportMeta?.setAttribute("content", previousViewport);
       root.style.removeProperty("--crm-vv-height");
       root.style.removeProperty("--crm-vv-width");
       root.style.removeProperty("--crm-vv-offset-top");
