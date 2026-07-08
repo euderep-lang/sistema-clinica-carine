@@ -1,0 +1,22 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "br.com.dracarinecassol.crm",
+      "sha256_cert_fingerprints": [
+        "4C:AF:2D:40:A8:CE:8D:63:1F:58:21:5F:11:BD:25:17:2F:E3:BC:26:6D:9B:7E:C3:A0:73:26:06:6E:A1:46:73"
+      ]
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "br.com.dracarinecassol.clinicos",
+      "sha256_cert_fingerprints": [
+        "4C:AF:2D:40:A8:CE:8D:63:1F:58:21:5F:11:BD:25:17:2F:E3:BC:26:6D:9B:7E:C3:A0:73:26:06:6E:A1:46:73"
+      ]
+    }
+  }
+]
