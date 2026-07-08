@@ -127,13 +127,13 @@ export function DashboardShell({
         <main
           id="main-content"
           className={cn(
-            "app-canvas flex-1",
+            "app-canvas w-full min-w-0 flex-1 overflow-x-hidden",
             fullWidth ? "px-3 py-3 lg:px-4 lg:py-4" : "px-4 py-6 lg:px-8 lg:py-8",
           )}
         >
           <div
             className={cn(
-              "mx-auto w-full",
+              "mx-auto w-full min-w-0",
               fullWidth ? "max-w-none space-y-3" : "max-w-7xl space-y-8",
             )}
           >

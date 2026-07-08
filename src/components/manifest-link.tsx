@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useRouterState } from "@tanstack/react-router";
+import { registerWaServiceWorker } from "@/lib/wa-pwa";
 
 /**
  * Mantém um único <link rel="manifest"> no documento, escolhido pela rota atual:
@@ -10,11 +11,10 @@ import { useRouterState } from "@tanstack/react-router";
  */
 export function ManifestLink() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isCrm = pathname.startsWith("/crm");
 
   useEffect(() => {
-    const href = pathname.startsWith("/crm")
-      ? "/manifest.webmanifest"
-      : "/central.webmanifest";
+    const href = isCrm ? "/manifest.webmanifest" : "/central.webmanifest";
 
     let link = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
     if (!link) {
@@ -25,7 +25,14 @@ export function ManifestLink() {
     if (link.getAttribute("href") !== href) {
       link.setAttribute("href", href);
     }
-  }, [pathname]);
+  }, [isCrm]);
+
+  // Registra o service worker do CRM já na primeira rota /crm (inclusive o
+  // login, antes de autenticar). Sem um SW controlando a página, o Android
+  // não considera o app instalável e não oferece "Instalar app".
+  useEffect(() => {
+    if (isCrm) void registerWaServiceWorker();
+  }, [isCrm]);
 
   return null;
 }
