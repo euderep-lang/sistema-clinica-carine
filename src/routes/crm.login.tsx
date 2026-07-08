@@ -31,6 +31,13 @@ export const Route = createFileRoute("/crm/login")({
     meta: [
       { title: "Entrar — WhatsApp CRM" },
       { name: "theme-color", content: CRM_PWA_THEME },
+      { name: "apple-mobile-web-app-title", content: "WhatsApp CRM" },
+    ],
+    // Manifest no HTML do servidor: o Chrome precisa dele já no carregamento
+    // inicial para reconhecer o PWA e oferecer "Instalar aplicativo".
+    links: [
+      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "apple-touch-icon", href: "/icon-192.png" },
     ],
   }),
   component: CrmLoginPage,
