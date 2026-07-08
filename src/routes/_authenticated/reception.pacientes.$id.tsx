@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { fmtDateFromDate } from "@/lib/locale";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Calendar as CalIcon, MessageCircle, Pencil, Upload, Download, Trash2, FileText, UserX } from "lucide-react";
+import { Calendar as CalIcon, MessageCircle, Pencil, Upload, Download, Trash2, FileText } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -13,7 +13,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { softDeactivate } from "@/lib/trash";
+import { hardDeletePatient, softDeactivate } from "@/lib/trash";
+import { useAuth } from "@/lib/mock-auth";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -69,6 +70,9 @@ function PatientProfile() {
   const { id } = Route.useParams();
   const { tab } = Route.useSearch();
   const navigate = useNavigate();
+  const { profile } = useAuth();
+  // Excluir cadastro é permitido apenas para admin e profissional.
+  const canDeletePatient = profile?.role === "admin" || profile?.role === "professional";
   const [patient, setPatient] = useState<PatientFull | null>(null);
   const [loading, setLoading] = useState(true);
   const [appts, setAppts] = useState<AppointmentRow[]>([]);
@@ -135,19 +139,25 @@ function PatientProfile() {
   };
 
   const confirmDeactivate = async () => {
-    if (!patient?.active) return;
+    if (!patient) return;
     setDeactivating(true);
     try {
-      await softDeactivate({
-        entityType: "patient",
-        table: "patients",
-        id: patient.id,
-        label: patient.full_name,
-        summary: patient.cpf ? `CPF ${maskCPF(patient.cpf)}` : null,
-      });
-      toast.success("Paciente movido para a lixeira");
+      const summary = patient.cpf ? `CPF ${maskCPF(patient.cpf)}` : null;
+      if (patient.active) {
+        await softDeactivate({
+          entityType: "patient",
+          table: "patients",
+          id: patient.id,
+          label: patient.full_name,
+          summary,
+        });
+        toast.success("Paciente excluído e movido para a lixeira");
+      } else {
+        await hardDeletePatient(patient.id, patient.full_name, summary);
+        toast.success("Cadastro excluído definitivamente");
+      }
       setDeactivateOpen(false);
-      await load();
+      navigate({ to: "/reception/pacientes" });
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -198,9 +208,10 @@ function PatientProfile() {
               <Button onClick={openWhats}>
                 <MessageCircle className="h-4 w-4 mr-2" /> CRM WhatsApp
               </Button>
-              {patient.active && (
+              {canDeletePatient && (
                 <Button variant="destructive" onClick={() => setDeactivateOpen(true)}>
-                  <UserX className="h-4 w-4 mr-2" /> Inativar
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  {patient.active ? "Excluir cadastro" : "Excluir definitivamente"}
                 </Button>
               )}
             </div>
@@ -338,10 +349,22 @@ function PatientProfile() {
       <AlertDialog open={deactivateOpen} onOpenChange={setDeactivateOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Inativar paciente?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {patient.active ? "Excluir cadastro do paciente?" : "Excluir definitivamente?"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {patient.full_name} será inativado e ficará na lixeira por 30 dias. Um administrador
-              pode restaurar o cadastro em Configurações → Lixeira.
+              {patient.active ? (
+                <>
+                  {patient.full_name} será removido da lista e ficará na lixeira por 30 dias. Um
+                  administrador pode restaurar ou apagar definitivamente em Configurações → Lixeira.
+                </>
+              ) : (
+                <>
+                  {patient.full_name} já está inativo e será excluído em definitivo, junto com
+                  agendamentos e histórico vinculados. Uma cópia fica na lixeira por 30 dias para
+                  eventual restauração.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -354,7 +377,7 @@ function PatientProfile() {
                 void confirmDeactivate();
               }}
             >
-              Inativar
+              Excluir
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -15,10 +15,12 @@ import {
   AGENDA_DAY_END,
   AGENDA_DAY_START,
   AGENDA_SLOT_MINUTES,
+  agendaSlotLabel,
   buildHourSlots,
   currentTimePercent,
   formatTimeInterval,
   formatWeekRange,
+  isHalfHourSlot,
   timeToMinutes,
   todayISO,
   weekDaysFromMonday,
@@ -28,12 +30,13 @@ import {
   APPOINTMENT_MODALITY_SHORT,
   APPOINTMENT_STATUS_LABEL,
   APPOINTMENT_TYPE_LABEL,
+  isBlockAppointment,
   PROFESSIONAL_AGENDA_STATUS_ITEM,
   PROFESSIONAL_AGENDA_STATUS_OPTIONS,
   PROFESSIONAL_AGENDA_STATUS_TRIGGER,
   PROFESSIONAL_AGENDA_STATUS_VALUES,
 } from "@/lib/appointment-types";
-import { Video, MapPin } from "lucide-react";
+import { Lock, Unlock, Video, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ProfessionalAgendaAppointment } from "@/components/agenda/professional-agenda-day-view";
 
@@ -55,6 +58,7 @@ export function ProfessionalAgendaWeekView({
   loading,
   onStatusChange,
   onStart,
+  onRemoveBlock,
   onDayClick,
 }: {
   weekStart: string;
@@ -62,6 +66,7 @@ export function ProfessionalAgendaWeekView({
   loading: boolean;
   onStatusChange: (id: string, status: string) => Promise<boolean>;
   onStart: (appointment: ProfessionalAgendaAppointment) => void;
+  onRemoveBlock?: (id: string) => void;
   onDayClick?: (date: string) => void;
 }) {
   const navigate = useNavigate();
@@ -118,9 +123,14 @@ export function ProfessionalAgendaWeekView({
               {slots.map((slot) => (
                 <div
                   key={slot}
-                  className="flex h-14 items-start justify-end border-b pr-1.5 pt-0.5 text-[10px] text-muted-foreground"
+                  className={cn(
+                    "flex h-11 items-start justify-end border-b pr-1.5 pt-0.5 text-[10px] tabular-nums",
+                    isHalfHourSlot(slot)
+                      ? "border-dashed border-border/40 text-muted-foreground/50"
+                      : "text-muted-foreground",
+                  )}
                 >
-                  {slot.slice(0, 2)}h
+                  {agendaSlotLabel(slot)}
                 </div>
               ))}
             </div>
@@ -140,7 +150,13 @@ export function ProfessionalAgendaWeekView({
                     )}
                   >
                     {slots.map((slot) => (
-                      <div key={slot} className="h-14 border-b border-dashed border-border/50" />
+                      <div
+                        key={slot}
+                        className={cn(
+                          "h-11 border-b",
+                          isHalfHourSlot(slot) ? "border-dashed border-border/40" : "border-border/60",
+                        )}
+                      />
                     ))}
 
                     {nowPercent !== null && (
@@ -169,6 +185,65 @@ export function ProfessionalAgendaWeekView({
                         3,
                         ((Math.max(endMin, startMin + 30) - startMin) / totalMinutes) * 100,
                       );
+
+                      if (isBlockAppointment(row)) {
+                        const blockInner = (
+                          <>
+                            <div className="flex items-center gap-0.5 text-[9px] font-semibold leading-tight">
+                              <Lock className="size-2" />
+                              {row.start_time.slice(0, 5)}
+                            </div>
+                            <div className="truncate text-[10px] font-medium leading-tight">
+                              {row.notes || "Bloqueado"}
+                            </div>
+                          </>
+                        );
+                        const blockClass =
+                          "absolute left-0.5 right-0.5 z-[1] overflow-hidden rounded border border-l-[3px] border-l-black bg-black p-1 text-left text-white shadow-sm";
+                        if (!onRemoveBlock) {
+                          return (
+                            <div
+                              key={row.id}
+                              title={row.notes || "Horário bloqueado"}
+                              className={blockClass}
+                              style={{ top: `${top}%`, height: `${height}%`, minHeight: "1.75rem" }}
+                            >
+                              {blockInner}
+                            </div>
+                          );
+                        }
+                        return (
+                          <Popover key={row.id}>
+                            <PopoverTrigger asChild>
+                              <button
+                                type="button"
+                                title={row.notes || "Horário bloqueado"}
+                                className={cn(blockClass, "transition hover:ring-2 hover:ring-slate-300")}
+                                style={{ top: `${top}%`, height: `${height}%`, minHeight: "1.75rem" }}
+                              >
+                                {blockInner}
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-56 space-y-2" align="start">
+                              <div>
+                                <p className="text-sm font-medium">{row.notes || "Horário bloqueado"}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {formatTimeInterval(row.start_time, row.end_time)}
+                                </p>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full"
+                                onClick={() => onRemoveBlock(row.id)}
+                              >
+                                <Unlock className="mr-1.5 size-3.5" />
+                                Desbloquear horário
+                              </Button>
+                            </PopoverContent>
+                          </Popover>
+                        );
+                      }
 
                       return (
                         <Popover key={row.id}>

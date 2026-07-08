@@ -127,9 +127,7 @@ export function PatientFinancialTab({ patientId }: PatientFinancialTabProps) {
     const q = search.trim().toLowerCase();
     if (!q) return list;
     return list.filter(
-      (r) =>
-        r.description.toLowerCase().includes(q) ||
-        (r.profiles?.full_name?.toLowerCase().includes(q) ?? false),
+      (r) => matchesSearch(r.description, q) || matchesSearch(r.profiles?.full_name, q),
     );
   }, [rows, search, status]);
 

@@ -75,6 +75,10 @@ export function CrmPwaShell({ children, activeTab, hideBottomNav, header }: CrmP
         width: "var(--crm-vv-width, 100%)",
         height: "var(--crm-vv-height, 100svh)",
         maxHeight: "var(--crm-vv-height, 100svh)",
+        // O frame já acompanha a altura do viewport visível (encolhe com o teclado),
+        // então o compositor não deve somar o inset do teclado de novo (evita contar
+        // o teclado 2x e empurrar os chips/compositor para fora da tela).
+        ["--crm-keyboard-inset" as string]: "0px",
         ["--crm-wa-header" as string]: CRM_PWA_THEME,
       }}
     >

@@ -177,6 +177,42 @@ export async function softDeactivate(opts: SoftDeleteOptions): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Exclui DEFINITIVAMENTE um paciente já inativo. Antes de remover, guarda um
+ * snapshot (paciente + principais filhos) na lixeira para eventual restauração
+ * em 30 dias. A maioria dos vínculos é apagada em cascata pelo banco; o vínculo
+ * de `inventory_movements` (que não tem cascata) é desassociado para não travar
+ * a exclusão.
+ */
+export async function hardDeletePatient(
+  id: string,
+  label: string,
+  summary?: string | null,
+): Promise<void> {
+  await archiveEntity({
+    entityType: "patient",
+    table: "patients",
+    id,
+    label,
+    summary,
+    children: [
+      { table: "appointments", fk: "patient_id" },
+      { table: "medical_records", fk: "patient_id" },
+      { table: "patient_evolutions", fk: "patient_id" },
+      { table: "prescriptions", fk: "patient_id" },
+    ],
+  });
+
+  const { error: mvError } = await supabase
+    .from("inventory_movements" as never)
+    .update({ patient_id: null } as never)
+    .eq("patient_id", id);
+  if (mvError) throw new Error(mvError.message);
+
+  const { error } = await supabase.from("patients" as never).delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
 /** Exclui orçamento com itens e fatura vinculada (status orçamento). */
 export async function deleteBudgetWithTrash(budgetId: string): Promise<void> {
   const row = await fetchRowForTrash("budgets", budgetId);

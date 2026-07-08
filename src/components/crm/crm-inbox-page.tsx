@@ -69,6 +69,11 @@ import { useAuth } from "@/lib/mock-auth";
 import { buildGenderTemplateVars } from "@/lib/wa-template-gender";
 import { normalizeMessageLineBreaks } from "@/lib/wa-automation-quick-replies";
 import { prepareAudioFileForWhatsApp } from "@/lib/wa-audio-prepare";
+import {
+  guessMediaTypeFromFile,
+  prepareDocumentFileForWhatsApp,
+  prepareImageFileForWhatsApp,
+} from "@/lib/wa-media-prepare";
 import { dedupeConversationsByPhone, phonesMatch, phoneTail11, normalizeBrazilPhone } from "@/lib/wa-phone";
 import { getCachedWaMediaUrl, setCachedWaMediaUrl } from "@/lib/wa-media-url-cache";
 import {
@@ -95,6 +100,7 @@ import {
   WA_STATUS_LABEL,
   WA_CLOSE_REASONS,
 } from "@/lib/whatsapp-crm";
+import { matchesSearch, normalizeSearch } from "@/lib/search";
 import {
   assignWaConversation,
   assignWaQueueToReception,
@@ -113,6 +119,7 @@ import {
 import { fetchWaQuickRepliesCached, type WaQuickReplyRow } from "@/lib/wa-quick-replies-cache";
 import {
   cancelScheduledWaMessage,
+  deleteWaMessage,
   fetchWaMediaUrl,
   getWhatsAppStatus,
   listScheduledWaMessages,
@@ -287,6 +294,7 @@ export function CrmInboxPage() {
   const unreadFn = useServerFn(markWaConversationUnread);
   const syncChatsFn = useServerFn(syncWaChatsFromZApi);
   const mediaUrlFn = useServerFn(fetchWaMediaUrl);
+  const deleteMessageFn = useServerFn(deleteWaMessage);
   const startConvFn = useServerFn(startWaConversation);
   const closeFn = useServerFn(closeWaConversation);
   const reopenFn = useServerFn(reopenWaConversation);
@@ -640,7 +648,7 @@ export function CrmInboxPage() {
       supabase
         .from("wa_messages" as never)
         .select(
-          "id, conversation_id, direction, message_type, body, media_id, media_mime, media_filename, status, sent_by, created_at, wa_message_id, reply_to_message_id, raw_payload, sender_profile:sent_by(full_name)",
+          "id, conversation_id, direction, message_type, body, media_id, media_mime, media_filename, status, sent_by, created_at, wa_message_id, reply_to_message_id, raw_payload, deleted_at, deleted_scope, sender_profile:sent_by(full_name)",
         )
         .in("conversation_id", relatedIds)
         .order("created_at", { ascending: true }),
@@ -946,10 +954,10 @@ export function CrmInboxPage() {
     if (q) {
       list = list.filter(
         (c) =>
-          (c.contact_name?.toLowerCase().includes(q) ?? false) ||
+          matchesSearch(c.contact_name, q) ||
           c.contact_phone.includes(q) ||
-          (c.last_message_preview?.toLowerCase().includes(q) ?? false) ||
-          (pendingTransfers[c.id]?.from_profile?.full_name?.toLowerCase().includes(q) ?? false),
+          matchesSearch(c.last_message_preview, q) ||
+          matchesSearch(pendingTransfers[c.id]?.from_profile?.full_name, q),
       );
     }
     if (filter === "mine" && profile) list = list.filter((c) => c.assigned_to === profile.id);
@@ -1211,7 +1219,7 @@ export function CrmInboxPage() {
       .select("id, full_name, phone")
       .eq("tenant_id", tenant.id)
       .eq("active", true)
-      .ilike("full_name", `%${q.trim()}%`)
+      .ilike("search_name", `%${normalizeSearch(q)}%`)
       .limit(8);
     setPatientOptions((data ?? []) as typeof patientOptions);
   };
@@ -1690,6 +1698,35 @@ export function CrmInboxPage() {
     [mediaUrlFn],
   );
 
+  const handleDeleteMessage = useCallback(
+    async (message: WaMessage, scope: "everyone" | "me") => {
+      const confirmMsg =
+        scope === "everyone"
+          ? "Apagar esta mensagem para todos? Ela também será removida no WhatsApp do contato."
+          : "Apagar esta mensagem apenas aqui no CRM?";
+      if (!window.confirm(confirmMsg)) return;
+
+      const nowIso = new Date().toISOString();
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === message.id ? { ...m, deleted_at: nowIso, deleted_scope: scope } : m,
+        ),
+      );
+      try {
+        await deleteMessageFn({ data: { messageId: message.id, scope } });
+        toast.success(scope === "everyone" ? "Mensagem apagada para todos" : "Mensagem apagada");
+      } catch (e) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === message.id ? { ...m, deleted_at: null, deleted_scope: null } : m,
+          ),
+        );
+        toast.error((e as Error).message || "Falha ao apagar mensagem");
+      }
+    },
+    [deleteMessageFn],
+  );
+
   const patientLink = useMemo(() => {
     if (!selected?.patient_id) return null;
     if (profile?.role === "professional") {
@@ -2147,6 +2184,7 @@ export function CrmInboxPage() {
                           resolveMediaUrl={resolveMediaUrl}
                           replyTo={m.reply_to_message_id ? messagesById.get(m.reply_to_message_id) : null}
                           onReply={setReplyTo}
+                          onDelete={handleDeleteMessage}
                           highlighted={msgSearchHighlightIds.has(m.id)}
                           onContentResize={handleChatContentResize}
                         />

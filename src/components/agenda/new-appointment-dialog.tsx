@@ -21,19 +21,24 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import {
+  APPOINTMENT_DURATION_SETTING_KEY,
   APPOINTMENT_MODALITY_OPTIONS,
   APPOINTMENT_TYPE_OPTIONS,
+  DEFAULT_APPOINTMENT_DURATIONS,
   DEFAULT_APPOINTMENT_MODALITY,
+  resolveAppointmentDurations,
   resolveAppointmentTypes,
 } from "@/lib/appointment-types";
 import { patchFormForProfessional, type AppointmentProfessionalOption } from "@/lib/appointment-professional";
-import { addOneHour, todayISO } from "@/lib/agenda-utils";
+import { addMinutes, addOneHour, todayISO } from "@/lib/agenda-utils";
+import { getTenantSetting } from "@/lib/settings-helpers";
 import { zonedDateFromWallClock } from "@/lib/locale";
 import { checkAppointmentConflicts } from "@/lib/appointment-conflicts";
 import type { AppointmentSource } from "@/lib/appointment-source";
 import { runAppointmentFollowUpInBackground } from "@/lib/appointment-follow-up-client";
 import { triggerAppointmentFollowUp } from "@/lib/whatsapp-crm.functions";
 import { useAuth } from "@/lib/mock-auth";
+import { normalizeSearch } from "@/lib/search";
 import { PatientSearchField } from "@/components/patient-search-field";
 import {
   AppointmentBillingSection,
@@ -42,6 +47,23 @@ import {
 
 type Room = { id: string; name: string };
 type Professional = AppointmentProfessionalOption;
+
+/**
+ * Regra de negócio: quando a profissional Carine é selecionada, o consultório 1
+ * é preenchido automaticamente. Retorna o id da sala ou null se não houver regra.
+ */
+function autoRoomIdForProfessional(
+  pro: Professional | undefined,
+  roomList: Room[],
+): string | null {
+  if (!pro) return null;
+  if (!normalizeSearch(pro.full_name).includes("carine")) return null;
+  const target = roomList.find((room) => {
+    const n = normalizeSearch(room.name);
+    return n === "consultorio 1" || /(^|[^0-9])1([^0-9]|$)/.test(n);
+  });
+  return target?.id ?? null;
+}
 
 interface NewAppointmentDialogProps {
   open: boolean;
@@ -85,6 +107,9 @@ export function NewAppointmentDialog({
   const { profile } = useAuth();
   const followUpFn = useServerFn(triggerAppointmentFollowUp);
   const billingRef = useRef<AppointmentBillingHandle>(null);
+  const durationsRef = useRef<Record<string, number>>({ ...DEFAULT_APPOINTMENT_DURATIONS });
+  const endFor = (start: string, type: string) =>
+    addMinutes(start, durationsRef.current[type] ?? durationsRef.current.consultation ?? 60);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [professionalId, setProfessionalId] = useState("");
@@ -103,16 +128,19 @@ export function NewAppointmentDialog({
     notes: "",
   });
 
-  const applyProfessional = (id: string, list: Professional[]) => {
+  const applyProfessional = (id: string, list: Professional[], roomList: Room[] = rooms) => {
     const pro = list.find((p) => p.id === id);
     setProfessionalId(id);
     setAppointmentTypes(pro?.appointment_types ?? null);
+    const autoRoom = autoRoomIdForProfessional(pro, roomList);
     setForm((f) => {
       const patch = patchFormForProfessional(pro, f.type);
       return {
         ...f,
         specialty: patch.specialty,
         type: patch.type,
+        end_time: endFor(f.start_time, patch.type),
+        room_id: autoRoom ?? f.room_id,
       };
     });
   };
@@ -129,7 +157,7 @@ export function NewAppointmentDialog({
     }));
 
     (async () => {
-      const [roomsRes, profsRes] = await Promise.all([
+      const [roomsRes, profsRes, durSetting] = await Promise.all([
         supabase.from("rooms").select("id, name").order("name"),
         supabase
           .from("profiles")
@@ -139,15 +167,18 @@ export function NewAppointmentDialog({
           .eq("role", "professional")
           .eq("active", true)
           .order("full_name"),
+        getTenantSetting<Record<string, number>>(profile.tenant_id, APPOINTMENT_DURATION_SETTING_KEY),
       ]);
+      durationsRef.current = resolveAppointmentDurations(durSetting);
       setRooms((roomsRes.data ?? []) as Room[]);
       const profs = (profsRes.data ?? []) as Professional[];
       setProfessionals(profs);
+      setForm((f) => ({ ...f, end_time: endFor(f.start_time, f.type) }));
 
       const initialId =
         defaultProfessionalId ??
         (profile.role === "professional" ? profile.id : profs[0]?.id ?? "");
-      if (initialId) applyProfessional(initialId, profs);
+      if (initialId) applyProfessional(initialId, profs, (roomsRes.data ?? []) as Room[]);
       else setProfessionalId("");
     })();
   }, [open, profile, defaultDate, defaultProfessionalId, defaultPatientId, defaultPatientName]);
@@ -319,7 +350,7 @@ export function NewAppointmentDialog({
                   setForm((f) => ({
                     ...f,
                     start_time: e.target.value,
-                    end_time: addOneHour(e.target.value),
+                    end_time: endFor(e.target.value, f.type),
                   }))
                 }
               />
@@ -337,7 +368,9 @@ export function NewAppointmentDialog({
             <Label>Tipo</Label>
             <Select
               value={form.type}
-              onValueChange={(value) => setForm((f) => ({ ...f, type: value }))}
+              onValueChange={(value) =>
+                setForm((f) => ({ ...f, type: value, end_time: endFor(f.start_time, value) }))
+              }
               disabled={!professionalId}
             >
               <SelectTrigger>

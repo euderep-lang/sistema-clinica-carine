@@ -158,7 +158,7 @@ export function CrmInboxComposer({
             }
           }}
           rows={1}
-          className="min-h-[2.25rem] min-w-0 flex-1 resize-none overflow-hidden border-0 bg-transparent px-2 py-2 text-[13px] leading-snug shadow-none focus-visible:ring-0"
+          className="max-h-[6rem] min-h-[2.25rem] min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-2 py-2 text-[13px] leading-snug shadow-none focus-visible:ring-0"
         />
         <div className="flex shrink-0 items-center gap-0.5">
           <Button

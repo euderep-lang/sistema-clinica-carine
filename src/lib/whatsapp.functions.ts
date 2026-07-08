@@ -7,6 +7,7 @@ import { onOutboundMessageForFollowUp } from "@/lib/wa-follow-up.server";
 import {
   getWhatsAppStatusPayload,
   isWhatsAppConfigured,
+  providerDeleteMessage,
   providerResolveMediaUrl,
   providerSendContact,
   providerSendLocation,
@@ -554,6 +555,97 @@ export const markWaConversationUnread = createServerFn({ method: "POST" })
       .from("wa_conversations" as never)
       .update({ unread_count: current > 0 ? current : 1 } as never)
       .eq("id", data.conversationId);
+
+    return { ok: true };
+  });
+
+export const deleteWaMessage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: { messageId: string; scope: "everyone" | "me" }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const profile = await requireCrmAccess(supabase, userId);
+    const scope = data.scope === "everyone" ? "everyone" : "me";
+
+    const { data: msg } = await supabase
+      .from("wa_messages" as never)
+      .select("id, conversation_id, wa_message_id, direction, deleted_at, created_at")
+      .eq("id", data.messageId)
+      .eq("tenant_id", profile.tenant_id)
+      .maybeSingle();
+    if (!msg) throw new Error("Mensagem não encontrada");
+
+    const message = msg as {
+      id: string;
+      conversation_id: string;
+      wa_message_id: string | null;
+      direction: "inbound" | "outbound";
+      deleted_at: string | null;
+      created_at: string;
+    };
+    if (message.deleted_at) return { ok: true };
+
+    if (scope === "everyone") {
+      if (!isWhatsAppConfigured()) throw new Error(configError());
+      if (!message.wa_message_id) {
+        throw new Error("Mensagem sem ID do WhatsApp — só é possível apagar para você.");
+      }
+
+      const { data: conv } = await supabase
+        .from("wa_conversations" as never)
+        .select("contact_phone, channel")
+        .eq("id", message.conversation_id)
+        .maybeSingle();
+      const convRow = conv as { contact_phone: string; channel?: string } | null;
+      if (!convRow) throw new Error("Conversa não encontrada");
+      if ((convRow.channel ?? "whatsapp") !== "whatsapp") {
+        throw new Error("Apagar para todos só funciona no WhatsApp");
+      }
+
+      const phone = normalizeBrazilPhone(convRow.contact_phone);
+      try {
+        await providerDeleteMessage(phone, message.wa_message_id, message.direction === "outbound");
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : "Falha ao apagar no WhatsApp";
+        throw new Error(
+          `Não foi possível apagar para todos: ${reason}. O WhatsApp só permite apagar para todos por um tempo limitado após o envio.`,
+        );
+      }
+    }
+
+    const now = new Date().toISOString();
+    await supabase
+      .from("wa_messages" as never)
+      .update({ deleted_at: now, deleted_by: userId, deleted_scope: scope } as never)
+      .eq("id", message.id);
+
+    // Se era a última mensagem da conversa, atualiza a prévia da lista.
+    const { data: latest } = await supabase
+      .from("wa_messages" as never)
+      .select("id")
+      .eq("conversation_id", message.conversation_id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if ((latest as { id: string } | null)?.id === message.id) {
+      await supabase
+        .from("wa_conversations" as never)
+        .update({ last_message_preview: "🚫 Mensagem apagada", updated_at: now } as never)
+        .eq("id", message.conversation_id);
+    }
+
+    logAuditSafe({
+      tenantId: profile.tenant_id,
+      actorId: userId,
+      category: "whatsapp",
+      action: "whatsapp.message_deleted",
+      summary: scope === "everyone" ? "Mensagem WhatsApp apagada para todos" : "Mensagem WhatsApp apagada no CRM",
+      entityType: "conversation",
+      entityId: message.conversation_id,
+      conversationId: message.conversation_id,
+      details: { message_id: message.wa_message_id, scope },
+      source: "ui",
+    });
 
     return { ok: true };
   });

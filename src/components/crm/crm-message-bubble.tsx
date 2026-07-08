@@ -1,5 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Reply } from "lucide-react";
+import { Ban, Loader2, MoreVertical, Reply, Trash2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { CrmAudioPlayer } from "@/components/crm/crm-audio-player";
 import { CrmContactCard, CrmDocumentCard, CrmLocationCard } from "@/components/crm/crm-message-rich";
 import {
@@ -23,6 +30,7 @@ interface CrmMessageBubbleProps {
   resolveMediaUrl: (mediaId: string, mimeType?: string | null) => Promise<string>;
   replyTo?: WaMessage | null;
   onReply?: (message: WaMessage) => void;
+  onDelete?: (message: WaMessage, scope: "everyone" | "me") => void;
   highlighted?: boolean;
   /** Chamado quando mídia carrega e altera a altura do bubble (mantém scroll no fim). */
   onContentResize?: () => void;
@@ -43,6 +51,7 @@ const CrmMessageBubbleInner = memo(function CrmMessageBubbleInner({
   resolveMediaUrl,
   replyTo,
   onReply,
+  onDelete,
   highlighted,
   onContentResize,
 }: CrmMessageBubbleProps) {
@@ -50,6 +59,7 @@ const CrmMessageBubbleInner = memo(function CrmMessageBubbleInner({
   const [loadingMedia, setLoadingMedia] = useState(false);
   const [mediaError, setMediaError] = useState(false);
 
+  const isDeleted = !!message.deleted_at;
   const isAudio = message.message_type === "audio";
   const isImage = message.message_type === "image" || message.message_type === "sticker";
   const isVideo = message.message_type === "video";
@@ -73,7 +83,7 @@ const CrmMessageBubbleInner = memo(function CrmMessageBubbleInner({
   const showBody = !!message.body && !(isAudio && isAudioPlaceholder(message.body)) && !hideBodyForRich;
 
   const loadMedia = useCallback(async () => {
-    if (!message.media_id) return;
+    if (!message.media_id || message.deleted_at) return;
     if (isDirectMediaUrl(message.media_id)) {
       setMediaUrl(message.media_id);
       return;
@@ -105,6 +115,74 @@ const CrmMessageBubbleInner = memo(function CrmMessageBubbleInner({
   const senderName = message.sender_profile?.full_name?.trim();
   const showSenderAbove = message.direction === "outbound" && !!senderName;
 
+  if (isDeleted) {
+    const deletedLabel =
+      message.direction === "outbound" ? "Você apagou esta mensagem" : "Esta mensagem foi apagada";
+    return (
+      <div
+        id={`msg-${message.id}`}
+        className={cn(
+          "max-w-[min(78%,15rem)] scroll-mt-20 rounded-[10px] px-2.5 py-1.5 text-[12px] leading-snug",
+          message.direction === "outbound"
+            ? "ml-auto rounded-tr-[3px] bg-[#d9fdd3]/60 text-zinc-500 dark:bg-emerald-900/20 dark:text-emerald-100/50"
+            : "rounded-tl-[3px] bg-white/70 text-zinc-500 shadow-[0_1px_0.5px_rgba(0,0,0,0.06)] dark:bg-zinc-800/60 dark:text-zinc-400",
+        )}
+      >
+        <p className="flex items-center gap-1 italic">
+          <Ban className="size-3 shrink-0" />
+          {deletedLabel}
+        </p>
+        <p className="mt-0.5 flex items-center justify-end text-[9px] leading-none opacity-70">
+          {formatMessageTime(message.created_at)}
+        </p>
+      </div>
+    );
+  }
+
+  const actionsMenu =
+    onReply || onDelete ? (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "absolute right-0.5 top-0.5 z-10 flex size-5 items-center justify-center rounded-full text-muted-foreground/80 opacity-70 transition group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 lg:opacity-0 lg:group-hover:opacity-100",
+              message.direction === "outbound"
+                ? "bg-[#d9fdd3] dark:bg-emerald-900/40"
+                : "bg-white dark:bg-zinc-800",
+            )}
+            title="Mais ações"
+          >
+            <MoreVertical className="size-3" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          {onReply ? (
+            <DropdownMenuItem onClick={() => onReply(message)}>
+              <Reply className="size-3.5" />
+              Responder
+            </DropdownMenuItem>
+          ) : null}
+          {onDelete && (onReply ? <DropdownMenuSeparator /> : null)}
+          {onDelete && message.direction === "outbound" ? (
+            <DropdownMenuItem
+              onClick={() => onDelete(message, "everyone")}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash2 className="size-3.5" />
+              Apagar para todos
+            </DropdownMenuItem>
+          ) : null}
+          {onDelete ? (
+            <DropdownMenuItem onClick={() => onDelete(message, "me")}>
+              <Ban className="size-3.5" />
+              Apagar para mim
+            </DropdownMenuItem>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    ) : null;
+
   const bubble = (
     <div
       id={`msg-${message.id}`}
@@ -128,6 +206,8 @@ const CrmMessageBubbleInner = memo(function CrmMessageBubbleInner({
           <Reply className="size-3" />
         </button>
       ) : null}
+
+      {actionsMenu}
 
       {replyTo ? (
         <div

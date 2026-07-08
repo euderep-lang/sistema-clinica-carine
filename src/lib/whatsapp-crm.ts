@@ -39,6 +39,8 @@ export interface WaMessage {
   reply_to_message_id?: string | null;
   sender_profile?: { full_name: string } | null;
   raw_payload?: unknown;
+  deleted_at?: string | null;
+  deleted_scope?: string | null;
 }
 
 export interface WaTag {

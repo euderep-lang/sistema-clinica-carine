@@ -11,7 +11,7 @@ export { todayISO };
 
 export const AGENDA_DAY_START = 8;
 export const AGENDA_DAY_END = 22;
-export const AGENDA_SLOT_MINUTES = 60;
+export const AGENDA_SLOT_MINUTES = 30;
 
 export function shiftDate(iso: string, days: number) {
   return shiftDateISO(iso, days);
@@ -46,6 +46,24 @@ export function formatWeekRange(mondayIso: string) {
 export function addOneHour(time: string) {
   const [hh, mm] = time.split(":").map(Number);
   return `${String(Math.min((hh || 0) + 1, 23)).padStart(2, "0")}:${String(mm || 0).padStart(2, "0")}`;
+}
+
+/** Soma minutos a um horário "HH:MM" (limitado ao mesmo dia). */
+export function addMinutes(time: string, minutes: number) {
+  const [hh, mm] = time.slice(0, 5).split(":").map(Number);
+  const total = Math.max(0, Math.min((hh || 0) * 60 + (mm || 0) + minutes, 23 * 60 + 59));
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
+/** Rótulo da régua lateral: "8h" para cheias e "8h30" para meias-horas. */
+export function agendaSlotLabel(slot: string) {
+  const [h, m] = slot.slice(0, 5).split(":");
+  return m === "00" ? `${Number(h)}h` : `${Number(h)}h${m}`;
+}
+
+/** True quando o slot é uma meia-hora (ex.: 08:30). */
+export function isHalfHourSlot(slot: string) {
+  return slot.slice(3, 5) === "30";
 }
 
 export function timeToMinutes(time: string) {

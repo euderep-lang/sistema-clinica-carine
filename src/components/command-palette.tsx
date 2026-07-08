@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/mock-auth";
 import { initials, avatarColor, maskCPF, maskPhone } from "@/lib/patient-utils";
 import { appointmentStatusLabel } from "@/lib/appointment-types";
 import { isOpsStaff } from "@/lib/roles";
+import { normalizeSearch } from "@/lib/search";
 
 interface PatientLite {
   id: string;
@@ -89,13 +90,14 @@ export function CommandPalette() {
     const term = q.trim();
     const t = setTimeout(async () => {
       const cpfDigits = term.replace(/\D/g, "");
-      const orParts = [`full_name.ilike.%${term}%`];
+      const norm = normalizeSearch(term);
+      const orParts = [`search_name.ilike.%${norm}%`];
       if (cpfDigits.length >= 3) orParts.push(`cpf.ilike.%${cpfDigits}%`);
 
       let apptsQuery = supabase
         .from("appointments")
         .select("id, date, start_time, status, patients!inner(full_name), profiles!appointments_professional_id_fkey(full_name)")
-        .ilike("patients.full_name", `%${term}%`)
+        .ilike("patients.search_name", `%${norm}%`)
         .order("date", { ascending: false })
         .limit(5);
       if (isPro) apptsQuery = apptsQuery.eq("professional_id", profile.id);

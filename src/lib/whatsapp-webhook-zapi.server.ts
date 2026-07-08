@@ -3,6 +3,7 @@ import { isBrazilMobileE164, isWhatsAppLid, normalizeBrazilPhone } from "@/lib/w
 import { verifyZApiWebhookAuth } from "@/lib/zapi-webhook-auth.server";
 import {
   insertWaMessage,
+  markWaMessageDeletedByWaId,
   maybeSendAfterHoursAutoReply,
   resolveTenantId,
   trackStaffFirstResponse,
@@ -394,9 +395,14 @@ export async function handleZApiWebhook(request: Request): Promise<Response> {
         );
       }
     } else if (/^(messagestatuscallback|deliverycallback)$/i.test(payload.type ?? "")) {
-      if (payload.messageId && payload.status) {
+      // Reflete no CRM quando o contato apaga uma mensagem para todos (revoke).
+      if (payload.messageId && /^(deleted|revoked|revoke)$/i.test(payload.status ?? "")) {
+        await markWaMessageDeletedByWaId(payload.messageId);
+      } else if (payload.messageId && payload.status) {
         await updateMessageStatus(payload.messageId, payload.status);
       }
+    } else if (/deletecallback$/i.test(payload.type ?? "") && payload.messageId) {
+      await markWaMessageDeletedByWaId(payload.messageId);
     }
   } catch (e) {
     console.error("[Z-API webhook] error:", e);

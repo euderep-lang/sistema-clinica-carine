@@ -47,6 +47,7 @@ import {
 import { useAuth } from "@/lib/mock-auth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { AUTOMATION_QUEUED_MESSAGE } from "@/lib/automation-messages";
+import { softDelete } from "@/lib/trash";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/professional/agenda")({
@@ -81,7 +82,7 @@ function ProfessionalAgendaPage() {
     if (!opts?.silent) setLoading(true);
     let q = supabase
       .from("appointments")
-      .select("id,date,start_time,end_time,status,type,modality,patient_id,patients(full_name,phone),rooms(name)")
+      .select("id,date,start_time,end_time,status,type,modality,notes,patient_id,patients(full_name,phone),rooms(name)")
       .eq("professional_id", profile.id)
       .order("date")
       .order("start_time");
@@ -164,6 +165,21 @@ function ProfessionalAgendaPage() {
       { patientName: row?.patients?.full_name },
     );
     return result ?? false;
+  };
+
+  const removeBlock = async (id: string) => {
+    try {
+      await softDelete({
+        entityType: "appointment",
+        table: "appointments",
+        id,
+        label: "Bloqueio de horário",
+      });
+      toast.success("Horário desbloqueado.");
+      setRows((prev) => prev.filter((r) => r.id !== id));
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
   };
 
   const shiftPeriod = (days: number) => setDate((d) => shiftDate(d, days));
@@ -279,6 +295,7 @@ function ProfessionalAgendaPage() {
             loading={loading}
             onStatusChange={handleStatusChange}
             onStart={(a) => void startAppointment(a)}
+            onRemoveBlock={removeBlock}
             onDayClick={(day) => {
               setDate(day);
               setViewMode("daily");
@@ -293,6 +310,7 @@ function ProfessionalAgendaPage() {
             loading={loading}
             onStatusChange={handleStatusChange}
             onStart={(a) => void startAppointment(a)}
+            onRemoveBlock={removeBlock}
           />
         )}
 

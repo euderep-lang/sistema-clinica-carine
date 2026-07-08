@@ -102,16 +102,16 @@ export function FinancialCaixaTab({
     if (!q) return payments;
     return payments.filter(
       (p) =>
-        (p.patients?.full_name?.toLowerCase().includes(q) ?? false) ||
-        (p.bills_receivable?.description?.toLowerCase().includes(q) ?? false) ||
-        (p.notes?.toLowerCase().includes(q) ?? false),
+        matchesSearch(p.patients?.full_name, q) ||
+        matchesSearch(p.bills_receivable?.description, q) ||
+        matchesSearch(p.notes, q),
     );
   }, [payments, search]);
 
   const filteredExpenses = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return expenses;
-    return expenses.filter((e) => e.description.toLowerCase().includes(q));
+    return expenses.filter((e) => matchesSearch(e.description, q));
   }, [expenses, search]);
 
   const stats = useMemo(() => {
@@ -148,7 +148,7 @@ export function FinancialCaixaTab({
       </div>
 
       <PageSection title={`Caixa — ${fmtDate(date)}`}>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-2 sm:gap-4 lg:grid-cols-5">
           <StatCard label="Entradas (bruto)" value={fmt(stats.gross)} icon={ArrowDownLeft} tone="success" />
           <StatCard label="Taxas" value={fmt(stats.fees)} icon={Landmark} tone="warning" />
           <StatCard label="Entradas (líquido)" value={fmt(stats.inflow)} icon={ArrowDownLeft} tone="success" />

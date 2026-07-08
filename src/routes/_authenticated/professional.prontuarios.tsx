@@ -52,10 +52,10 @@ function ProfessionalRecordsPage() {
     const q = search.trim().toLowerCase();
     if (!q) return true;
     return (
-      (r.patients?.full_name?.toLowerCase().includes(q) ?? false) ||
-      (r.chief_complaint?.toLowerCase().includes(q) ?? false) ||
-      (r.diagnosis?.toLowerCase().includes(q) ?? false) ||
-      (r.icd10_code?.toLowerCase().includes(q) ?? false)
+      matchesSearch(r.patients?.full_name, q) ||
+      matchesSearch(r.chief_complaint, q) ||
+      matchesSearch(r.diagnosis, q) ||
+      matchesSearch(r.icd10_code, q)
     );
   });
 

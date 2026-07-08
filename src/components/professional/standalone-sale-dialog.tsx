@@ -37,6 +37,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
 import { fmt, parseBRLInput } from "@/lib/currency";
 import { maskCPF } from "@/lib/patient-utils";
+import { matchesSearch } from "@/lib/search";
 import {
   createStandaloneSale,
   loadSaleChargeItems,
@@ -192,7 +193,7 @@ export function StandaloneSaleDialog({
       .filter(
         (p) =>
           !q ||
-          p.full_name.toLowerCase().includes(q) ||
+          matchesSearch(p.full_name, q) ||
           (p.cpf ?? "").includes(q.replace(/\D/g, "")),
       )
       .slice(0, 30);

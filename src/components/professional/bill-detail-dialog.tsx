@@ -68,6 +68,7 @@ import {
 } from "@/lib/sales";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
+import { matchesSearch } from "@/lib/search";
 import { RetroactivePaymentDateField, resolvePaymentDate, validatePaymentDate } from "@/components/professional/retroactive-payment-date-field";
 import {
   PaymentFeeBearerField,
@@ -350,7 +351,7 @@ export function BillDetailDialog({
   const filteredServices = useMemo(() => {
     const q = serviceSearch.trim().toLowerCase();
     if (!q) return services;
-    return services.filter((s) => s.name.toLowerCase().includes(q));
+    return services.filter((s) => matchesSearch(s.name, q));
   }, [services, serviceSearch]);
 
   const addSelection = useMemo(

@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
+import { matchesSearch } from "@/lib/search";
 import { parseBRLInput, fmt, fmtDate } from "@/lib/currency";
 import { generateReceiptPDF } from "@/lib/financial-pdf";
 import { loadLetterheadForPdf, resolveLetterheadProfessionalId, DEFAULT_LETTERHEAD_MARGINS } from "@/lib/letterhead";
@@ -114,7 +115,7 @@ export function ReceivePaymentDialog({ open, onOpenChange, onSaved, defaultPatie
   useEffect(() => { if (step === 3 && !amount) setAmount(totalSelected.toFixed(2).replace(".", ",")); }, [step, totalSelected, amount]);
 
   const patient = patients.find((p) => p.id === patientId);
-  const filtered = patients.filter((p) => !psearch || p.full_name.toLowerCase().includes(psearch.toLowerCase())).slice(0, 30);
+  const filtered = patients.filter((p) => !psearch || matchesSearch(p.full_name, psearch)).slice(0, 30);
 
   const confirm = async () => {
     if (!tenant || selectedBills.length === 0) return;

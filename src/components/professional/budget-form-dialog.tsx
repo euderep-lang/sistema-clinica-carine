@@ -37,6 +37,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
 import { BUDGET_STATUS_LABEL, fmt, parseBRLInput } from "@/lib/currency";
 import { maskCPF } from "@/lib/patient-utils";
+import { matchesSearch } from "@/lib/search";
 
 interface Patient {
   id: string;
@@ -200,7 +201,7 @@ export function BudgetFormDialog({
     return patients
       .filter(
         (p) =>
-          p.full_name.toLowerCase().includes(q) ||
+          matchesSearch(p.full_name, q) ||
           (p.cpf ?? "").replace(/\D/g, "").includes(q.replace(/\D/g, "")),
       )
       .slice(0, 30);

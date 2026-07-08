@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
-  AlertCircle,
   Ban,
   Cake,
   CalendarCheck,
@@ -280,71 +279,9 @@ function ReceptionDashboard() {
         />
       </PageSection>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <PageSection title="CRM WhatsApp">
-          <div className="grid grid-cols-3 gap-3">
-            <StatCard
-              label="Não lidas"
-              value={loading ? "—" : waUnreadTotal}
-              icon={Inbox}
-              tone={waUnreadTotal > 0 ? "warning" : "default"}
-              onClick={() => navigate({ to: "/crm/inbox" })}
-            />
-            <StatCard
-              label="Conversas abertas"
-              value={loading ? "—" : openConvCount}
-              icon={MessageSquare}
-              onClick={() => navigate({ to: "/crm/inbox" })}
-            />
-            <StatCard
-              label="Tarefas pendentes"
-              value={loading ? "—" : waTasks.length}
-              icon={AlertCircle}
-              tone={overdueTasks.length > 0 ? "danger" : waTasks.length > 0 ? "warning" : "default"}
-              sub={overdueTasks.length > 0 ? `${overdueTasks.length} atrasada(s)` : undefined}
-              onClick={() => navigate({ to: "/crm/inbox" })}
-            />
-          </div>
-
-          {waTasks.length > 0 ? (
-            <Card className="mt-4">
-              <CardHeader className="py-3">
-                <CardTitle className="text-sm font-medium">Tarefas do CRM</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 p-4 pt-0">
-                {waTasks.slice(0, 5).map((t) => {
-                  const overdue = t.due_at.slice(0, 19) < new Date().toISOString().slice(0, 19);
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      className="flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors hover:bg-muted/40"
-                      onClick={() =>
-                        t.conversation_id
-                          ? openCrmInbox(navigate, { conversationId: t.conversation_id })
-                          : navigate({ to: "/crm/inbox" })
-                      }
-                    >
-                      <span className="min-w-0 truncate font-medium">{t.title}</span>
-                      <Badge variant={overdue ? "destructive" : "secondary"} className="shrink-0 text-xs">
-                        {overdue ? "Atrasada" : "Pendente"}
-                      </Badge>
-                    </button>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          ) : (
-            <Card className="mt-4">
-              <CardContent className="py-6 text-center text-sm text-muted-foreground">
-                Nenhuma tarefa pendente no CRM.
-              </CardContent>
-            </Card>
-          )}
-        </PageSection>
-
+      <div className="grid gap-6">
         <PageSection title="Comunicações">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+          <div className="grid gap-3 sm:grid-cols-2">
             <StatCard
               label="Aniversariantes hoje"
               value={loading ? "—" : birthdaysToday}

@@ -96,9 +96,9 @@ export function PaymentHistoryDialog({
       if (statusFilter === "reversed" && r.status !== "reversed") return false;
       if (!q) return true;
       return (
-        (r.patients?.full_name?.toLowerCase().includes(q) ?? false) ||
-        (r.bills_receivable?.description?.toLowerCase().includes(q) ?? false) ||
-        paymentLabel(r.payment_method)?.toLowerCase().includes(q)
+        matchesSearch(r.patients?.full_name, q) ||
+        matchesSearch(r.bills_receivable?.description, q) ||
+        matchesSearch(paymentLabel(r.payment_method), q)
       );
     });
   }, [rows, search, statusFilter]);

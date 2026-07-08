@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
-import { MapPin, Plus, Video } from "lucide-react";
+import { CalendarDays, MapPin, Plus, Unlock, Video } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
@@ -16,10 +17,12 @@ import {
   AGENDA_DAY_END,
   AGENDA_DAY_START,
   AGENDA_SLOT_MINUTES,
+  agendaSlotLabel,
   buildHourSlots,
   currentTimePercent,
   formatTimeInterval,
   formatWeekRange,
+  isHalfHourSlot,
   timeToMinutes,
   todayISO,
   weekDaysFromMonday,
@@ -54,6 +57,7 @@ export function AgendaWeekView({
   onSlotClick,
   onReschedule,
   onStatusChange,
+  onRemoveBlock,
 }: {
   weekStart: string;
   rows: WeekRow[];
@@ -61,6 +65,7 @@ export function AgendaWeekView({
   onSlotClick: (date: string, time: string) => void;
   onReschedule: (row: AgendaRow) => void;
   onStatusChange: (id: string, status: string, patientName?: string | null) => void;
+  onRemoveBlock?: (id: string) => void;
 }) {
   const days = weekDaysFromMonday(weekStart);
   const slots = buildHourSlots(AGENDA_DAY_START, AGENDA_DAY_END, AGENDA_SLOT_MINUTES);
@@ -69,9 +74,14 @@ export function AgendaWeekView({
   const byDay = days.map((day) => rows.filter((r) => r.date === day));
 
   return (
-    <div className="flex min-h-[520px] flex-col overflow-hidden rounded-lg border bg-card">
-      <div className="border-b bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground">
-        Semana · {formatWeekRange(weekStart)}
+    <div className="flex min-h-[520px] flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
+      <div className="flex items-center gap-2 border-b bg-muted/40 px-4 py-3">
+        <span className="inline-flex size-6 items-center justify-center rounded-md bg-primary/10 text-primary">
+          <CalendarDays className="size-3.5" />
+        </span>
+        <span className="text-sm font-semibold capitalize text-foreground">
+          {formatWeekRange(weekStart)}
+        </span>
       </div>
 
       {loading ? (
@@ -80,7 +90,7 @@ export function AgendaWeekView({
         </div>
       ) : (
         <div className="flex flex-1 flex-col overflow-auto">
-          <div className="grid min-w-[760px] grid-cols-[3.5rem_repeat(7,minmax(0,1fr))] border-b bg-muted/30">
+          <div className="sticky top-0 z-20 grid min-w-[760px] grid-cols-[3.5rem_repeat(7,minmax(0,1fr))] border-b bg-muted/60 backdrop-blur supports-[backdrop-filter]:bg-muted/50">
             <div className="border-r" />
             {days.map((day, i) => {
               const d = new Date(`${day}T12:00:00`);
@@ -90,16 +100,27 @@ export function AgendaWeekView({
                 <div
                   key={day}
                   className={cn(
-                    "border-r px-2 py-2 text-center last:border-r-0",
-                    isWeekend && "bg-muted/50",
-                    isToday && "bg-primary/10 ring-1 ring-inset ring-primary/30",
+                    "border-r px-2 py-2.5 text-center last:border-r-0",
+                    isWeekend && "bg-muted/40",
                   )}
                 >
-                  <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <div
+                    className={cn(
+                      "text-[10px] font-medium uppercase tracking-wide",
+                      isToday ? "text-primary" : "text-muted-foreground",
+                    )}
+                  >
                     {WEEKDAY_LABELS[i]}
                   </div>
-                  <div className={cn("text-lg font-semibold leading-tight", isToday && "text-primary")}>
-                    {d.getDate()}
+                  <div className="mt-1 flex justify-center">
+                    <span
+                      className={cn(
+                        "inline-flex size-7 items-center justify-center rounded-full text-base font-semibold leading-none tabular-nums",
+                        isToday ? "bg-primary text-primary-foreground shadow-sm" : "text-foreground",
+                      )}
+                    >
+                      {d.getDate()}
+                    </span>
                   </div>
                 </div>
               );
@@ -111,9 +132,14 @@ export function AgendaWeekView({
               {slots.map((slot) => (
                 <div
                   key={slot}
-                  className="flex h-14 items-start justify-end border-b pr-1.5 pt-0.5 text-[10px] text-muted-foreground"
+                  className={cn(
+                    "flex h-11 items-start justify-end border-b pr-1.5 pt-0.5 text-[10px] tabular-nums",
+                    isHalfHourSlot(slot)
+                      ? "border-dashed border-border/40 text-muted-foreground/50"
+                      : "text-muted-foreground",
+                  )}
                 >
-                  {slot.slice(0, 2)}h
+                  {agendaSlotLabel(slot)}
                 </div>
               ))}
             </div>
@@ -136,9 +162,14 @@ export function AgendaWeekView({
                         type="button"
                         onClick={() => onSlotClick(day, slot)}
                         title={`Agendar ${day} às ${slot}`}
-                        className="group flex h-14 w-full items-center justify-center border-b border-dashed border-border/50 transition hover:bg-primary/5"
+                        className={cn(
+                          "group flex h-11 w-full items-center justify-center border-b transition hover:bg-primary/5",
+                          isHalfHourSlot(slot)
+                            ? "border-dashed border-border/40"
+                            : "border-border/60",
+                        )}
                       >
-                        <Plus className="size-3.5 text-primary opacity-0 transition group-hover:opacity-70" />
+                        <Plus className="size-3 text-primary opacity-0 transition group-hover:opacity-70" />
                       </button>
                     ))}
 
@@ -170,9 +201,9 @@ export function AgendaWeekView({
                             <button
                               type="button"
                               className={cn(
-                                "absolute left-0.5 right-0.5 z-[1] overflow-hidden rounded border border-l-[3px] p-1 text-left shadow-sm transition hover:ring-2 hover:ring-primary/25",
+                                "absolute left-1 right-1 z-[1] overflow-hidden rounded-md border border-l-[3px] p-1.5 text-left shadow-sm transition hover:z-[2] hover:shadow-md hover:ring-2 hover:ring-primary/25",
                                 block
-                                  ? "border-l-slate-400 bg-slate-200/70 dark:bg-slate-700/40"
+                                  ? "border-l-black bg-black text-white dark:bg-black"
                                   : STATUS_CLASS[row.status] ?? STATUS_CLASS.scheduled,
                                 row.modality === "online" &&
                                   row.status !== "cancelled" &&
@@ -181,17 +212,22 @@ export function AgendaWeekView({
                               )}
                               style={{ top: `${top}%`, height: `${height}%`, minHeight: "2.75rem" }}
                             >
-                              <div className="flex items-center gap-0.5 text-[9px] font-semibold leading-tight text-primary">
+                              <div
+                                className={cn(
+                                  "flex items-center gap-0.5 text-[10px] font-semibold leading-tight",
+                                  block ? "text-white" : "text-foreground/80",
+                                )}
+                              >
                                 {row.modality === "online" ? (
-                                  <Video className="size-2 text-sky-600" />
+                                  <Video className="size-2.5 text-sky-600" />
                                 ) : null}
                                 {row.start_time.slice(0, 5)}
                               </div>
-                              <div className="truncate text-[10px] font-medium leading-tight">
+                              <div className="truncate text-[11px] font-semibold leading-tight">
                                 {block ? row.notes || "Bloqueado" : row.patients?.full_name ?? "—"}
                               </div>
                               {!block && row.profiles?.full_name ? (
-                                <div className="truncate text-[9px] leading-tight text-muted-foreground">
+                                <div className="truncate text-[10px] leading-tight text-muted-foreground">
                                   {row.profiles.full_name}
                                 </div>
                               ) : null}
@@ -211,6 +247,17 @@ export function AgendaWeekView({
                                   {row.rooms?.name ? ` · ${row.rooms.name}` : ""}
                                 </p>
                               </div>
+                              {block && onRemoveBlock ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full"
+                                  onClick={() => onRemoveBlock(row.id)}
+                                >
+                                  <Unlock className="mr-1.5 size-3.5" />
+                                  Desbloquear horário
+                                </Button>
+                              ) : null}
                               {!block && (
                                 <>
                                   <div className="flex flex-wrap gap-1">

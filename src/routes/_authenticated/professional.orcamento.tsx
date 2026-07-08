@@ -38,6 +38,7 @@ import { fmtDate } from "@/lib/locale";
 import { fmt, parseBRLInput } from "@/lib/currency";
 import { randomUUID, cn } from "@/lib/utils";
 import { maskCPF } from "@/lib/patient-utils";
+import { matchesSearch } from "@/lib/search";
 import { loadLetterheadForPdf } from "@/lib/letterhead";
 import { generateBudgetPDF } from "@/lib/budget-pdf";
 import {
@@ -241,7 +242,7 @@ function OrcamentoPage() {
     return patients
       .filter(
         (p) =>
-          p.full_name.toLowerCase().includes(q) ||
+          matchesSearch(p.full_name, q) ||
           (p.cpf ?? "").replace(/\D/g, "").includes(q.replace(/\D/g, "")),
       )
       .slice(0, 30);

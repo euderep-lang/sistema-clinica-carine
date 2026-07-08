@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
+import { normalizeSearch } from "@/lib/search";
 import { PatientFormDialog } from "@/components/patient-form-dialog";
 
 export const Route = createFileRoute("/_authenticated/reception/pacientes/")({
@@ -59,7 +60,7 @@ function PatientsList() {
     if (query) {
       const term = query;
       const digits = term.replace(/\D/g, "");
-      const parts = [`full_name.ilike.%${term}%`];
+      const parts = [`search_name.ilike.%${normalizeSearch(term)}%`];
       if (digits) parts.push(`cpf.ilike.%${digits}%`, `phone.ilike.%${digits}%`);
       if (/^\d+$/.test(term)) parts.push(`record_number.eq.${term}`);
       q = q.or(parts.join(","));

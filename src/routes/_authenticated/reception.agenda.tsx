@@ -33,17 +33,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { softDelete } from "@/lib/trash";
 import {
+  APPOINTMENT_DURATION_SETTING_KEY,
   APPOINTMENT_MODALITY_BADGE,
   APPOINTMENT_MODALITY_OPTIONS,
   APPOINTMENT_MODALITY_SHORT,
   APPOINTMENT_STATUS_LABEL,
   APPOINTMENT_TYPE_LABEL,
   APPOINTMENT_TYPE_OPTIONS,
+  DEFAULT_APPOINTMENT_DURATIONS,
   DEFAULT_APPOINTMENT_MODALITY,
   isBlockAppointment,
+  resolveAppointmentDurations,
   resolveAppointmentTypes,
 } from "@/lib/appointment-types";
 import {
+  addMinutes,
   addOneHour,
   formatTimeInterval,
   shiftDate,
@@ -51,8 +55,10 @@ import {
   timeToMinutes,
   todayISO,
 } from "@/lib/agenda-utils";
+import { getTenantSetting } from "@/lib/settings-helpers";
 import { checkAppointmentConflicts } from "@/lib/appointment-conflicts";
 import { patchFormForProfessional } from "@/lib/appointment-professional";
+import { normalizeSearch } from "@/lib/search";
 import { useAuth } from "@/lib/mock-auth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { printWithLetterhead } from "@/lib/letterhead-print";
@@ -74,6 +80,22 @@ type Professional = {
   online_consultation_service_id?: string | null;
 };
 type Room = { id: string; name: string; color: string | null };
+
+/**
+ * Regra de negócio: ao escolher a Carine, o consultório 1 é preenchido
+ * automaticamente. Retorna o id da sala ou null se não houver regra aplicável.
+ */
+function autoRoomIdForProfessionalName(
+  professionalName: string | null | undefined,
+  roomList: Room[],
+): string | null {
+  if (!professionalName || !normalizeSearch(professionalName).includes("carine")) return null;
+  const target = roomList.find((room) => {
+    const n = normalizeSearch(room.name);
+    return n === "consultorio 1" || /(^|[^0-9])1([^0-9]|$)/.test(n);
+  });
+  return target?.id ?? null;
+}
 type Appointment = {
   id: string;
   date: string;
@@ -141,6 +163,9 @@ function AgendaPage() {
     specialty: "",
     notes: "",
   });
+  const durationsRef = useRef<Record<string, number>>({ ...DEFAULT_APPOINTMENT_DURATIONS });
+  const endFor = (start: string, type: string) =>
+    addMinutes(start, durationsRef.current[type] ?? durationsRef.current.consultation ?? 60);
 
   const removeBlock = async (id: string) => {
     try {
@@ -183,10 +208,12 @@ function AgendaPage() {
   useEffect(() => {
     if (!profile) return;
     (async () => {
-      const [professionalsRes, roomsRes] = await Promise.all([
+      const [professionalsRes, roomsRes, durSetting] = await Promise.all([
         supabase.from("profiles").select("id,full_name,specialty,appointment_types,consultation_service_id,online_consultation_service_id").eq("tenant_id", profile.tenant_id).eq("role", "professional").eq("active", true).order("full_name"),
         supabase.from("rooms").select("id,name,color").eq("tenant_id", profile.tenant_id).eq("active", true).order("name"),
+        getTenantSetting<Record<string, number>>(profile.tenant_id, APPOINTMENT_DURATION_SETTING_KEY),
       ]);
+      durationsRef.current = resolveAppointmentDurations(durSetting);
       setProfessionals((professionalsRes.data ?? []) as Professional[]);
       setRooms((roomsRes.data ?? []) as Room[]);
     })();
@@ -240,14 +267,16 @@ function AgendaPage() {
           : form.professional_id;
     const professional = professionals.find((p) => p.id === defaultProfId);
     const patch = patchFormForProfessional(professional, form.type);
+    const autoRoom = autoRoomIdForProfessionalName(professional?.full_name, rooms);
     setForm((f) => ({
       ...f,
       patient_id: "",
       date,
-      end_time: addOneHour(f.start_time),
+      end_time: endFor(f.start_time, patch.type),
       professional_id: defaultProfId ?? "",
       specialty: patch.specialty,
       type: patch.type,
+      room_id: autoRoom ?? f.room_id,
       modality: DEFAULT_APPOINTMENT_MODALITY,
     }));
     setOpen(true);
@@ -264,15 +293,17 @@ function AgendaPage() {
           : form.professional_id;
     const professional = professionals.find((p) => p.id === defaultProfId);
     const patch = patchFormForProfessional(professional, form.type);
+    const autoRoom = autoRoomIdForProfessionalName(professional?.full_name, rooms);
     setForm((f) => ({
       ...f,
       patient_id: "",
       date: day,
       start_time: time,
-      end_time: addOneHour(time),
+      end_time: endFor(time, patch.type),
       professional_id: defaultProfId ?? "",
       specialty: patch.specialty,
       type: patch.type,
+      room_id: autoRoom ?? f.room_id,
       modality: DEFAULT_APPOINTMENT_MODALITY,
     }));
     setOpen(true);
@@ -459,7 +490,9 @@ function AgendaPage() {
           </div>
         </div>
 
-        <AgendaSummaryCards rows={statsRows.filter((r) => !isBlockAppointment(r))} />
+        <div className="hidden lg:block">
+          <AgendaSummaryCards rows={statsRows.filter((r) => !isBlockAppointment(r))} />
+        </div>
 
         <div className="flex flex-col gap-4 lg:flex-row-reverse">
           <div className="print:hidden">{filtersPanel}</div>
@@ -473,6 +506,7 @@ function AgendaPage() {
                 onSlotClick={handleSlotClick}
                 onReschedule={openReschedule}
                 onStatusChange={handleStatusChange}
+                onRemoveBlock={removeBlock}
               />
             ) : viewMode === "timeline" ? (
               <AgendaTimelineView
@@ -482,8 +516,8 @@ function AgendaPage() {
                 activeProfessionalId={filterProfessional}
                 onProfessionalChange={setFilterProfessional}
                 professionals={professionals}
-                headerExtra={<Badge variant="secondary" className="bg-primary-foreground/15 text-primary-foreground">{filteredRows.length} horários</Badge>}
                 onReschedule={openReschedule}
+                onRemoveBlock={removeBlock}
               />
             ) : viewMode === "rooms" ? (
               <AgendaRoomsOverview
@@ -534,7 +568,7 @@ function AgendaPage() {
                             </span>
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline" className="bg-slate-100 text-slate-700">Bloqueado</Badge>
+                            <Badge variant="outline" className="border-black bg-black text-white">Bloqueado</Badge>
                           </TableCell>
                           <TableCell>
                             <Button variant="ghost" size="sm" onClick={() => void removeBlock(row.id)}>Remover</Button>
@@ -604,6 +638,10 @@ function AgendaPage() {
             )}
           </div>
         </div>
+
+        <div className="lg:hidden">
+          <AgendaSummaryCards rows={statsRows.filter((r) => !isBlockAppointment(r))} />
+        </div>
       </div>
 
       <Dialog
@@ -631,11 +669,14 @@ function AgendaPage() {
               <Select value={form.professional_id} onValueChange={(value) => {
                 const professional = professionals.find((p) => p.id === value);
                 const patch = patchFormForProfessional(professional, form.type);
+                const autoRoom = autoRoomIdForProfessionalName(professional?.full_name, rooms);
                 setForm((f) => ({
                   ...f,
                   professional_id: value,
                   specialty: patch.specialty,
                   type: patch.type,
+                  end_time: endFor(f.start_time, patch.type),
+                  room_id: autoRoom ?? f.room_id,
                 }));
               }}>
                 <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
@@ -659,14 +700,14 @@ function AgendaPage() {
               <Input type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <div><Label>Início</Label><Input type="time" value={form.start_time} onChange={(e) => setForm((f) => ({ ...f, start_time: e.target.value, end_time: addOneHour(e.target.value) }))} /></div>
+              <div><Label>Início</Label><Input type="time" value={form.start_time} onChange={(e) => setForm((f) => ({ ...f, start_time: e.target.value, end_time: endFor(e.target.value, f.type) }))} /></div>
               <div><Label>Fim</Label><Input type="time" value={form.end_time} onChange={(e) => setForm((f) => ({ ...f, end_time: e.target.value }))} /></div>
             </div>
             <div>
               <Label>Tipo</Label>
               <Select
                 value={form.type}
-                onValueChange={(value) => setForm((f) => ({ ...f, type: value }))}
+                onValueChange={(value) => setForm((f) => ({ ...f, type: value, end_time: endFor(f.start_time, value) }))}
                 disabled={!form.professional_id}
               >
                 <SelectTrigger>

@@ -105,9 +105,7 @@ function ProfessionalSessionsPage() {
     const q = search.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter(
-      (r) =>
-        r.patient_name.toLowerCase().includes(q) ||
-        r.service_name.toLowerCase().includes(q),
+      (r) => matchesSearch(r.patient_name, q) || matchesSearch(r.service_name, q),
     );
   }, [rows, search]);
 

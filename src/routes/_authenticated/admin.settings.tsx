@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Building2, Palette, DoorOpen, Stethoscope, Users, Receipt, MessageSquare, Plug, CreditCard, FolderOpen, Shield, ShieldCheck, LineChart, Trash2, type LucideIcon } from "lucide-react";
+import { Building2, CalendarClock, Palette, DoorOpen, Stethoscope, Users, Receipt, MessageSquare, Plug, CreditCard, FolderOpen, Shield, ShieldCheck, LineChart, Trash2, type LucideIcon } from "lucide-react";
 import { SectionAuditoria } from "@/components/settings/section-auditoria";
+import { SectionAgenda } from "@/components/settings/section-agenda";
 import { SectionFunilCrm } from "@/components/settings/section-funil-crm";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { cn } from "@/lib/utils";
@@ -25,13 +26,14 @@ export const Route = createFileRoute("/_authenticated/admin/settings")({
   component: Page,
 });
 
-type SectionId = "clinica" | "aparencia" | "consultorios" | "especialidades" | "usuarios" | "permissoes" | "servicos" | "pagamentos" | "despesas" | "mensagens" | "funil" | "integracoes" | "auditoria" | "lixeira";
+type SectionId = "clinica" | "aparencia" | "consultorios" | "especialidades" | "agenda" | "usuarios" | "permissoes" | "servicos" | "pagamentos" | "despesas" | "mensagens" | "funil" | "integracoes" | "auditoria" | "lixeira";
 
 const SECTIONS: { id: SectionId; label: string; icon: LucideIcon }[] = [
   { id: "clinica", label: "Clínica", icon: Building2 },
   { id: "aparencia", label: "Aparência", icon: Palette },
   { id: "consultorios", label: "Consultórios", icon: DoorOpen },
   { id: "especialidades", label: "Especialidades", icon: Stethoscope },
+  { id: "agenda", label: "Agenda", icon: CalendarClock },
   { id: "usuarios", label: "Usuários", icon: Users },
   { id: "permissoes", label: "Permissões", icon: ShieldCheck },
   { id: "servicos", label: "Serviços", icon: Receipt },
@@ -52,6 +54,7 @@ function Page() {
     section === "aparencia" ||
     section === "consultorios" ||
     section === "especialidades" ||
+    section === "agenda" ||
     section === "usuarios" ||
     section === "permissoes" ||
     section === "servicos" ||
@@ -81,6 +84,7 @@ function Page() {
           {active === "aparencia" && <SectionAparencia />}
           {active === "consultorios" && <SectionConsultorios />}
           {active === "especialidades" && <SectionEspecialidades />}
+          {active === "agenda" && <SectionAgenda />}
           {active === "usuarios" && <SectionUsuarios />}
           {active === "permissoes" && <SectionPermissoes />}
           {active === "servicos" && <SectionServicos />}

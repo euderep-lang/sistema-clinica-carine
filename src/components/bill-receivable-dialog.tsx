@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { todayISO, fmtDate } from "@/lib/locale";
+import { matchesSearch } from "@/lib/search";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -91,7 +92,7 @@ export function NewBillReceivableDialog({ open, onOpenChange, onSaved, defaultPa
   };
 
   const patient = patients.find((p) => p.id === patientId);
-  const filtered = patients.filter((p) => !psearch || p.full_name.toLowerCase().includes(psearch.toLowerCase()) || (p.cpf ?? "").includes(psearch)).slice(0, 30);
+  const filtered = patients.filter((p) => !psearch || matchesSearch(p.full_name, psearch) || (p.cpf ?? "").includes(psearch)).slice(0, 30);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

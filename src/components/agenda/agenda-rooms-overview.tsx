@@ -6,10 +6,12 @@ import {
   AGENDA_DAY_END,
   AGENDA_DAY_START,
   AGENDA_SLOT_MINUTES,
+  agendaSlotLabel,
   buildHourSlots,
   currentTimePercent,
   formatAgendaDate,
   formatTimeInterval,
+  isHalfHourSlot,
   timeToMinutes,
 } from "@/lib/agenda-utils";
 import { APPOINTMENT_MODALITY_SHORT, APPOINTMENT_TYPE_LABEL } from "@/lib/appointment-types";
@@ -122,9 +124,14 @@ export function AgendaRoomsOverview({
             {slots.map((slot) => (
               <div
                 key={slot}
-                className="flex h-16 items-start justify-end border-b pr-2 pt-1 text-xs text-muted-foreground"
+                className={cn(
+                  "flex h-11 items-start justify-end border-b pr-2 pt-0.5 text-[11px] tabular-nums",
+                  isHalfHourSlot(slot)
+                    ? "border-dashed border-border/40 text-muted-foreground/50"
+                    : "text-muted-foreground",
+                )}
               >
-                {slot.slice(0, 2)}h
+                {agendaSlotLabel(slot)}
               </div>
             ))}
           </div>
@@ -134,7 +141,13 @@ export function AgendaRoomsOverview({
             return (
               <div key={col.id} className="relative min-w-[12rem] border-r last:border-r-0">
                 {slots.map((slot) => (
-                  <div key={slot} className="h-16 border-b border-dashed border-border/60" />
+                  <div
+                    key={slot}
+                    className={cn(
+                      "h-11 border-b",
+                      isHalfHourSlot(slot) ? "border-dashed border-border/40" : "border-border/70",
+                    )}
+                  />
                 ))}
 
                 {nowPercent !== null && (
@@ -178,7 +191,7 @@ export function AgendaRoomsOverview({
                         row.modality === "online" && row.status !== "cancelled" && "ring-1 ring-sky-300",
                         onReschedule && "cursor-pointer transition hover:ring-2 hover:ring-primary/30",
                       )}
-                      style={{ top: `${top}%`, height: `${height}%`, minHeight: "3.25rem" }}
+                      style={{ top: `${top}%`, height: `${height}%`, minHeight: "2.75rem" }}
                     >
                       <div className="text-[10px] font-semibold text-primary">
                         {formatTimeInterval(row.start_time, row.end_time)}

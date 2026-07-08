@@ -185,9 +185,7 @@ export function FinancialCobrancasTab({
     const q = search.trim().toLowerCase();
     if (!q) return list;
     return list.filter(
-      (r) =>
-        r.description.toLowerCase().includes(q) ||
-        (r.patients?.full_name?.toLowerCase().includes(q) ?? false),
+      (r) => matchesSearch(r.description, q) || matchesSearch(r.patients?.full_name, q),
     );
   }, [periodRows, rows, search, status]);
 
@@ -288,18 +286,29 @@ export function FinancialCobrancasTab({
   const tableColSpan = 9;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap justify-end gap-2">
-        <Button variant="outline" onClick={() => { setHistoryBillId(null); setHistoryOpen(true); }}>
-          <History className="mr-2 size-4" />
-          Histórico de pagamentos
+    <div className="space-y-4 sm:space-y-6">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 w-full justify-center sm:h-10 sm:w-auto"
+          onClick={() => { setHistoryBillId(null); setHistoryOpen(true); }}
+        >
+          <History className="mr-1.5 size-4" />
+          <span className="truncate">Histórico</span>
+          <span className="hidden sm:inline">&nbsp;de pagamentos</span>
         </Button>
-        <Button onClick={() => { setEditBillId(null); setSaleOpen(true); }}>
-          <Plus className="mr-2 size-4" />
-          Nova venda avulsa
+        <Button
+          size="sm"
+          className="h-9 w-full justify-center sm:h-10 sm:w-auto"
+          onClick={() => { setEditBillId(null); setSaleOpen(true); }}
+        >
+          <Plus className="mr-1.5 size-4" />
+          <span className="truncate">Nova venda</span>
+          <span className="hidden sm:inline">&nbsp;avulsa</span>
         </Button>
       </div>
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-muted/20 p-4">
+      <div className="flex flex-wrap items-end gap-2.5 rounded-lg border bg-muted/20 p-3 sm:gap-3 sm:p-4">
         <DateRangeFilter
           from={periodFrom}
           to={periodTo}
@@ -341,7 +350,7 @@ export function FinancialCobrancasTab({
             : "Selecione um período válido"
         }
       >
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 2xl:grid-cols-6">
           <StatCard
             label="Produção"
             value={fmt(stats.production)}

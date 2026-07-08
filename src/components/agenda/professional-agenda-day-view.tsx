@@ -15,10 +15,12 @@ import {
   AGENDA_DAY_END,
   AGENDA_DAY_START,
   AGENDA_SLOT_MINUTES,
+  agendaSlotLabel,
   buildHourSlots,
   currentTimePercent,
   formatAgendaDate,
   formatTimeInterval,
+  isHalfHourSlot,
   timeToMinutes,
 } from "@/lib/agenda-utils";
 import {
@@ -26,12 +28,13 @@ import {
   APPOINTMENT_MODALITY_SHORT,
   APPOINTMENT_STATUS_LABEL,
   APPOINTMENT_TYPE_LABEL,
+  isBlockAppointment,
   PROFESSIONAL_AGENDA_STATUS_ITEM,
   PROFESSIONAL_AGENDA_STATUS_OPTIONS,
   PROFESSIONAL_AGENDA_STATUS_TRIGGER,
   PROFESSIONAL_AGENDA_STATUS_VALUES,
 } from "@/lib/appointment-types";
-import { Video, MapPin } from "lucide-react";
+import { Lock, Unlock, Video, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type ProfessionalAgendaAppointment = {
@@ -42,6 +45,7 @@ export type ProfessionalAgendaAppointment = {
   status: string;
   type: string | null;
   modality?: string | null;
+  notes?: string | null;
   patient_id: string | null;
   patients: { full_name: string; phone: string | null } | null;
   rooms: { name: string } | null;
@@ -63,12 +67,14 @@ export function ProfessionalAgendaDayView({
   loading,
   onStatusChange,
   onStart,
+  onRemoveBlock,
 }: {
   date: string;
   rows: ProfessionalAgendaAppointment[];
   loading: boolean;
   onStatusChange: (id: string, status: string) => Promise<boolean>;
   onStart: (appointment: ProfessionalAgendaAppointment) => void;
+  onRemoveBlock?: (id: string) => void;
 }) {
   const navigate = useNavigate();
   const slots = buildHourSlots(AGENDA_DAY_START, AGENDA_DAY_END, AGENDA_SLOT_MINUTES);
@@ -91,16 +97,27 @@ export function ProfessionalAgendaDayView({
             {slots.map((slot) => (
               <div
                 key={slot}
-                className="flex h-16 items-start justify-end border-b pr-2 pt-1 text-xs text-muted-foreground"
+                className={cn(
+                  "flex h-11 items-start justify-end border-b pr-2 pt-0.5 text-[11px] tabular-nums",
+                  isHalfHourSlot(slot)
+                    ? "border-dashed border-border/40 text-muted-foreground/50"
+                    : "text-muted-foreground",
+                )}
               >
-                {slot.slice(0, 2)}h
+                {agendaSlotLabel(slot)}
               </div>
             ))}
           </div>
 
           <div className="relative min-w-0 flex-1">
             {slots.map((slot) => (
-              <div key={slot} className="h-16 border-b border-dashed border-border/60" />
+              <div
+                key={slot}
+                className={cn(
+                  "h-11 border-b",
+                  isHalfHourSlot(slot) ? "border-dashed border-border/40" : "border-border/70",
+                )}
+              />
             ))}
 
             {nowPercent !== null && (
@@ -129,6 +146,39 @@ export function ProfessionalAgendaDayView({
               );
               const cancelled = row.status === "cancelled";
 
+              if (isBlockAppointment(row)) {
+                return (
+                  <div
+                    key={row.id}
+                    className="absolute left-2 right-2 overflow-hidden rounded-md border border-l-4 border-l-black bg-black p-2 text-white shadow-sm"
+                    style={{ top: `${top}%`, height: `${height}%`, minHeight: "2.5rem" }}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1 text-xs font-semibold">
+                          <Lock className="size-3" />
+                          {formatTimeInterval(row.start_time, row.end_time)}
+                        </div>
+                        <div className="truncate text-sm font-medium">
+                          {row.notes || "Horário bloqueado"}
+                        </div>
+                      </div>
+                      {onRemoveBlock ? (
+                        <button
+                          type="button"
+                          title="Desbloquear horário"
+                          onClick={() => onRemoveBlock(row.id)}
+                          className="flex shrink-0 items-center gap-1 rounded border border-white/40 bg-white/15 px-1.5 py-0.5 text-[11px] font-medium text-white transition hover:bg-white/25"
+                        >
+                          <Unlock className="size-3" />
+                          Desbloquear
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              }
+
               return (
                 <div
                   key={row.id}
@@ -138,7 +188,7 @@ export function ProfessionalAgendaDayView({
                     row.modality === "online" && !cancelled && "ring-1 ring-sky-300",
                     cancelled && "line-through opacity-50",
                   )}
-                  style={{ top: `${top}%`, height: `${height}%`, minHeight: "4.5rem" }}
+                  style={{ top: `${top}%`, height: `${height}%`, minHeight: "2.75rem" }}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">

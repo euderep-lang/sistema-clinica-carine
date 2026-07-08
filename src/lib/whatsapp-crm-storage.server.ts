@@ -697,6 +697,22 @@ export async function updateMessageStatus(waMessageId: string, status: string, e
     .eq("wa_message_id", waMessageId);
 }
 
+/** Reflete no CRM uma mensagem apagada no WhatsApp (revoke feito pelo contato ou no celular). */
+export async function markWaMessageDeletedByWaId(waMessageId: string) {
+  const { data: existing } = await supabaseAdmin
+    .from("wa_messages" as never)
+    .select("id, deleted_at")
+    .eq("wa_message_id", waMessageId)
+    .maybeSingle();
+  const row = existing as { id: string; deleted_at: string | null } | null;
+  if (!row || row.deleted_at) return;
+
+  await supabaseAdmin
+    .from("wa_messages" as never)
+    .update({ deleted_at: new Date().toISOString(), deleted_scope: "everyone" } as never)
+    .eq("id", row.id);
+}
+
 /** Garante que todos os chats ativos da Z-API existam no CRM (última mensagem conhecida). */
 function zapiChatPreview(chat: {
   lastMessageText?: string;

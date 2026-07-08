@@ -1,6 +1,7 @@
 export const APPOINTMENT_TYPE_OPTIONS = [
   { value: "consultation", label: "Consulta" },
   { value: "return", label: "Retorno" },
+  { value: "medication", label: "Medicação" },
   { value: "procedure", label: "Procedimento" },
   { value: "exam", label: "Exame" },
 ] as const;
@@ -12,6 +13,35 @@ export const DEFAULT_APPOINTMENT_TYPES: AppointmentType[] = APPOINTMENT_TYPE_OPT
 export const APPOINTMENT_TYPE_LABEL: Record<string, string> = Object.fromEntries(
   APPOINTMENT_TYPE_OPTIONS.map((t) => [t.value, t.label]),
 );
+
+/** Chave em tenant_settings com a duração padrão (min) de cada tipo de atendimento. */
+export const APPOINTMENT_DURATION_SETTING_KEY = "appointment_durations";
+
+/** Duração padrão (em minutos) por tipo, usada para preencher o horário de fim. */
+export const DEFAULT_APPOINTMENT_DURATIONS: Record<AppointmentType, number> = {
+  consultation: 60,
+  return: 30,
+  medication: 30,
+  procedure: 60,
+  exam: 30,
+};
+
+export type AppointmentDurations = Record<string, number>;
+
+/** Mescla as durações salvas com os padrões, ignorando valores inválidos. */
+export function resolveAppointmentDurations(
+  value: Partial<Record<string, number>> | null | undefined,
+): Record<string, number> {
+  const out: Record<string, number> = { ...DEFAULT_APPOINTMENT_DURATIONS };
+  if (value) {
+    for (const [key, minutes] of Object.entries(value)) {
+      if (typeof minutes === "number" && Number.isFinite(minutes) && minutes > 0 && minutes <= 600) {
+        out[key] = Math.round(minutes);
+      }
+    }
+  }
+  return out;
+}
 
 export const APPOINTMENT_MODALITY_OPTIONS = [
   { value: "presential", label: "Consulta Presencial" },

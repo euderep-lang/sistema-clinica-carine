@@ -141,9 +141,7 @@ function ProfessionalBudgetsPage() {
     const q = search.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter(
-      (r) =>
-        String(r.number).includes(q) ||
-        (r.patients?.full_name?.toLowerCase().includes(q) ?? false),
+      (r) => String(r.number).includes(q) || matchesSearch(r.patients?.full_name, q),
     );
   }, [rows, search]);
 

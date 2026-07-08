@@ -6,18 +6,21 @@ import {
   AGENDA_DAY_END,
   AGENDA_DAY_START,
   AGENDA_SLOT_MINUTES,
+  agendaSlotLabel,
   buildHourSlots,
   currentTimePercent,
   formatAgendaDate,
   formatTimeInterval,
+  isHalfHourSlot,
   timeToMinutes,
 } from "@/lib/agenda-utils";
 import {
   APPOINTMENT_MODALITY_BADGE,
   APPOINTMENT_MODALITY_SHORT,
   APPOINTMENT_TYPE_LABEL,
+  isBlockAppointment,
 } from "@/lib/appointment-types";
-import { Video, MapPin } from "lucide-react";
+import { Lock, Unlock, Video, MapPin } from "lucide-react";
 import { AgendaRescheduleButton } from "@/components/agenda/agenda-appointment-actions";
 import { AgendaContactActions } from "@/components/agenda/agenda-contact-actions";
 import type { ReactNode } from "react";
@@ -30,6 +33,7 @@ export type AgendaRow = {
   status: string;
   type: string | null;
   modality?: string | null;
+  notes?: string | null;
   specialty: string | null;
   patient_id: string | null;
   professional_id: string | null;
@@ -63,7 +67,9 @@ export function AgendaTimelineView({
   onProfessionalChange,
   professionals,
   headerExtra,
+  showHeader = false,
   onReschedule,
+  onRemoveBlock,
 }: {
   date: string;
   rows: AgendaRow[];
@@ -72,7 +78,10 @@ export function AgendaTimelineView({
   onProfessionalChange: (id: string) => void;
   professionals: { id: string; full_name: string }[];
   headerExtra?: ReactNode;
+  /** Exibe a faixa verde com profissional · data · nº de horários (padrão oculto). */
+  showHeader?: boolean;
   onReschedule?: (row: AgendaRow) => void;
+  onRemoveBlock?: (id: string) => void;
 }) {
   const slots = buildHourSlots(AGENDA_DAY_START, AGENDA_DAY_END, AGENDA_SLOT_MINUTES);
   const totalMinutes = (AGENDA_DAY_END - AGENDA_DAY_START) * 60;
@@ -81,14 +90,16 @@ export function AgendaTimelineView({
 
   return (
     <div className="flex min-h-[520px] flex-col overflow-hidden rounded-lg border bg-card">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-primary px-4 py-2.5 text-primary-foreground">
-        <div className="font-semibold capitalize">
-          {activeProfessionalId === "all" ? "Todos os profissionais" : activePro?.full_name ?? "Profissional"}
-          <span className="mx-2 opacity-60">·</span>
-          <span className="font-normal">{formatAgendaDate(date)}</span>
+      {showHeader ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-primary px-4 py-2.5 text-primary-foreground">
+          <div className="font-semibold capitalize">
+            {activeProfessionalId === "all" ? "Todos os profissionais" : activePro?.full_name ?? "Profissional"}
+            <span className="mx-2 opacity-60">·</span>
+            <span className="font-normal">{formatAgendaDate(date)}</span>
+          </div>
+          {headerExtra}
         </div>
-        {headerExtra}
-      </div>
+      ) : null}
 
       <div className="flex flex-wrap gap-1 border-b bg-muted/30 px-3 py-2">
         <button
@@ -124,16 +135,27 @@ export function AgendaTimelineView({
             {slots.map((slot) => (
               <div
                 key={slot}
-                className="flex h-16 items-start justify-end border-b pr-2 pt-1 text-xs text-muted-foreground"
+                className={cn(
+                  "flex h-11 items-start justify-end border-b pr-2 pt-0.5 text-[11px] tabular-nums",
+                  isHalfHourSlot(slot)
+                    ? "border-dashed border-border/40 text-muted-foreground/50"
+                    : "text-muted-foreground",
+                )}
               >
-                {slot.slice(0, 2)}h
+                {agendaSlotLabel(slot)}
               </div>
             ))}
           </div>
 
           <div className="relative min-w-0 flex-1">
             {slots.map((slot) => (
-              <div key={slot} className="h-16 border-b border-dashed border-border/60" />
+              <div
+                key={slot}
+                className={cn(
+                  "h-11 border-b",
+                  isHalfHourSlot(slot) ? "border-dashed border-border/40" : "border-border/70",
+                )}
+              />
             ))}
 
             {nowPercent !== null && (
@@ -159,6 +181,44 @@ export function AgendaTimelineView({
               const cancelled = row.status === "cancelled";
               const isOnline = row.modality === "online";
 
+              if (isBlockAppointment(row)) {
+                return (
+                  <div
+                    key={row.id}
+                    className="absolute left-2 right-2 overflow-hidden rounded-md border border-l-4 border-l-black bg-black p-2 text-white shadow-sm"
+                    style={{ top: `${top}%`, height: `${height}%`, minHeight: "2.5rem" }}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1 text-xs font-semibold">
+                          <Lock className="size-3" />
+                          {formatTimeInterval(row.start_time, row.end_time)}
+                          {row.profiles?.full_name ? (
+                            <span className="font-normal text-white/70">
+                              · {row.profiles.full_name}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="truncate text-sm font-medium">
+                          {row.notes || "Horário bloqueado"}
+                        </div>
+                      </div>
+                      {onRemoveBlock ? (
+                        <button
+                          type="button"
+                          title="Desbloquear horário"
+                          onClick={() => onRemoveBlock(row.id)}
+                          className="flex shrink-0 items-center gap-1 rounded border border-white/40 bg-white/15 px-1.5 py-0.5 text-[11px] font-medium text-white transition hover:bg-white/25"
+                        >
+                          <Unlock className="size-3" />
+                          Desbloquear
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              }
+
               return (
                 <div
                   key={row.id}
@@ -182,7 +242,7 @@ export function AgendaTimelineView({
                     cancelled && "line-through opacity-50",
                     onReschedule && "cursor-pointer transition hover:ring-2 hover:ring-primary/30",
                   )}
-                  style={{ top: `${top}%`, height: `${height}%`, minHeight: "3.5rem" }}
+                  style={{ top: `${top}%`, height: `${height}%`, minHeight: "2.75rem" }}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">

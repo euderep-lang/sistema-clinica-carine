@@ -167,7 +167,7 @@ function MetricsPanel({ ctx }: { ctx: ReportQueryCtx }) {
           description={`${periodLabel(ctx)} · indicadores consolidados do período`}
         />
         <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
             <StatCard label="Produção" value={fmt(data.production)} icon={Wallet} />
             <StatCard label="Recebido bruto" value={fmt(data.received)} icon={TrendingUp} tone="success" />
             <StatCard label="Recebido líquido" value={fmt(data.netReceived)} icon={HandCoins} tone="success" />

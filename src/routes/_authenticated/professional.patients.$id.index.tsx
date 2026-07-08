@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, Pencil, Stethoscope } from "lucide-react";
+import { ArrowLeft, Pencil, Stethoscope, Trash2 } from "lucide-react";
 import { PatientFinancialTab } from "@/components/patient-financial-tab";
 import { PatientSessionsContent } from "@/components/professional/patient-sessions-content";
 import { toast } from "sonner";
@@ -17,8 +17,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
+import { hardDeletePatient, softDeactivate } from "@/lib/trash";
 import { APPOINTMENT_STATUS_LABEL, APPOINTMENT_TYPE_LABEL } from "@/lib/appointment-types";
 import {
   fmtDate,
@@ -72,6 +83,10 @@ function ProfessionalPatientPage() {
   const [appts, setAppts] = useState<AppointmentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  // Excluir cadastro é permitido apenas para admin e profissional.
+  const canDeletePatient = profile?.role === "admin" || profile?.role === "professional";
   const load = async () => {
     if (!profile) return;
     setLoading(true);
@@ -97,6 +112,35 @@ function ProfessionalPatientPage() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, profile]);
+
+  const patientActive = (patient as { active?: boolean } | null)?.active !== false;
+
+  const confirmDelete = async () => {
+    if (!patient) return;
+    setDeleting(true);
+    try {
+      const summary = patient.cpf ? `CPF ${maskCPF(patient.cpf)}` : null;
+      if (patientActive) {
+        await softDeactivate({
+          entityType: "patient",
+          table: "patients",
+          id,
+          label: patient.full_name,
+          summary,
+        });
+        toast.success("Paciente excluído e movido para a lixeira");
+      } else {
+        await hardDeletePatient(id, patient.full_name, summary);
+        toast.success("Cadastro excluído definitivamente");
+      }
+      setDeleteOpen(false);
+      navigate({ to: "/professional/patients" });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   if (loading || !patient) {
     return (
@@ -151,6 +195,12 @@ function ProfessionalPatientPage() {
                   Abrir prontuário
                 </Link>
               </Button>
+              {canDeletePatient && (
+                <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+                  <Trash2 className="mr-2 size-4" />
+                  {patientActive ? "Excluir cadastro" : "Excluir definitivamente"}
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -294,6 +344,43 @@ function ProfessionalPatientPage() {
         initial={patient}
         onSaved={() => void load()}
       />
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {patientActive ? "Excluir cadastro do paciente?" : "Excluir definitivamente?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {patientActive ? (
+                <>
+                  {patient.full_name} será removido da lista e ficará na lixeira por 30 dias. Um
+                  administrador pode restaurar ou apagar definitivamente em Configurações → Lixeira.
+                </>
+              ) : (
+                <>
+                  {patient.full_name} já está inativo e será excluído em definitivo, junto com
+                  agendamentos e histórico vinculados. Uma cópia fica na lixeira por 30 dias para
+                  eventual restauração.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleting}
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmDelete();
+              }}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardShell>
   );
 }

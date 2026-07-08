@@ -21,6 +21,7 @@ import {
   type RxType,
 } from "@/lib/medications";
 import { maskCPF, ageFromBirthDate, formatPatientAddress } from "@/lib/patient-utils";
+import { matchesSearch, normalizeSearch } from "@/lib/search";
 import { loadLetterheadForPdf } from "@/lib/letterhead";
 import { savePrescriptionToPatientHistory } from "@/lib/prescription-history";
 import {
@@ -109,10 +110,10 @@ function TypeCard({ active, onClick, icon: Icon, title, sub, color, bg }: {
 function MedAutocomplete({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false);
   const trimmed = value.trim();
-  const matches = MEDICATIONS.filter(
-    (m) => !trimmed || m.toLowerCase().includes(trimmed.toLowerCase()),
-  ).slice(0, 12);
-  const hasExactMatch = matches.some((m) => m.toLowerCase() === trimmed.toLowerCase());
+  const matches = MEDICATIONS.filter((m) => matchesSearch(m, trimmed)).slice(0, 12);
+  const hasExactMatch = normalizeSearch(value) !== "" && MEDICATIONS.some(
+    (m) => normalizeSearch(m) === normalizeSearch(value),
+  );
   const showCustomOption = trimmed.length > 0 && !hasExactMatch;
 
   return (
@@ -311,12 +312,12 @@ function NewPrescription() {
   const patient = patients.find((p) => p.id === patientId) ?? null;
 
   const filteredPatients = useMemo(() => {
-    const q = patientSearch.trim().toLowerCase();
+    const q = patientSearch.trim();
     if (!q) return patients.slice(0, 30);
     const digits = q.replace(/\D/g, "");
     return patients
       .filter((p) => {
-        if (p.full_name.toLowerCase().includes(q)) return true;
+        if (matchesSearch(p.full_name, q)) return true;
         if (digits && (p.cpf ?? "").replace(/\D/g, "").includes(digits)) return true;
         if (digits && (p.phone ?? "").replace(/\D/g, "").includes(digits)) return true;
         return false;

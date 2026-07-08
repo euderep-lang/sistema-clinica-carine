@@ -28,6 +28,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
+import { matchesSearch } from "@/lib/search";
 import { fmt, parseBRLInput } from "@/lib/currency";
 import { AUTOMATION_QUEUED_MESSAGE } from "@/lib/automation-messages";
 
@@ -171,7 +172,7 @@ export function FinishConsultationDialog({
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return procedures;
-    return procedures.filter((p) => p.name.toLowerCase().includes(q));
+    return procedures.filter((p) => matchesSearch(p.name, q));
   }, [procedures, search]);
 
   const selectedNew = useMemo(

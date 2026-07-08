@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
 import { softDeactivate } from "@/lib/trash";
 import { useAuth } from "@/lib/mock-auth";
+import { matchesSearch } from "@/lib/search";
 import { fmt } from "@/lib/currency";
 
 interface ServiceRow {
@@ -70,11 +71,10 @@ export function SectionServicos() {
       })
       .filter((item) => {
         if (!q) return true;
-        const prof = item.professional?.full_name?.toLowerCase() ?? "";
         return (
-          item.name.toLowerCase().includes(q) ||
-          (item.category?.toLowerCase().includes(q) ?? false) ||
-          prof.includes(q)
+          matchesSearch(item.name, q) ||
+          matchesSearch(item.category ?? "", q) ||
+          matchesSearch(item.professional?.full_name ?? "", q)
         );
       })
       .sort((a, b) => {

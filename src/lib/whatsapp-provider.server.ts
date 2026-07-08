@@ -7,6 +7,7 @@ import {
   uploadWhatsAppMedia,
 } from "@/lib/whatsapp-meta.server";
 import {
+  deleteZApiMessage,
   getZApiConfig,
   getZApiContactPhoto,
   getZApiStatus,
@@ -135,6 +136,25 @@ export async function providerSendLocation(
     return sendZApiLocation(config, phone, title, address, latitude, longitude, options);
   }
   throw new Error("Envio de localização disponível apenas com Z-API");
+}
+
+/**
+ * Apaga uma mensagem para ambas as partes (revoke). Só disponível na Z-API —
+ * a API da Meta não permite apagar mensagens já enviadas.
+ */
+export async function providerDeleteMessage(
+  phone: string,
+  waMessageId: string,
+  owner: boolean,
+) {
+  const provider = getWhatsAppProvider();
+  if (provider === "zapi") {
+    const config = getZApiConfig();
+    if (!config) throw new Error("Z-API não configurada");
+    await deleteZApiMessage(config, phone, waMessageId, owner);
+    return;
+  }
+  throw new Error("Apagar para todos disponível apenas com Z-API");
 }
 
 export async function providerResolveMediaUrl(mediaRef: string, mimeType?: string | null) {

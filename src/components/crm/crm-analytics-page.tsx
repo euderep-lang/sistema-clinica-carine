@@ -33,12 +33,14 @@ function MetricCard({
 }) {
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        <Icon className="size-4 text-muted-foreground" />
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold tabular-nums">{value}</div>
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-2">
+          <p className="min-w-0 text-sm font-medium text-muted-foreground">{title}</p>
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted/70 text-muted-foreground">
+            <Icon className="size-4" />
+          </span>
+        </div>
+        <div className="mt-2 text-2xl font-bold tabular-nums">{value}</div>
         {hint ? <p className="mt-1 text-xs text-muted-foreground">{hint}</p> : null}
       </CardContent>
     </Card>

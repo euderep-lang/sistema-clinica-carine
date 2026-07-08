@@ -15,6 +15,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
+import { matchesSearch } from "@/lib/search";
 import { applyVars, logMessage, formatDateTimeBR, CHANNEL_BADGE, STATUS_BADGE, type Channel, type PatientLite } from "@/lib/messaging";
 import { openCrmInbox } from "@/lib/crm-navigation";
 import { useNavigate } from "@tanstack/react-router";
@@ -84,7 +85,7 @@ function EnviarTab({ tenantId, tenantName, userId }: { tenantId: string; tenantN
   const filteredPatients = useMemo(() => {
     const q = patientQuery.toLowerCase().trim();
     if (!q) return patients.slice(0, 8);
-    return patients.filter(p => p.full_name.toLowerCase().includes(q) || (p.phone ?? "").includes(q)).slice(0, 10);
+    return patients.filter(p => matchesSearch(p.full_name, q) || (p.phone ?? "").includes(q)).slice(0, 10);
   }, [patients, patientQuery]);
 
   const channelTemplates = templates.filter(t => t.channel === channel);

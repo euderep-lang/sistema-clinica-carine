@@ -277,6 +277,33 @@ export async function sendZApiLocation(
   return { messageId };
 }
 
+/**
+ * Apaga uma mensagem no WhatsApp ("apagar para todos" / revoke).
+ * owner=true quando a mensagem foi enviada por nós; false quando foi recebida.
+ * Docs: DELETE /messages?messageId=&phone=&owner=
+ */
+export async function deleteZApiMessage(
+  config: ZApiConfig,
+  phone: string,
+  messageId: string,
+  owner: boolean,
+) {
+  const query = new URLSearchParams({
+    messageId,
+    phone,
+    owner: owner ? "true" : "false",
+  });
+  const res = await fetch(zapiUrl(config, `/messages?${query.toString()}`), {
+    method: "DELETE",
+    headers: zapiHeaders(config),
+  });
+  if (!res.ok && res.status !== 204) {
+    const json = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+    const err = json.error ?? json.message ?? res.statusText;
+    throw new Error(typeof err === "string" && err ? err : "Falha ao apagar mensagem na Z-API");
+  }
+}
+
 export function resolveZApiMediaUrl(mediaRef: string, mimeType?: string | null) {
   if (mediaRef.startsWith("http://") || mediaRef.startsWith("https://")) {
     return { url: mediaRef, mimeType: mimeType ?? "application/octet-stream" };

@@ -97,8 +97,8 @@ function CheckinPage() {
     if (!q) return rows;
     return rows.filter(
       (r) =>
-        r.patients?.full_name.toLowerCase().includes(q) ||
-        r.profiles?.full_name.toLowerCase().includes(q) ||
+        matchesSearch(r.patients?.full_name, q) ||
+        matchesSearch(r.profiles?.full_name, q) ||
         (r.patients?.phone?.includes(q) ?? false),
     );
   }, [rows, search]);

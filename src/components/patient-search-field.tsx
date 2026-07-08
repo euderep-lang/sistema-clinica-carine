@@ -19,6 +19,7 @@ import { PatientFormDialog } from "@/components/patient-form-dialog";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
+import { normalizeSearch } from "@/lib/search";
 
 export type PatientOption = { id: string; full_name: string; phone: string | null };
 
@@ -66,6 +67,7 @@ export function PatientSearchField({
       }
       setLoading(true);
       const digits = term.replace(/\D/g, "");
+      const norm = normalizeSearch(term);
       let request = supabase
         .from("patients")
         .select("id, full_name, phone")
@@ -75,9 +77,9 @@ export function PatientSearchField({
         .limit(20);
 
       if (digits.length >= 3) {
-        request = request.or(`full_name.ilike.%${term}%,phone.ilike.%${digits}%`);
+        request = request.or(`search_name.ilike.%${norm}%,phone.ilike.%${digits}%`);
       } else {
-        request = request.ilike("full_name", `%${term}%`);
+        request = request.ilike("search_name", `%${norm}%`);
       }
 
       const { data, error } = await request;
