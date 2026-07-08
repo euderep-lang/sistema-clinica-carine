@@ -98,25 +98,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const hydrate = async () => {
-    const { data } = await supabase.auth.getSession();
-    const session = data.session;
-    if (!session?.user) {
-      setProfile(null);
-      setTenant(null);
-      setPermissions(null);
-      return;
-    }
-    const res = await loadProfileAndTenant(session.user.id, session.user.email ?? "");
-    if (res) {
-      setProfile(res.profile);
-      setTenant(res.tenant);
-      applyThemeColors(res.tenant.primary_color, res.tenant.secondary_color);
-      getTenantSetting<string>(res.tenant.id, "font_preference").then((f) => f && applyFont(f));
-      getTenantSetting<PermissionMatrix>(res.tenant.id, PERMISSION_SETTING_KEY).then((p) =>
-        setPermissions(p ?? {}),
-      );
-      import("@/lib/payment-methods").then((m) => m.loadPaymentMethodConfigs().catch(() => {}));
-    } else {
+    try {
+      const { data } = await supabase.auth.getSession();
+      const session = data.session;
+      if (!session?.user) {
+        setProfile(null);
+        setTenant(null);
+        setPermissions(null);
+        return;
+      }
+      const res = await loadProfileAndTenant(session.user.id, session.user.email ?? "");
+      if (res) {
+        setProfile(res.profile);
+        setTenant(res.tenant);
+        applyThemeColors(res.tenant.primary_color, res.tenant.secondary_color);
+        getTenantSetting<string>(res.tenant.id, "font_preference").then((f) => f && applyFont(f));
+        getTenantSetting<PermissionMatrix>(res.tenant.id, PERMISSION_SETTING_KEY).then((p) =>
+          setPermissions(p ?? {}),
+        );
+        import("@/lib/payment-methods").then((m) => m.loadPaymentMethodConfigs().catch(() => {}));
+      } else {
+        setProfile(null);
+        setTenant(null);
+        setPermissions(null);
+      }
+    } catch {
+      // Falha de rede/sessão não pode travar o app num estado indefinido:
+      // trata como "deslogado" para o AuthGate poder mostrar o login.
       setProfile(null);
       setTenant(null);
       setPermissions(null);
@@ -132,11 +140,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
     let lastUserId: string | null = null;
-    (async () => {
-      await hydrate();
-      const { data } = await supabase.auth.getSession();
-      lastUserId = data.session?.user.id ?? null;
+    // Rede de segurança: em nenhuma hipótese o spinner "Carregando…" pode ficar
+    // preso para sempre (ex.: getSession pendurado em rede instável no celular).
+    const safety = setTimeout(() => {
       if (mounted) setLoading(false);
+    }, 8000);
+    (async () => {
+      try {
+        await hydrate();
+        const { data } = await supabase.auth.getSession();
+        lastUserId = data.session?.user.id ?? null;
+      } catch {
+        lastUserId = null;
+      } finally {
+        if (mounted) setLoading(false);
+      }
     })();
 
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
@@ -163,6 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     return () => {
       mounted = false;
+      clearTimeout(safety);
       sub.subscription.unsubscribe();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
