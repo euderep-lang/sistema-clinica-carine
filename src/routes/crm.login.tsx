@@ -53,6 +53,7 @@ function CrmLoginPage() {
   const [canInstall, setCanInstall] = useState(false);
   const [standalone, setStandalone] = useState(false);
   const [iosHint, setIosHint] = useState(false);
+  const [diag, setDiag] = useState<Record<string, string>>({});
 
   useCrmViewportLock(true);
 
@@ -71,6 +72,44 @@ function CrmLoginPage() {
       window.removeEventListener("beforeinstallprompt", sync);
     };
   }, []);
+
+  // Diagnóstico do PWA (abra /crm/login?pwadebug=1). Ajuda a identificar por que
+  // o Chrome não oferece "Instalar aplicativo" em um aparelho específico.
+  const showDebug =
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).has("pwadebug");
+  useEffect(() => {
+    if (!showDebug || typeof window === "undefined") return;
+    const base: Record<string, string> = {
+      host: window.location.hostname,
+      https: String(window.location.protocol === "https:"),
+      manifest: String(!!document.querySelector('link[rel="manifest"]')),
+      manifestHref:
+        document.querySelector('link[rel="manifest"]')?.getAttribute("href") ?? "—",
+      standalone: String(isCrmStandalone()),
+      swSupport: String("serviceWorker" in navigator),
+      controller: String(!!navigator.serviceWorker?.controller),
+      prompt: String(!!getCrmInstallPrompt()),
+      ua: navigator.userAgent.slice(0, 80),
+    };
+    setDiag(base);
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        setDiag((d) => ({
+          ...d,
+          swRegs: String(regs.length),
+          swScopes: regs.map((r) => r.scope).join(" | ") || "—",
+          swActive: regs.map((r) => (r.active ? "active" : r.installing ? "installing" : r.waiting ? "waiting" : "?")).join(",") || "—",
+        }));
+      });
+    }
+    const bump = () => setDiag((d) => ({ ...d, prompt: String(!!getCrmInstallPrompt()), promptFired: "sim" }));
+    window.addEventListener("beforeinstallprompt", bump);
+    window.addEventListener("crm-install-available", bump);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", bump);
+      window.removeEventListener("crm-install-available", bump);
+    };
+  }, [showDebug]);
 
   const handleInstall = async () => {
     const outcome = await promptCrmInstall();
@@ -204,6 +243,18 @@ function CrmLoginPage() {
                   <span className="font-semibold text-white/80">“Instalar aplicativo”</span>.
                 </p>
               )}
+            </div>
+          ) : null}
+
+          {showDebug ? (
+            <div className="space-y-1 rounded-xl border border-amber-300/30 bg-amber-500/10 p-3 text-[11px] text-amber-100">
+              <p className="font-semibold">Diagnóstico PWA</p>
+              {Object.entries(diag).map(([k, v]) => (
+                <div key={k} className="flex justify-between gap-2 font-mono">
+                  <span className="opacity-70">{k}</span>
+                  <span className="max-w-[60%] truncate text-right">{v}</span>
+                </div>
+              ))}
             </div>
           ) : null}
         </div>
