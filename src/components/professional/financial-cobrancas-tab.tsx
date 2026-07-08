@@ -350,8 +350,9 @@ export function FinancialCobrancasTab({
             : "Selecione um período válido"
         }
       >
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 2xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 2xl:grid-cols-6">
           <StatCard
+            size="sm"
             label="Produção"
             value={fmt(stats.production)}
             sub="Vendas no período"
@@ -359,6 +360,7 @@ export function FinancialCobrancasTab({
             onClick={() => period && setSummaryKind("production")}
           />
           <StatCard
+            size="sm"
             label="Recebido"
             value={fmt(stats.received)}
             sub="Entradas no período"
@@ -367,6 +369,7 @@ export function FinancialCobrancasTab({
             onClick={() => period && setSummaryKind("received")}
           />
           <StatCard
+            size="sm"
             label="A receber"
             value={fmt(stats.pending)}
             sub="Pendentes + vencidas do período"
@@ -375,6 +378,7 @@ export function FinancialCobrancasTab({
             onClick={() => period && setSummaryKind("pending")}
           />
           <StatCard
+            size="sm"
             label={scope === "clinic" ? "Total em aberto (clínica)" : "Total em aberto"}
             value={fmt(totalOpen)}
             sub="Todas as faturas em aberto"
@@ -383,6 +387,7 @@ export function FinancialCobrancasTab({
             onClick={() => setSummaryKind("totalOpen")}
           />
           <StatCard
+            size="sm"
             label="Orçamentos em aberto"
             value={fmt(openBudgets.total)}
             sub={
@@ -394,9 +399,9 @@ export function FinancialCobrancasTab({
             onClick={() => setSummaryKind("openBudgets")}
           />
           {scope === "professional" ? (
-            <StatCard label="Comissão estimada" value={fmt(commissionEst)} sub={`${commissionPct}% sobre recebido`} icon={Wallet} />
+            <StatCard size="sm" label="Comissão estimada" value={fmt(commissionEst)} sub={`${commissionPct}% sobre recebido`} icon={Wallet} />
           ) : (
-            <StatCard label="Cobranças" value={String(filtered.length)} sub="No período selecionado" icon={Wallet} />
+            <StatCard size="sm" label="Cobranças" value={String(filtered.length)} sub="No período selecionado" icon={Wallet} />
           )}
         </div>
       </PageSection>
