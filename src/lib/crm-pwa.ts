@@ -71,6 +71,10 @@ export function getCrmInstallPrompt(): BeforeInstallPromptEvent | null {
   return deferredInstallPrompt;
 }
 
+export function clearCrmInstallPrompt(): void {
+  deferredInstallPrompt = null;
+}
+
 export async function promptCrmInstall(): Promise<"accepted" | "dismissed" | "unavailable"> {
   if (!deferredInstallPrompt) return "unavailable";
   await deferredInstallPrompt.prompt();

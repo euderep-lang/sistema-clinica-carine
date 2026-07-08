@@ -594,11 +594,16 @@ async function resolveFollowUpTemplateContext(input: {
   if (input.appointmentId) {
     const { data: appt } = await supabaseAdmin
       .from("appointments")
-      .select("starts_at, professional_id")
+      .select("date, start_time, professional_id")
       .eq("id", input.appointmentId)
       .maybeSingle();
     if (appt) {
-      ctx.appointmentAt = new Date((appt as { starts_at: string }).starts_at);
+      const apptRow = appt as { date?: string | null; start_time?: string | null };
+      if (apptRow.date && apptRow.start_time) {
+        const day = String(apptRow.date).slice(0, 10);
+        const time = String(apptRow.start_time).slice(0, 5);
+        ctx.appointmentAt = new Date(`${day}T${time}:00`);
+      }
       const profId = (appt as { professional_id?: string | null }).professional_id;
       if (profId) {
         const { data: professional } = await supabaseAdmin

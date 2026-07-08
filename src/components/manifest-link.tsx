@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useRouterState } from "@tanstack/react-router";
 import { registerWaServiceWorker } from "@/lib/wa-pwa";
+import { captureCrmInstallPrompt, clearCrmInstallPrompt } from "@/lib/crm-pwa";
 
 /**
  * Mantém um único <link rel="manifest"> no documento, escolhido pela rota atual:
@@ -33,6 +34,26 @@ export function ManifestLink() {
   useEffect(() => {
     if (isCrm) void registerWaServiceWorker();
   }, [isCrm]);
+
+  // Captura o gatilho de instalação globalmente (o evento pode disparar antes
+  // de qualquer banner montar). Assim o botão "Instalar app" — inclusive o da
+  // tela de login — sempre consegue oferecer a instalação nativa.
+  useEffect(() => {
+    const onBeforeInstall = (e: Event) => {
+      captureCrmInstallPrompt(e);
+      window.dispatchEvent(new Event("crm-install-available"));
+    };
+    const onInstalled = () => {
+      clearCrmInstallPrompt();
+      window.dispatchEvent(new Event("crm-install-available"));
+    };
+    window.addEventListener("beforeinstallprompt", onBeforeInstall);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
 
   return null;
 }

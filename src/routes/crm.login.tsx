@@ -1,6 +1,6 @@
 import { createFileRoute, Link, Navigate, useNavigate } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
-import { Loader2 } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { Download, Loader2, Share } from "lucide-react";
 import { ClinicOsIcon } from "@/components/clinicos-icon";
 import { toast } from "sonner";
 
@@ -9,7 +9,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/mock-auth";
 import { useCrmViewportLock } from "@/hooks/use-crm-viewport-lock";
-import { canAccessCrm, CRM_PWA_THEME, markCrmPwaSession, postLoginPathForRole } from "@/lib/crm-pwa";
+import {
+  canAccessCrm,
+  CRM_PWA_THEME,
+  getCrmInstallPrompt,
+  isCrmStandalone,
+  isIosSafari,
+  markCrmPwaSession,
+  postLoginPathForRole,
+  promptCrmInstall,
+} from "@/lib/crm-pwa";
 
 export const Route = createFileRoute("/crm/login")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -34,8 +43,39 @@ function CrmLoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [canInstall, setCanInstall] = useState(false);
+  const [standalone, setStandalone] = useState(false);
+  const [iosHint, setIosHint] = useState(false);
 
   useCrmViewportLock(true);
+
+  useEffect(() => {
+    if (isCrmStandalone()) {
+      setStandalone(true);
+      return;
+    }
+    const sync = () => setCanInstall(!!getCrmInstallPrompt());
+    sync();
+    setIosHint(isIosSafari());
+    window.addEventListener("crm-install-available", sync);
+    window.addEventListener("beforeinstallprompt", sync);
+    return () => {
+      window.removeEventListener("crm-install-available", sync);
+      window.removeEventListener("beforeinstallprompt", sync);
+    };
+  }, []);
+
+  const handleInstall = async () => {
+    const outcome = await promptCrmInstall();
+    if (outcome === "unavailable") {
+      toast.info("Abra o menu do Chrome (⋮) e toque em “Instalar aplicativo”.");
+      return;
+    }
+    if (outcome === "accepted") {
+      setCanInstall(false);
+      toast.success("App instalado! Procure o ícone na tela inicial.");
+    }
+  };
 
   if (!loading && profile) {
     if (canAccessCrm(profile.role)) {
@@ -132,6 +172,33 @@ function CrmLoginPage() {
               Esqueci minha senha
             </Link>
           </p>
+
+          {!standalone ? (
+            <div className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-3">
+              {iosHint ? (
+                <p className="flex items-center justify-center gap-1.5 text-center text-xs text-white/70">
+                  <Share className="size-3.5 shrink-0" />
+                  No iPhone: toque em Compartilhar → “Adicionar à Tela de Início”.
+                </p>
+              ) : canInstall ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 w-full border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
+                  onClick={() => void handleInstall()}
+                >
+                  <Download className="mr-1.5 size-4" />
+                  Instalar app na tela inicial
+                </Button>
+              ) : (
+                <p className="text-center text-xs text-white/60">
+                  Para instalar como app: abra o menu do Chrome{" "}
+                  <span className="font-semibold text-white/80">(⋮)</span> e toque em{" "}
+                  <span className="font-semibold text-white/80">“Instalar aplicativo”</span>.
+                </p>
+              )}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
