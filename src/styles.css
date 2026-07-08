@@ -281,6 +281,27 @@ body.crm-mobile-app [data-sonner-toast] {
   word-break: break-word;
 }
 
+/* Toast responsivo em telas pequenas (dashboard, agenda, etc.):
+   ocupa a largura disponível e quebra o texto para não sair cortado. */
+@media (max-width: 640px) {
+  [data-sonner-toaster] {
+    left: max(0.75rem, env(safe-area-inset-left)) !important;
+    right: max(0.75rem, env(safe-area-inset-right)) !important;
+    width: auto !important;
+  }
+
+  [data-sonner-toaster] [data-sonner-toast] {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  [data-sonner-toast] [data-title],
+  [data-sonner-toast] [data-description] {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
+
 .crm-mobile-shell {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
