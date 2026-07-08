@@ -1,6 +1,6 @@
 /* Service Worker do CRM — cache do shell + notificações (in-app e Web Push 24/7). */
 
-const CACHE = "clinicos-crm-v5";
+const CACHE = "clinicos-crm-v6";
 
 async function setBadgeCount(count) {
   if (!("setAppBadge" in self.registration)) return;
@@ -31,12 +31,14 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  const isShell =
-    url.pathname.startsWith("/crm") ||
-    url.pathname === "/manifest.webmanifest" ||
-    url.pathname.startsWith("/icon-");
+  // IMPORTANTE: NÃO cachear o HTML de navegação (/crm/*). Após um novo deploy,
+  // o HTML antigo aponta para chunks de CSS/JS com hash que não existem mais,
+  // deixando a tela "sem estilo/desconfigurada". Só cacheamos recursos
+  // realmente estáticos e versionados (manifest e ícones), que não quebram.
+  const isStaticShell =
+    url.pathname === "/manifest.webmanifest" || url.pathname.startsWith("/icon-");
 
-  if (!isShell) return;
+  if (!isStaticShell) return;
 
   event.respondWith(
     (async () => {
