@@ -205,17 +205,16 @@ export async function sendZApiMedia(
   } else if (mediaType === "audio") {
     const isOgg = /ogg|opus/i.test(mimeType);
     const isMp3 = /mpeg|mp3/i.test(mimeType);
-    const audioMime = isMp3
-      ? "audio/mpeg"
-      : isOgg
-        ? "audio/ogg; codecs=opus"
+    const audioMime = isOgg
+      ? "audio/ogg; codecs=opus"
+      : isMp3
+        ? "audio/mpeg"
         : mimeType.includes("mp4") || mimeType.includes("m4a") || mimeType.includes("aac") || mimeType.includes("caf")
           ? "audio/mp4"
           : mimeType;
     json = await zapiRequest(config, "/send-audio", {
       phone,
       audio: toDataUri(base64, audioMime),
-      // waveform só com OGG Opus; M4A/MP3 com waveform quebra no WhatsApp do destinatário
       waveform: isOgg,
     });
   } else if (mediaType === "video") {

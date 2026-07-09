@@ -68,7 +68,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
 import { buildGenderTemplateVars } from "@/lib/wa-template-gender";
 import { normalizeMessageLineBreaks } from "@/lib/wa-automation-quick-replies";
-import { prepareAudioFileForWhatsApp } from "@/lib/wa-audio-prepare";
 import {
   guessMediaTypeFromFile,
   prepareDocumentFileForWhatsApp,
@@ -1472,8 +1471,9 @@ export function CrmInboxPage() {
           return;
         }
       } else if (mediaType === "audio") {
-        const preparing = toast.loading("Preparando áudio…");
+        const preparing = toast.loading("Preparando áudio para WhatsApp…");
         try {
+          const { prepareAudioFileForWhatsApp } = await import("@/lib/wa-audio-prepare-browser");
           prepared = await prepareAudioFileForWhatsApp(file);
           mediaType = "audio";
         } catch (e) {

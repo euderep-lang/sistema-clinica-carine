@@ -240,7 +240,7 @@ export function useCrmAudioRecorder({ onRecorded, disabled }: Pick<Props, "onRec
 
       mediaRef.current = recorder;
       startedAtRef.current = Date.now();
-      recorder.start(100);
+      recorder.start();
       startAnalyser(stream);
       setRecording(true);
       setPaused(false);

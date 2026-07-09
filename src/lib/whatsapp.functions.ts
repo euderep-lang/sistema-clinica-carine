@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { convertAudioBase64ToMp3 } from "@/lib/wa-audio-convert.server";
+import { convertAudioBase64ToWhatsAppOgg } from "@/lib/wa-audio-convert.server";
 import { findConversationByPhone, normalizeBrazilPhone } from "@/lib/wa-phone";
 import { onOutboundMessageForFollowUp } from "@/lib/wa-follow-up.server";
 import {
@@ -187,8 +187,8 @@ export const sendWaMedia = createServerFn({ method: "POST" })
     let mimeType = data.mimeType;
     let filename = data.filename;
 
-    if (data.mediaType === "audio" && !/mpeg|mp3/i.test(mimeType)) {
-      const converted = await convertAudioBase64ToMp3(base64, mimeType);
+    if (data.mediaType === "audio" && !/ogg|opus/i.test(mimeType)) {
+      const converted = await convertAudioBase64ToWhatsAppOgg(base64, mimeType);
       if (converted) {
         base64 = converted.base64;
         mimeType = converted.mimeType;
