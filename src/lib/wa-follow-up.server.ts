@@ -16,6 +16,7 @@ import { buildGenderTemplateVars } from "@/lib/wa-template-gender";
 import { normalizeOutboundMessageBody } from "@/lib/wa-automation-quick-replies.server";
 import { humanizeForConversation } from "@/lib/wa-quick-reply-ai.server";
 import { getPublicAppUrl } from "@/lib/app-url";
+import { resolveAppointmentRelativeSchedule } from "@/lib/wa-appointment-reminders";
 
 export type { FollowUpMode, FollowUpStepDef };
 
@@ -762,8 +763,14 @@ export async function scheduleFollowUpRun(input: {
 
     let scheduledAt: Date;
     if (step.delayMinutes < 0 && ctx.appointmentAt) {
-      scheduledAt = new Date(ctx.appointmentAt.getTime() + step.delayMinutes * 60_000);
-      if (scheduledAt.getTime() <= Date.now()) continue;
+      const relative = resolveAppointmentRelativeSchedule(
+        step.key,
+        step.delayMinutes,
+        ctx.appointmentAt,
+        base,
+      );
+      if (!relative) continue;
+      scheduledAt = relative;
     } else if (step.delayMinutes < 0) {
       continue;
     } else {

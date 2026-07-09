@@ -23,7 +23,8 @@ export const FOLLOW_UP_SEQUENCE_META: Record<string, { label: string; descriptio
   },
   appointment_booked: {
     label: "Consulta agendada",
-    description: "Confirmação do agendamento e lembretes antes da consulta.",
+    description:
+      "Confirmação na hora do agendamento. Lembrete D-1 só se a consulta for depois de amanhã; consulta amanhã recebe só o lembrete de 3h antes.",
   },
   post_consultation: {
     label: "Pós-consulta",
