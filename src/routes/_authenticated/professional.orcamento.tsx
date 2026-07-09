@@ -239,11 +239,12 @@ function OrcamentoPage() {
   const filteredPatients = useMemo(() => {
     const q = patientSearch.trim().toLowerCase();
     if (!q) return patients.slice(0, 30);
+    const digits = q.replace(/\D/g, "");
     return patients
       .filter(
         (p) =>
           matchesSearch(p.full_name, q) ||
-          (p.cpf ?? "").replace(/\D/g, "").includes(q.replace(/\D/g, "")),
+          (digits !== "" && (p.cpf ?? "").replace(/\D/g, "").includes(digits)),
       )
       .slice(0, 30);
   }, [patients, patientSearch]);

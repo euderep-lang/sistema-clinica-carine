@@ -190,12 +190,13 @@ export function StandaloneSaleDialog({
 
   const filteredPatients = useMemo(() => {
     const q = patientSearch.trim().toLowerCase();
+    const digits = q.replace(/\D/g, "");
     return patients
       .filter(
         (p) =>
           !q ||
           matchesSearch(p.full_name, q) ||
-          (p.cpf ?? "").includes(q.replace(/\D/g, "")),
+          (digits !== "" && (p.cpf ?? "").replace(/\D/g, "").includes(digits)),
       )
       .slice(0, 30);
   }, [patients, patientSearch]);

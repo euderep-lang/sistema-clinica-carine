@@ -176,14 +176,15 @@ export function FinancialCobrancasTab({
   }, [rows, period]);
 
   const filtered = useMemo(() => {
-    let list = status === "budget" ? rows : periodRows;
+    const q = search.trim().toLowerCase();
+    // Busca por nome/descrição ignora o período: mostra faturas de qualquer data.
+    let list = q || status === "budget" ? rows : periodRows;
     if (status !== "all") {
       list = list.filter((r) => {
         const eff = isOverdue(r.due_date, r.status) ? "overdue" : r.status;
         return eff === status;
       });
     }
-    const q = search.trim().toLowerCase();
     if (!q) return list;
     return list.filter(
       (r) => matchesSearch(r.description, q) || matchesSearch(r.patients?.full_name, q),
