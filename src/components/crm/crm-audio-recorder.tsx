@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Mic, Pause, Play, Send, Trash2 } from "lucide-react";
+import { ChevronLeft, Mic, Pause, Play, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { canRecordAudio } from "@/lib/wa-audio-prepare";
@@ -324,38 +324,112 @@ export function CrmAudioRecordingBar({
   onSend: () => void;
   className?: string;
 }) {
+  const mobile = isMobileViewport() || isIosSafari();
+  const [dragX, setDragX] = useState(0);
+  const dragStartXRef = useRef(0);
+  const dragXRef = useRef(0);
+  const draggingRef = useRef(false);
+  const cancelThreshold = mobile ? 72 : 96;
+  const cancelReady = dragX <= -cancelThreshold;
+
+  const onDragStart = useCallback(
+    (clientX: number) => {
+      if (paused) return;
+      draggingRef.current = true;
+      dragStartXRef.current = clientX;
+    },
+    [paused],
+  );
+
+  const onDragMove = useCallback((clientX: number) => {
+    if (!draggingRef.current) return;
+    const next = Math.min(0, clientX - dragStartXRef.current);
+    dragXRef.current = next;
+    setDragX(next);
+  }, []);
+
+  const onDragEnd = useCallback(() => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    if (dragXRef.current <= -cancelThreshold) onCancel();
+    dragXRef.current = 0;
+    setDragX(0);
+  }, [cancelThreshold, onCancel]);
+
   return (
     <div className={cn("flex min-w-0 flex-1 items-center gap-2", className)}>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-8 shrink-0 rounded-full text-muted-foreground hover:text-destructive"
-        onClick={onCancel}
-        title="Cancelar gravação"
-      >
-        <Trash2 className="size-4" />
-      </Button>
+      {!mobile ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-8 shrink-0 rounded-full text-muted-foreground hover:text-destructive"
+          onClick={onCancel}
+          title="Cancelar gravação"
+        >
+          <Trash2 className="size-4" />
+        </Button>
+      ) : null}
 
-      <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full bg-muted/50 px-3 py-2">
-        <span
+      <div className="relative min-w-0 flex-1">
+        {mobile && !paused ? (
+          <div
+            className={cn(
+              "pointer-events-none absolute inset-y-0 right-0 flex items-center gap-1 pr-2 text-[11px] transition-opacity",
+              Math.abs(dragX) > 8 ? "opacity-100" : "opacity-55",
+              cancelReady ? "text-destructive" : "text-muted-foreground",
+            )}
+          >
+            <ChevronLeft className="size-3.5" />
+            <span>{cancelReady ? "Solte para cancelar" : "Deslize para cancelar"}</span>
+          </div>
+        ) : null}
+
+        <div
           className={cn(
-            "size-2 shrink-0 rounded-full bg-red-500",
-            !paused && "animate-pulse",
+            "relative flex touch-none items-center gap-2 rounded-full bg-muted/50 px-3 py-2 transition-[transform,background-color,opacity]",
+            cancelReady && "bg-destructive/10",
           )}
-          aria-hidden
-        />
-        <span className="shrink-0 text-[13px] font-medium tabular-nums text-foreground">
-          {formatRecordingTime(elapsedMs)}
-        </span>
-        <div className="flex min-w-0 flex-1 items-center justify-end gap-[2px] overflow-hidden px-1">
-          {waveform.map((level, i) => (
-            <span
-              key={i}
-              className="w-[2px] shrink-0 rounded-full bg-muted-foreground/45 transition-[height] duration-75"
-              style={{ height: `${Math.round(4 + level * 18)}px` }}
+          style={{ transform: dragX ? `translateX(${dragX}px)` : undefined }}
+          onPointerDown={(e) => {
+            if (!mobile || paused) return;
+            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+            onDragStart(e.clientX);
+          }}
+          onPointerMove={(e) => {
+            if (!mobile || paused) return;
+            onDragMove(e.clientX);
+          }}
+          onPointerUp={() => onDragEnd()}
+          onPointerCancel={() => onDragEnd()}
+        >
+          <span
+            className={cn(
+              "size-2 shrink-0 rounded-full bg-red-500",
+              !paused && "animate-pulse",
+            )}
+            aria-hidden
+          />
+          <span className="shrink-0 text-[13px] font-medium tabular-nums text-foreground">
+            {formatRecordingTime(elapsedMs)}
+          </span>
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-[2px] overflow-hidden px-1">
+            {waveform.map((level, i) => (
+              <span
+                key={i}
+                className="w-[2px] shrink-0 rounded-full bg-muted-foreground/45 transition-[height] duration-75"
+                style={{ height: `${Math.round(4 + level * 18)}px` }}
+              />
+            ))}
+          </div>
+          {mobile && Math.abs(dragX) > 20 ? (
+            <Trash2
+              className={cn(
+                "size-4 shrink-0 transition-colors",
+                cancelReady ? "text-destructive" : "text-muted-foreground/70",
+              )}
             />
-          ))}
+          ) : null}
         </div>
       </div>
 
