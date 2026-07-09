@@ -177,6 +177,11 @@ function notifyCrmQueryError(error: { message: string }, context: string) {
 
 const CRM_COMPOSER_MAX_LINES = 4;
 
+/** Página de mensagens do chat: sempre as N mais recentes; antigas carregam sob demanda. */
+const CHAT_PAGE_SIZE = 500;
+const CHAT_MESSAGE_COLUMNS =
+  "id, conversation_id, direction, message_type, body, media_id, media_mime, media_filename, status, sent_by, created_at, wa_message_id, reply_to_message_id, raw_payload, deleted_at, deleted_scope, sender_profile:sent_by(full_name)";
+
 export function CrmInboxPage() {
   const { conversation: conversationFromUrl, patient: patientFromUrl, phone: phoneFromUrl, draft: draftFromUrl, source: sourceFromUrl } =
     crmInboxRoute.useSearch();
@@ -250,6 +255,10 @@ export function CrmInboxPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const pendingScrollToBottomRef = useRef(false);
+  const [hasOlderMessages, setHasOlderMessages] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const loadingOlderRef = useRef(false);
+  const preserveScrollHeightRef = useRef<number | null>(null);
   const prevMessageCountRef = useRef(0);
   const prevSelectedIdRef = useRef<string | null>(null);
   const listSentinelRef = useRef<HTMLDivElement>(null);
@@ -648,12 +657,10 @@ export function CrmInboxPage() {
       // conversas longas isso escondia as mensagens novas (só as antigas vinham).
       supabase
         .from("wa_messages" as never)
-        .select(
-          "id, conversation_id, direction, message_type, body, media_id, media_mime, media_filename, status, sent_by, created_at, wa_message_id, reply_to_message_id, raw_payload, deleted_at, deleted_scope, sender_profile:sent_by(full_name)",
-        )
+        .select(CHAT_MESSAGE_COLUMNS)
         .in("conversation_id", relatedIds)
         .order("created_at", { ascending: false })
-        .limit(500),
+        .limit(CHAT_PAGE_SIZE),
       supabase.from("wa_conversation_tags" as never).select("tag_id").in("conversation_id", relatedIds),
       supabase
         .from("wa_notes" as never)
@@ -675,7 +682,8 @@ export function CrmInboxPage() {
     ]);
 
     // Veio em ordem decrescente (para pegar as mais novas); exibimos crescente.
-    const rawMessages = ((msgRes.data ?? []) as WaMessage[]).slice().reverse();
+    const fetched = (msgRes.data ?? []) as WaMessage[];
+    const rawMessages = fetched.slice().reverse();
     const seenWaIds = new Set<string>();
     const dedupedMessages = rawMessages.filter((m) => {
       const waId = (m as WaMessage & { wa_message_id?: string }).wa_message_id;
@@ -686,6 +694,7 @@ export function CrmInboxPage() {
     });
 
     setMessages(dedupedMessages);
+    setHasOlderMessages(fetched.length >= CHAT_PAGE_SIZE);
     setConversationTagIds([
       ...new Set(((tagRes.data ?? []) as { tag_id: string }[]).map((t) => t.tag_id)),
     ]);
@@ -713,6 +722,74 @@ export function CrmInboxPage() {
     },
     [loadConversationDetails],
   );
+
+  /** Carrega o lote anterior de mensagens (histórico) ao rolar até o topo. */
+  const loadOlderMessages = useCallback(async () => {
+    if (loadingOlderRef.current || !hasOlderMessages) return;
+    const oldest = messages[0]?.created_at;
+    const relatedIds = relatedConvIdsRef.current;
+    if (!oldest || relatedIds.length === 0) return;
+
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    try {
+      const { data, error } = await supabase
+        .from("wa_messages" as never)
+        .select(CHAT_MESSAGE_COLUMNS)
+        .in("conversation_id", relatedIds)
+        .lt("created_at", oldest)
+        .order("created_at", { ascending: false })
+        .limit(CHAT_PAGE_SIZE);
+      if (error) throw new Error(error.message);
+
+      const older = ((data ?? []) as WaMessage[]).slice().reverse();
+      setHasOlderMessages((data ?? []).length >= CHAT_PAGE_SIZE);
+      if (older.length === 0) return;
+
+      // Guarda a altura para manter a posição visual após prepender o histórico.
+      preserveScrollHeightRef.current = chatScrollRef.current?.scrollHeight ?? null;
+
+      setMessages((prev) => {
+        const seen = new Set(
+          prev.map((m) => (m as WaMessage & { wa_message_id?: string }).wa_message_id).filter(Boolean),
+        );
+        const seenIds = new Set(prev.map((m) => m.id));
+        const fresh = older.filter((m) => {
+          const waId = (m as WaMessage & { wa_message_id?: string }).wa_message_id;
+          if (seenIds.has(m.id)) return false;
+          if (waId && seen.has(waId)) return false;
+          return true;
+        });
+        return [...fresh, ...prev];
+      });
+    } catch (e) {
+      toast.error((e as Error).message || "Falha ao carregar mensagens antigas.");
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  }, [hasOlderMessages, messages]);
+
+  /** Mantém a posição do scroll após prepender mensagens antigas. */
+  useLayoutEffect(() => {
+    const prevHeight = preserveScrollHeightRef.current;
+    if (prevHeight === null) return;
+    preserveScrollHeightRef.current = null;
+    const el = chatScrollRef.current;
+    if (!el) return;
+    el.scrollTop += el.scrollHeight - prevHeight;
+  }, [messages]);
+
+  /** Dispara o carregamento do histórico quando o usuário chega perto do topo. */
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (!el || !selectedId || loadingChat) return;
+    const onScroll = () => {
+      if (el.scrollTop < 120) void loadOlderMessages();
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [selectedId, loadingChat, loadOlderMessages]);
 
   useEffect(() => {
     void loadConversations();
@@ -2185,6 +2262,21 @@ export function CrmInboxPage() {
                     </div>
                   ) : (
                     <div className="space-y-1 pb-1.5">
+                      {loadingOlder ? (
+                        <div className="flex justify-center py-3">
+                          <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                        </div>
+                      ) : hasOlderMessages ? (
+                        <div className="flex justify-center py-2">
+                          <button
+                            type="button"
+                            className="rounded-full bg-background/85 px-3 py-1 text-xs text-muted-foreground shadow-sm hover:text-foreground"
+                            onClick={() => void loadOlderMessages()}
+                          >
+                            Carregar mensagens anteriores
+                          </button>
+                        </div>
+                      ) : null}
                       {messages.map((m) => (
                         <CrmMessageBubble
                           key={m.id}
