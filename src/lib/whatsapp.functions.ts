@@ -187,12 +187,18 @@ export const sendWaMedia = createServerFn({ method: "POST" })
     let mimeType = data.mimeType;
     let filename = data.filename;
 
-    if (data.mediaType === "audio" && !/ogg|opus/i.test(mimeType)) {
+    // WhatsApp exige OGG Opus para nota de voz; converte tudo que não for OGG
+    // (inclui webm;codecs=opus do Chrome mobile, m4a do iOS, mp3 etc.)
+    if (data.mediaType === "audio" && !/audio\/ogg|application\/ogg/i.test(mimeType)) {
       const converted = await convertAudioBase64ToWhatsAppOgg(base64, mimeType);
       if (converted) {
         base64 = converted.base64;
         mimeType = converted.mimeType;
         filename = converted.filename;
+      } else if (/webm/i.test(mimeType)) {
+        throw new Error(
+          "Não foi possível converter o áudio no servidor. Tente novamente em instantes.",
+        );
       }
     }
 

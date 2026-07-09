@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "bun install --frozen-lockfile",
-  "buildCommand": "bun run build",
+  "buildCommand": "bun run build && bun run scripts/copy-ffmpeg-vercel.ts",
   "crons": [
     {
       "path": "/api/cron/wa-follow-ups",
