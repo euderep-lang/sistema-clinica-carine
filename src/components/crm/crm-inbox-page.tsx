@@ -178,7 +178,7 @@ function notifyCrmQueryError(error: { message: string }, context: string) {
 const CRM_COMPOSER_MAX_LINES = 4;
 
 /** Página de mensagens do chat: sempre as N mais recentes; antigas carregam sob demanda. */
-const CHAT_PAGE_SIZE = 500;
+const CHAT_PAGE_SIZE = 100;
 const CHAT_MESSAGE_COLUMNS =
   "id, conversation_id, direction, message_type, body, media_id, media_mime, media_filename, status, sent_by, created_at, wa_message_id, reply_to_message_id, raw_payload, deleted_at, deleted_scope, sender_profile:sent_by(full_name)";
 
@@ -780,16 +780,6 @@ export function CrmInboxPage() {
     el.scrollTop += el.scrollHeight - prevHeight;
   }, [messages]);
 
-  /** Dispara o carregamento do histórico quando o usuário chega perto do topo. */
-  useEffect(() => {
-    const el = chatScrollRef.current;
-    if (!el || !selectedId || loadingChat) return;
-    const onScroll = () => {
-      if (el.scrollTop < 120) void loadOlderMessages();
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
-  }, [selectedId, loadingChat, loadOlderMessages]);
 
   useEffect(() => {
     void loadConversations();
@@ -2273,7 +2263,7 @@ export function CrmInboxPage() {
                             className="rounded-full bg-background/85 px-3 py-1 text-xs text-muted-foreground shadow-sm hover:text-foreground"
                             onClick={() => void loadOlderMessages()}
                           >
-                            Carregar mensagens anteriores
+                            Ver mais mensagens
                           </button>
                         </div>
                       ) : null}
