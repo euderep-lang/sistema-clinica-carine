@@ -1,5 +1,4 @@
-import lamejs from "lamejs";
-import { isIosSafari } from "@/lib/crm-pwa";
+import { Mp3Encoder } from "@breezystack/lamejs";
 
 const WHATSAPP_AUDIO_MIMES = new Set([
   "audio/mpeg",
@@ -39,13 +38,6 @@ export function isWhatsAppReadyAudio(mime: string): boolean {
   return m.includes("ogg") || m.includes("mpeg") || m.includes("mp3") || m.includes("mp4") || m.includes("m4a");
 }
 
-function getMp3Encoder() {
-  const lib = lamejs as typeof lamejs & { default?: { Mp3Encoder?: typeof lamejs.Mp3Encoder } };
-  const Enc = lib.Mp3Encoder ?? lib.default?.Mp3Encoder;
-  if (!Enc) throw new Error("Conversão MP3 indisponível neste navegador.");
-  return Enc;
-}
-
 function floatTo16(samples: Float32Array): Int16Array {
   const out = new Int16Array(samples.length);
   for (let i = 0; i < samples.length; i++) {
@@ -64,9 +56,8 @@ async function convertAudioToMp3(file: File): Promise<File> {
     const channels = decoded.numberOfChannels;
     const right = channels > 1 ? floatTo16(decoded.getChannelData(1)) : left;
 
-    const Mp3Encoder = getMp3Encoder();
     const encoder = new Mp3Encoder(channels, sampleRate, 128);
-    const mp3Chunks: Int8Array[] = [];
+    const mp3Chunks: Uint8Array[] = [];
     const block = 1152;
 
     for (let i = 0; i < left.length; i += block) {
