@@ -5,6 +5,7 @@ import {
   insertWaMessage,
   markWaMessageDeletedByWaId,
   maybeSendAfterHoursAutoReply,
+  patchWaMessageMediaIfMissing,
   resolveTenantId,
   trackStaffFirstResponse,
   updateMessageStatus,
@@ -296,7 +297,7 @@ async function processZApiReceived(tenantId: string, payload: ZApiReceivedPayloa
 
   const convId = conversationId.id;
 
-  await insertWaMessage({
+  const inserted = await insertWaMessage({
     tenantId,
     conversationId: convId,
     waMessageId: payload.messageId,
@@ -310,6 +311,15 @@ async function processZApiReceived(tenantId: string, payload: ZApiReceivedPayloa
     sentAt: ts,
     rawPayload: payload,
   });
+
+  if (!inserted && media.mediaUrl) {
+    await patchWaMessageMediaIfMissing(
+      payload.messageId,
+      media.mediaUrl,
+      media.mediaMime ?? null,
+      media.mediaFilename ?? null,
+    );
+  }
 
   // A mensagem já foi gravada acima. O pós-processamento (resposta automática,
   // tracking, push) não pode derrubar o webhook — senão a Z-API reentrega à toa.

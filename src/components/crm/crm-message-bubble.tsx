@@ -230,9 +230,11 @@ const CrmMessageBubbleInner = memo(function CrmMessageBubbleInner({
         <CrmLocationCard location={location} outbound={message.direction === "outbound"} className="mb-0.5" />
       ) : null}
 
-      {message.media_id && !contact && !location ? (
+      {(message.media_id || isAudio || isVideo) && !contact && !location ? (
         <div className={cn(showBody ? "mb-1" : "")}>
-          {loadingMedia ? (
+          {!message.media_id && isAudio ? (
+            <p className="py-0.5 text-[10px] opacity-70">🎤 Áudio</p>
+          ) : loadingMedia ? (
             <div className="flex items-center gap-1.5 py-1 text-[10px] opacity-70">
               <Loader2 className="size-3 animate-spin" />
               Carregando…
@@ -253,6 +255,8 @@ const CrmMessageBubbleInner = memo(function CrmMessageBubbleInner({
             </button>
           ) : isAudio && mediaUrl ? (
             <CrmAudioPlayer src={mediaUrl} outbound={message.direction === "outbound"} />
+          ) : isAudio && !mediaUrl && !loadingMedia && !mediaError ? (
+            <p className="py-0.5 text-[10px] opacity-70">🎤 Áudio</p>
           ) : isVideo && mediaUrl ? (
             <video
               controls

@@ -216,9 +216,19 @@ export const sendWaMedia = createServerFn({ method: "POST" })
 
     // Z-API não devolve URL da mídia — guardamos data URI para preview no CRM
     let storedMediaRef = mediaRef;
-    if (!storedMediaRef && (data.mediaType === "image" || data.mediaType === "document")) {
+    if (!storedMediaRef) {
       const dataUri = `data:${mimeType};base64,${base64}`;
-      if (dataUri.length <= 600_000) storedMediaRef = dataUri;
+      const maxLen =
+        data.mediaType === "audio" ? 1_500_000 : data.mediaType === "video" ? 900_000 : 600_000;
+      if (
+        (data.mediaType === "image" ||
+          data.mediaType === "document" ||
+          data.mediaType === "audio" ||
+          data.mediaType === "video") &&
+        dataUri.length <= maxLen
+      ) {
+        storedMediaRef = dataUri;
+      }
     }
 
     await supabase.from("wa_messages" as never).insert({

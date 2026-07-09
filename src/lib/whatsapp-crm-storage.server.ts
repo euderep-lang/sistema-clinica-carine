@@ -675,6 +675,32 @@ export async function insertWaMessage(input: {
   return true;
 }
 
+/** Preenche media_id em mensagens já gravadas sem mídia (ex.: áudio enviado pelo CRM antes do webhook). */
+export async function patchWaMessageMediaIfMissing(
+  waMessageId: string,
+  mediaId: string | null | undefined,
+  mediaMime?: string | null,
+  mediaFilename?: string | null,
+): Promise<void> {
+  if (!mediaId) return;
+  const { data } = await supabaseAdmin
+    .from("wa_messages" as never)
+    .select("id, media_id")
+    .eq("wa_message_id", waMessageId)
+    .maybeSingle();
+  const row = data as { id: string; media_id: string | null } | null;
+  if (!row?.id || row.media_id) return;
+
+  await supabaseAdmin
+    .from("wa_messages" as never)
+    .update({
+      media_id: mediaId,
+      ...(mediaMime ? { media_mime: mediaMime } : {}),
+      ...(mediaFilename ? { media_filename: mediaFilename } : {}),
+    } as never)
+    .eq("id", row.id);
+}
+
 export async function updateMessageStatus(waMessageId: string, status: string, errorMessage?: string) {
   const mapped =
     status === "sent" || status === "SENT"
