@@ -36,6 +36,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
 import { fmt, parseBRLInput } from "@/lib/currency";
+import { MoneyInput } from "@/components/ui/money-input";
 import { maskCPF } from "@/lib/patient-utils";
 import { matchesSearch } from "@/lib/search";
 import {
@@ -458,12 +459,9 @@ export function StandaloneSaleDialog({
                       updateItem(index, { quantity: Math.max(1, Number(e.target.value) || 1) })
                     }
                   />
-                  <Input
-                    placeholder="R$ 0,00"
-                    value={item.unit_price ? fmt(item.unit_price) : ""}
-                    onChange={(e) =>
-                      updateItem(index, { unit_price: parseBRLInput(e.target.value) })
-                    }
+                  <MoneyInput
+                    value={item.unit_price}
+                    onValueChange={(v) => updateItem(index, { unit_price: v })}
                   />
                   <Button
                     type="button"

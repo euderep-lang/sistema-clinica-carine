@@ -36,6 +36,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
 import { BUDGET_STATUS_LABEL, fmt, parseBRLInput } from "@/lib/currency";
+import { MoneyInput } from "@/components/ui/money-input";
 import { maskCPF } from "@/lib/patient-utils";
 import { matchesSearch } from "@/lib/search";
 
@@ -504,10 +505,10 @@ export function BudgetFormDialog({
                     />
                   </div>
                   <div className="sm:col-span-2">
-                    <Input
+                    <MoneyInput
                       placeholder="Preço unit."
-                      value={it.unit_price ? fmt(it.unit_price) : ""}
-                      onChange={(e) => updateItem(i, { unit_price: parseBRLInput(e.target.value) })}
+                      value={it.unit_price}
+                      onValueChange={(v) => updateItem(i, { unit_price: v })}
                       disabled={readOnly}
                     />
                   </div>
