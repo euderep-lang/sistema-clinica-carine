@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { matchesSearch } from "@/lib/search";
 import { ArrowDownLeft, ArrowUpRight, Landmark } from "lucide-react";
 import { PageSection } from "@/components/layout/page-section";
 import { StatCard } from "@/components/layout/stat-card";

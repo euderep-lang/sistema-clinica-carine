@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { matchesSearch } from "@/lib/search";
 import { History, Loader2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import {

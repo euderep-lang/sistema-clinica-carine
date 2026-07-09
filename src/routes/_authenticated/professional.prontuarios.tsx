@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { matchesSearch } from "@/lib/search";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Eye, Search } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
