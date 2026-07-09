@@ -86,6 +86,7 @@ export function useCrmAudioRecorder({ onRecorded, disabled }: Pick<Props, "onRec
   const pauseStartedRef = useRef(0);
   const mimeRef = useRef("");
   const warmingRef = useRef(false);
+  const elapsedMsRef = useRef(0);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef(0);
@@ -107,6 +108,7 @@ export function useCrmAudioRecorder({ onRecorded, disabled }: Pick<Props, "onRec
     setRecording(false);
     setPaused(false);
     setElapsedMs(0);
+    elapsedMsRef.current = 0;
     setWaveform(Array.from({ length: 36 }, () => 0.12));
     pausedTotalRef.current = 0;
     pauseStartedRef.current = 0;
@@ -189,10 +191,50 @@ export function useCrmAudioRecorder({ onRecorded, disabled }: Pick<Props, "onRec
     resetState();
   }, [releaseStream, resetState]);
 
+  const finalizeRecording = useCallback(
+    async (recorder: MediaRecorder) => {
+      // Chrome mobile dispara onstop antes do último ondataavailable — aguarda o blob.
+      await new Promise((r) => setTimeout(r, 80));
+
+      const durationMs =
+        elapsedMsRef.current || Date.now() - startedAtRef.current - pausedTotalRef.current;
+      const chunks = chunksRef.current;
+      const totalBytes = chunks.reduce((sum, c) => sum + c.size, 0);
+
+      releaseStream();
+
+      if (durationMs < 400) {
+        toast.info("Gravação muito curta. Fale por pelo menos 1 segundo.");
+        resetState();
+        return;
+      }
+
+      if (chunks.length === 0 || totalBytes === 0) {
+        toast.error("Não foi possível capturar o áudio. Tente gravar de novo.");
+        resetState();
+        return;
+      }
+
+      const type = recorder.mimeType || mimeRef.current || "audio/webm";
+      const blob = new Blob(chunks, { type });
+      const ext =
+        type.includes("mp4") || type.includes("aac") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
+      onRecorded(new File([blob], `audio-${Date.now()}.${ext}`, { type }));
+      resetState();
+    },
+    [onRecorded, releaseStream, resetState],
+  );
+
   const finishRecording = useCallback(() => {
-    if (!mediaRef.current || mediaRef.current.state === "inactive") return;
-    mediaRef.current.requestData();
-    mediaRef.current.stop();
+    const recorder = mediaRef.current;
+    if (!recorder || recorder.state === "inactive") return;
+
+    elapsedMsRef.current = Date.now() - startedAtRef.current - pausedTotalRef.current;
+    if (recorder.state === "paused" && typeof recorder.resume === "function") {
+      pausedTotalRef.current += Date.now() - pauseStartedRef.current;
+      recorder.resume();
+    }
+    recorder.stop();
     setRecording(false);
     setPaused(false);
     releaseAnalyser();
@@ -238,25 +280,14 @@ export function useCrmAudioRecorder({ onRecorded, disabled }: Pick<Props, "onRec
       };
 
       recorder.onstop = () => {
-        releaseStream();
-
-        const durationMs = Date.now() - startedAtRef.current - pausedTotalRef.current;
-        if (durationMs < 400 || chunksRef.current.length === 0) {
-          toast.info("Gravação muito curta. Fale por pelo menos 1 segundo.");
-          resetState();
-          return;
-        }
-
-        const type = recorder.mimeType || mimeRef.current || "audio/webm";
-        const blob = new Blob(chunksRef.current, { type });
-        const ext = type.includes("mp4") || type.includes("aac") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
-        onRecorded(new File([blob], `audio-${Date.now()}.${ext}`, { type }));
-        resetState();
+        void finalizeRecording(recorder);
       };
 
       mediaRef.current = recorder;
       startedAtRef.current = Date.now();
-      recorder.start();
+      elapsedMsRef.current = 0;
+      // Timeslice garante chunks no Chrome mobile (sem isso onstop pode vir vazio).
+      recorder.start(250);
       startAnalyser(stream);
       setRecording(true);
       setPaused(false);
@@ -304,7 +335,9 @@ export function useCrmAudioRecorder({ onRecorded, disabled }: Pick<Props, "onRec
   useEffect(() => {
     if (!recording || paused) return;
     const id = window.setInterval(() => {
-      setElapsedMs(Date.now() - startedAtRef.current - pausedTotalRef.current);
+      const ms = Date.now() - startedAtRef.current - pausedTotalRef.current;
+      elapsedMsRef.current = ms;
+      setElapsedMs(ms);
     }, 100);
     return () => window.clearInterval(id);
   }, [recording, paused]);
