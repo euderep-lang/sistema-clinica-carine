@@ -644,13 +644,16 @@ export function CrmInboxPage() {
     relatedConvIdsRef.current = relatedIds;
 
     const [msgRes, tagRes, noteRes, remRes, trRes] = await Promise.all([
+      // Mais recentes primeiro + limit: o PostgREST corta em 1000 linhas, e em
+      // conversas longas isso escondia as mensagens novas (só as antigas vinham).
       supabase
         .from("wa_messages" as never)
         .select(
           "id, conversation_id, direction, message_type, body, media_id, media_mime, media_filename, status, sent_by, created_at, wa_message_id, reply_to_message_id, raw_payload, deleted_at, deleted_scope, sender_profile:sent_by(full_name)",
         )
         .in("conversation_id", relatedIds)
-        .order("created_at", { ascending: true }),
+        .order("created_at", { ascending: false })
+        .limit(500),
       supabase.from("wa_conversation_tags" as never).select("tag_id").in("conversation_id", relatedIds),
       supabase
         .from("wa_notes" as never)
@@ -671,7 +674,8 @@ export function CrmInboxPage() {
         .order("created_at", { ascending: false }),
     ]);
 
-    const rawMessages = (msgRes.data ?? []) as WaMessage[];
+    // Veio em ordem decrescente (para pegar as mais novas); exibimos crescente.
+    const rawMessages = ((msgRes.data ?? []) as WaMessage[]).slice().reverse();
     const seenWaIds = new Set<string>();
     const dedupedMessages = rawMessages.filter((m) => {
       const waId = (m as WaMessage & { wa_message_id?: string }).wa_message_id;
