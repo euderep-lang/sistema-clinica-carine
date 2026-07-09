@@ -187,7 +187,7 @@ export const sendWaMedia = createServerFn({ method: "POST" })
     let mimeType = data.mimeType;
     let filename = data.filename;
 
-    if (data.mediaType === "audio" && !/mpeg|mp3|ogg|mp4|m4a|aac|opus|caf/i.test(mimeType)) {
+    if (data.mediaType === "audio" && !/mpeg|mp3/i.test(mimeType)) {
       const converted = await convertAudioBase64ToMp3(base64, mimeType);
       if (converted) {
         base64 = converted.base64;

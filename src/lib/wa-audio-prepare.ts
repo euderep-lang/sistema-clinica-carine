@@ -47,9 +47,9 @@ function floatTo16(samples: Float32Array): Int16Array {
   return out;
 }
 
-/** Voz: mono 24 kHz / 64 kbps — mais rápido no celular e suficiente para WhatsApp. */
-const VOICE_SAMPLE_RATE = 24_000;
-const VOICE_BITRATE = 64;
+/** Voz para WhatsApp: mono 44.1 kHz / 128 kbps (padrão aceito pelo app). */
+const VOICE_SAMPLE_RATE = 44_100;
+const VOICE_BITRATE = 128;
 const SILENCE_THRESHOLD = 0.012;
 const SILENCE_WINDOW_SEC = 0.02;
 const TRIM_PADDING_SEC = 0.04;
@@ -159,25 +159,27 @@ export async function prepareAudioFileForWhatsApp(file: File): Promise<File> {
   const mime = (file.type || mimeFromFilename(file.name)).toLowerCase();
   const recorded = isRecordedVoiceFile(file);
 
-  // Celular grava M4A/OGG — envia direto (conversão MP3 no browser trava iOS/Android).
-  if (recorded && isWhatsAppReadyAudio(mime)) {
+  // OGG Opus (Android): nota de voz nativa do WhatsApp — envia direto.
+  if (recorded && mime.includes("ogg")) {
     return normalizeWhatsAppAudioFile(file, mime);
   }
 
+  // M4A/WebM (iOS/outros): converte para MP3 — M4A bruto trava no WhatsApp do destinatário.
   if (recorded) {
     try {
-      const converted = await Promise.race([
+      return await Promise.race([
         convertAudioToMp3(file, true),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Conversão de áudio demorou demais")), 20_000),
+          setTimeout(() => reject(new Error("Conversão de áudio demorou demais")), 25_000),
         ),
       ]);
-      return converted;
-    } catch {
-      if (mime.includes("webm")) {
-        return new File([file], file.name.replace(/\.\w+$/, ".webm"), { type: "audio/webm" });
+    } catch (e) {
+      if (mime.includes("mpeg") || mime.includes("mp3")) {
+        return normalizeWhatsAppAudioFile(file, mime);
       }
-      throw new Error("Não foi possível preparar o áudio gravado. Tente novamente.");
+      throw new Error(
+        (e as Error).message || "Não foi possível preparar o áudio gravado. Tente novamente.",
+      );
     }
   }
 

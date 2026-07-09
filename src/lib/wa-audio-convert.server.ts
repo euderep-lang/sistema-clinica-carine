@@ -12,11 +12,19 @@ export async function convertAudioBase64ToMp3(
   inputMime: string,
 ): Promise<{ base64: string; mimeType: string; filename: string } | null> {
   const mime = inputMime.toLowerCase();
-  if (mime.includes("mpeg") || mime.includes("mp3") || mime.includes("ogg")) {
+  if (mime.includes("mpeg") || mime.includes("mp3")) {
     return null;
   }
 
-  const ext = mime.includes("webm") ? "webm" : mime.includes("wav") ? "wav" : mime.includes("mp4") ? "m4a" : "bin";
+  const ext = mime.includes("webm")
+    ? "webm"
+    : mime.includes("wav")
+      ? "wav"
+      : mime.includes("ogg")
+        ? "ogg"
+        : mime.includes("mp4") || mime.includes("m4a") || mime.includes("aac") || mime.includes("caf")
+          ? "m4a"
+          : "bin";
   const dir = await mkdtemp(join(tmpdir(), "wa-audio-"));
   const inputPath = join(dir, `in.${ext}`);
   const outputPath = join(dir, "out.mp3");

@@ -209,8 +209,8 @@ export function useCrmAudioRecorder({ onRecorded, disabled }: Pick<Props, "onRec
       const mimeType = getSupportedMimeType();
       mimeRef.current = mimeType;
       const recorder = mimeType
-        ? new MediaRecorder(stream, { mimeType, audioBitsPerSecond: mobile ? 64_000 : 128_000 })
-        : new MediaRecorder(stream, { audioBitsPerSecond: mobile ? 64_000 : 128_000 });
+        ? new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 128_000 })
+        : new MediaRecorder(stream, { audioBitsPerSecond: 128_000 });
 
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);

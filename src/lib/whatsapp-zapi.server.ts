@@ -203,17 +203,20 @@ export async function sendZApiMedia(
       caption: caption ?? "",
     });
   } else if (mediaType === "audio") {
-    const audioMime = mimeType.includes("mpeg") || mimeType.includes("mp3")
+    const isOgg = /ogg|opus/i.test(mimeType);
+    const isMp3 = /mpeg|mp3/i.test(mimeType);
+    const audioMime = isMp3
       ? "audio/mpeg"
-      : mimeType.includes("ogg")
-        ? "audio/ogg"
+      : isOgg
+        ? "audio/ogg; codecs=opus"
         : mimeType.includes("mp4") || mimeType.includes("m4a") || mimeType.includes("aac") || mimeType.includes("caf")
           ? "audio/mp4"
           : mimeType;
     json = await zapiRequest(config, "/send-audio", {
       phone,
       audio: toDataUri(base64, audioMime),
-      waveform: true,
+      // waveform só com OGG Opus; M4A/MP3 com waveform quebra no WhatsApp do destinatário
+      waveform: isOgg,
     });
   } else if (mediaType === "video") {
     json = await zapiRequest(config, "/send-video", {
