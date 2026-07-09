@@ -1,10 +1,26 @@
 import { Mp3Encoder } from "@breezystack/lamejs";
-import { convertToWhatsAppVoiceOgg } from "@/lib/wa-audio-ffmpeg-browser";
+import { isIosSafari, isMobileViewport } from "@/lib/crm-pwa";
 import {
   isRecordedVoiceFile,
   isWhatsAppReadyAudio,
   mimeFromFilename,
 } from "@/lib/wa-audio-prepare";
+
+function isMobileAudioDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return (
+    isMobileViewport() ||
+    isIosSafari() ||
+    /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+  );
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+  ]);
+}
 
 function floatTo16(samples: Float32Array): Int16Array {
   const out = new Int16Array(samples.length);
@@ -82,15 +98,60 @@ function normalizeWhatsAppAudioFile(file: File, mime: string): File {
   return new File([file], file.name.replace(/\.\w+$/, "") + ext, { type: normalizedMime });
 }
 
+async function convertToWhatsAppVoiceOggDesktop(file: File): Promise<File> {
+  const { convertToWhatsAppVoiceOgg } = await import("@/lib/wa-audio-ffmpeg-browser");
+  return convertToWhatsAppVoiceOgg(file);
+}
+
+/** Mobile: evita ffmpeg.wasm (trava Safari/PWA). Envia OGG nativo ou M4A/WebM sem re-encode pesado. */
+async function prepareRecordedVoiceOnMobile(file: File): Promise<File> {
+  const mime = (file.type || mimeFromFilename(file.name)).toLowerCase();
+
+  if (mime.includes("ogg") || mime.includes("opus")) {
+    return normalizeWhatsAppAudioFile(file, "audio/ogg");
+  }
+
+  if (
+    mime.includes("mp4") ||
+    mime.includes("m4a") ||
+    mime.includes("aac") ||
+    mime.includes("caf")
+  ) {
+    return normalizeWhatsAppAudioFile(file, "audio/mp4");
+  }
+
+  if (mime.includes("webm")) {
+    try {
+      return await withTimeout(
+        convertAudioToMp3(file),
+        20_000,
+        "Conversão de áudio demorou demais",
+      );
+    } catch {
+      return normalizeWhatsAppAudioFile(file, mime);
+    }
+  }
+
+  return normalizeWhatsAppAudioFile(file, mime || "audio/mp4");
+}
+
 async function prepareRecordedVoiceForWhatsApp(file: File): Promise<File> {
-  const timeout = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error("Conversão de áudio demorou demais")), 45_000),
-  );
+  if (isMobileAudioDevice()) {
+    return prepareRecordedVoiceOnMobile(file);
+  }
 
   try {
-    return await Promise.race([convertToWhatsAppVoiceOgg(file), timeout]);
+    return await withTimeout(
+      convertToWhatsAppVoiceOggDesktop(file),
+      45_000,
+      "Conversão de áudio demorou demais",
+    );
   } catch {
-    return Promise.race([convertAudioToMp3(file), timeout]);
+    return withTimeout(
+      convertAudioToMp3(file),
+      45_000,
+      "Conversão de áudio demorou demais",
+    );
   }
 }
 

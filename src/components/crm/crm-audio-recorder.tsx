@@ -38,20 +38,33 @@ function formatRecordingTime(ms: number): string {
 }
 
 function getSupportedMimeType(): string {
-  const mobileFirst = [
-    "audio/mp4",
-    "audio/aac",
-    "audio/ogg;codecs=opus",
-    "audio/webm;codecs=opus",
-    "audio/webm",
-  ];
-  const desktopFirst = [
-    "audio/webm;codecs=opus",
-    "audio/ogg;codecs=opus",
-    "audio/webm",
-    "audio/mp4",
-  ];
-  const types = isIosSafari() || isMobileViewport() ? mobileFirst : desktopFirst;
+  const isAndroid = typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
+  const isIos = isIosSafari();
+
+  const types = isAndroid
+    ? [
+        "audio/ogg;codecs=opus",
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4",
+        "audio/aac",
+      ]
+    : isIos
+      ? ["audio/mp4", "audio/aac", "audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/webm"]
+      : isMobileViewport()
+        ? [
+            "audio/ogg;codecs=opus",
+            "audio/webm;codecs=opus",
+            "audio/mp4",
+            "audio/aac",
+            "audio/webm",
+          ]
+        : [
+            "audio/webm;codecs=opus",
+            "audio/ogg;codecs=opus",
+            "audio/webm",
+            "audio/mp4",
+          ];
 
   for (const t of types) {
     if (MediaRecorder.isTypeSupported(t)) return t;
@@ -209,8 +222,11 @@ export function useCrmAudioRecorder({ onRecorded, disabled }: Pick<Props, "onRec
       const mimeType = getSupportedMimeType();
       mimeRef.current = mimeType;
       const recorder = mimeType
-        ? new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 128_000 })
-        : new MediaRecorder(stream, { audioBitsPerSecond: 128_000 });
+        ? new MediaRecorder(stream, {
+            mimeType,
+            audioBitsPerSecond: mobile ? 64_000 : 128_000,
+          })
+        : new MediaRecorder(stream, { audioBitsPerSecond: mobile ? 64_000 : 128_000 });
 
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);

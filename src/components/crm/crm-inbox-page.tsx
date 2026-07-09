@@ -1471,15 +1471,16 @@ export function CrmInboxPage() {
           return;
         }
       } else if (mediaType === "audio") {
-        const preparing = toast.loading("Preparando áudio para WhatsApp…");
+        const preparing = toast.loading("Enviando áudio…");
         try {
           const { prepareAudioFileForWhatsApp } = await import("@/lib/wa-audio-prepare-browser");
           prepared = await prepareAudioFileForWhatsApp(file);
           mediaType = "audio";
         } catch (e) {
+          console.error("[crm] prepare audio", e);
           toast.error(
             (e as Error).message ||
-              "Não foi possível converter o áudio. Tente um arquivo MP3 ou OGG.",
+              "Não foi possível preparar o áudio. Tente gravar de novo ou anexe um MP3/OGG.",
           );
           return;
         } finally {
