@@ -214,7 +214,6 @@ export async function sendZApiMedia(
       phone,
       audio: toDataUri(base64, audioMime),
       waveform: true,
-      delayTyping: 2,
     });
   } else if (mediaType === "video") {
     json = await zapiRequest(config, "/send-video", {

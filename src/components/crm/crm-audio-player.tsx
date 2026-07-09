@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Pause, Play } from "lucide-react";
+import { isMobileViewport } from "@/lib/crm-pwa";
 import { cn } from "@/lib/utils";
 
 function formatDuration(sec: number) {
@@ -17,13 +18,48 @@ interface Props {
 
 const SPEEDS = [1, 1.5, 2] as const;
 
+/** Converte data URI em blob URL — reprodução mais rápida no celular. */
+function usePlaybackSrc(src: string): string {
+  const [playbackSrc, setPlaybackSrc] = useState(src);
+
+  useEffect(() => {
+    if (!src.startsWith("data:")) {
+      setPlaybackSrc(src);
+      return;
+    }
+
+    let revoked = false;
+    let objectUrl = "";
+
+    void fetch(src)
+      .then((r) => r.blob())
+      .then((blob) => {
+        if (revoked) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPlaybackSrc(objectUrl);
+      })
+      .catch(() => {
+        if (!revoked) setPlaybackSrc(src);
+      });
+
+    return () => {
+      revoked = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [src]);
+
+  return playbackSrc;
+}
+
 /** Player compacto estilo WhatsApp — substitui o <audio controls> nativo. */
 export function CrmAudioPlayer({ src, outbound, className }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const playbackSrc = usePlaybackSrc(src);
   const [playing, setPlaying] = useState(false);
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1);
+  const mobile = isMobileViewport();
 
   useEffect(() => {
     const el = audioRef.current;
@@ -50,13 +86,23 @@ export function CrmAudioPlayer({ src, outbound, className }: Props) {
       el.removeEventListener("play", onPlay);
       el.removeEventListener("pause", onPause);
     };
-  }, [src]);
+  }, [playbackSrc]);
 
-  const toggle = () => {
+  const toggle = async () => {
     const el = audioRef.current;
     if (!el) return;
-    if (playing) el.pause();
-    else void el.play();
+    if (playing) {
+      el.pause();
+      return;
+    }
+    try {
+      if (el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+        el.load();
+      }
+      await el.play();
+    } catch {
+      setPlaying(false);
+    }
   };
 
   const cycleSpeed = () => {
@@ -76,16 +122,22 @@ export function CrmAudioPlayer({ src, outbound, className }: Props) {
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.playbackRate = speed;
-  }, [speed, src, playing]);
+  }, [speed, playbackSrc, playing]);
 
   const pct = duration > 0 ? (current / duration) * 100 : 0;
 
   return (
-    <div className={cn("flex w-[min(100%,13rem)] items-center gap-1.5", className)}>
-      <audio ref={audioRef} src={src} preload="metadata" className="hidden" />
+    <div className={cn("flex w-[min(100%,39rem)] items-center gap-1.5", className)}>
+      <audio
+        ref={audioRef}
+        src={playbackSrc}
+        preload={mobile ? "auto" : "metadata"}
+        playsInline
+        className="hidden"
+      />
       <button
         type="button"
-        onClick={toggle}
+        onClick={() => void toggle()}
         className={cn(
           "flex size-7 shrink-0 items-center justify-center rounded-full transition",
           outbound

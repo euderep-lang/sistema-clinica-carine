@@ -115,6 +115,8 @@ const CrmMessageBubbleInner = memo(function CrmMessageBubbleInner({
   const senderName = message.sender_profile?.full_name?.trim();
   const showSenderAbove = message.direction === "outbound" && !!senderName;
 
+  const bubbleMaxW = isAudio ? "max-w-[min(78%,45rem)]" : "max-w-[min(78%,15rem)]";
+
   if (isDeleted) {
     const deletedLabel =
       message.direction === "outbound" ? "Você apagou esta mensagem" : "Esta mensagem foi apagada";
@@ -187,7 +189,8 @@ const CrmMessageBubbleInner = memo(function CrmMessageBubbleInner({
     <div
       id={`msg-${message.id}`}
       className={cn(
-        "group relative max-w-[min(78%,15rem)] scroll-mt-20 rounded-[10px] text-[12px] leading-snug transition-shadow",
+        "group relative scroll-mt-20 rounded-[10px] text-[12px] leading-snug transition-shadow",
+        bubbleMaxW,
         isAudio ? "px-2 py-1.5" : "px-2.5 py-1.5",
         message.direction === "outbound"
           ? cn("rounded-tr-[3px] bg-[#d9fdd3] text-zinc-900 dark:bg-emerald-900/40 dark:text-emerald-50", !showSenderAbove && "ml-auto")
@@ -316,7 +319,7 @@ const CrmMessageBubbleInner = memo(function CrmMessageBubbleInner({
 
   if (showSenderAbove) {
     return (
-      <div className="ml-auto flex max-w-[min(78%,15rem)] flex-col items-end">
+      <div className={cn("ml-auto flex flex-col items-end", bubbleMaxW)}>
         <p className="mb-0.5 px-1 text-[10px] font-medium text-emerald-800/80 dark:text-emerald-300/90">
           {senderName}
         </p>

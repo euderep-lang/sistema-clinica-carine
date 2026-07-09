@@ -3,7 +3,7 @@ import { Mic, Square } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { canRecordAudio } from "@/lib/wa-audio-prepare";
-import { isIosSafari } from "@/lib/crm-pwa";
+import { isIosSafari, isMobileViewport } from "@/lib/crm-pwa";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -37,13 +37,22 @@ export function CrmAudioRecorder({ onRecorded, disabled }: Props) {
       return;
     }
 
+    const mobile = isMobileViewport() || isIosSafari();
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          channelCount: 1,
-        },
+        audio: mobile
+          ? {
+              channelCount: 1,
+              echoCancellation: true,
+              noiseSuppression: false,
+              autoGainControl: true,
+            }
+          : {
+              echoCancellation: true,
+              noiseSuppression: true,
+              channelCount: 1,
+            },
       });
       streamRef.current = stream;
       chunksRef.current = [];
@@ -51,8 +60,8 @@ export function CrmAudioRecorder({ onRecorded, disabled }: Props) {
       const mimeType = getSupportedMimeType();
       mimeRef.current = mimeType;
       const recorder = mimeType
-        ? new MediaRecorder(stream, { mimeType })
-        : new MediaRecorder(stream);
+        ? new MediaRecorder(stream, { mimeType, audioBitsPerSecond: mobile ? 64_000 : 128_000 })
+        : new MediaRecorder(stream, { audioBitsPerSecond: mobile ? 64_000 : 128_000 });
 
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
@@ -83,7 +92,7 @@ export function CrmAudioRecorder({ onRecorded, disabled }: Props) {
 
       mediaRef.current = recorder;
       startedAtRef.current = Date.now();
-      recorder.start(250);
+      recorder.start();
       setRecording(true);
     } catch (e) {
       const err = e as DOMException;
@@ -123,9 +132,20 @@ export function CrmAudioRecorder({ onRecorded, disabled }: Props) {
 }
 
 function getSupportedMimeType(): string {
-  const iosFirst = ["audio/mp4", "audio/aac", "audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/webm"];
-  const androidFirst = ["audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
-  const types = isIosSafari() ? iosFirst : androidFirst;
+  const mobileFirst = [
+    "audio/mp4",
+    "audio/aac",
+    "audio/ogg;codecs=opus",
+    "audio/webm;codecs=opus",
+    "audio/webm",
+  ];
+  const desktopFirst = [
+    "audio/webm;codecs=opus",
+    "audio/ogg;codecs=opus",
+    "audio/webm",
+    "audio/mp4",
+  ];
+  const types = isIosSafari() || isMobileViewport() ? mobileFirst : desktopFirst;
 
   for (const t of types) {
     if (MediaRecorder.isTypeSupported(t)) return t;

@@ -47,23 +47,36 @@ function floatTo16(samples: Float32Array): Int16Array {
   return out;
 }
 
+/** Voz: mono 24 kHz / 64 kbps — mais rápido no celular e suficiente para WhatsApp. */
+const VOICE_SAMPLE_RATE = 24_000;
+const VOICE_BITRATE = 64;
+
+async function resampleToMonoVoiceBuffer(decoded: AudioBuffer): Promise<{ left: Int16Array; sampleRate: number }> {
+  const durationSec = decoded.duration;
+  const frameCount = Math.max(1, Math.ceil(durationSec * VOICE_SAMPLE_RATE));
+  const offline = new OfflineAudioContext(1, frameCount, VOICE_SAMPLE_RATE);
+  const source = offline.createBufferSource();
+  source.buffer = decoded;
+  source.connect(offline.destination);
+  source.start(0);
+  const rendered = await offline.startRendering();
+  return { left: floatTo16(rendered.getChannelData(0)), sampleRate: VOICE_SAMPLE_RATE };
+}
+
 async function convertAudioToMp3(file: File): Promise<File> {
   const ctx = new AudioContext();
   try {
+    if (ctx.state === "suspended") await ctx.resume();
     const decoded = await ctx.decodeAudioData(await file.arrayBuffer());
-    const sampleRate = decoded.sampleRate;
-    const left = floatTo16(decoded.getChannelData(0));
-    const channels = decoded.numberOfChannels;
-    const right = channels > 1 ? floatTo16(decoded.getChannelData(1)) : left;
+    const { left, sampleRate } = await resampleToMonoVoiceBuffer(decoded);
 
-    const encoder = new Mp3Encoder(channels, sampleRate, 128);
+    const encoder = new Mp3Encoder(1, sampleRate, VOICE_BITRATE);
     const mp3Chunks: Uint8Array[] = [];
     const block = 1152;
 
     for (let i = 0; i < left.length; i += block) {
       const l = left.subarray(i, i + block);
-      const r = right.subarray(i, i + block);
-      const buf = channels > 1 ? encoder.encodeBuffer(l, r) : encoder.encodeBuffer(l);
+      const buf = encoder.encodeBuffer(l);
       if (buf.length > 0) mp3Chunks.push(buf);
     }
 
