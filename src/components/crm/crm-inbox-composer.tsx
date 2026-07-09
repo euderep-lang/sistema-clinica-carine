@@ -1,8 +1,8 @@
 import type { RefObject } from "react";
-import { CalendarClock, Loader2, Send, Sparkles } from "lucide-react";
+import { CalendarClock, Loader2, Mic, Send, Sparkles } from "lucide-react";
 import { CrmComposerAttachMenu } from "@/components/crm/crm-composer-attach-menu";
 import { CrmComposerAlerts } from "@/components/crm/crm-composer-alerts";
-import { CrmAudioRecorder } from "@/components/crm/crm-audio-recorder";
+import { CrmAudioRecordingBar, useCrmAudioRecorder } from "@/components/crm/crm-audio-recorder";
 import { CrmEmojiPicker } from "@/components/crm/crm-emoji-picker";
 import { CrmQuickReplies } from "@/components/crm/crm-quick-replies";
 import { crmComposerBar } from "@/components/crm/crm-inbox-theme";
@@ -76,6 +76,8 @@ export function CrmInboxComposer({
   const attachDisabled =
     sending || !selectedId || closed || !!composeTarget || channel !== "whatsapp";
 
+  const audioRecorder = useCrmAudioRecorder({ onRecorded: onSendFile, disabled: attachDisabled });
+
   return (
     <div className={crmComposerBar}>
       {!composeTarget ? (
@@ -125,71 +127,95 @@ export function CrmInboxComposer({
             e.target.value = "";
           }}
         />
-        <div className="flex shrink-0 items-center gap-0.5">
-          <CrmComposerAttachMenu
-            disabled={attachDisabled}
-            onPickPhotoOrPdf={() => fileRef.current?.click()}
-            onShareContact={onShareContact}
-            onShareLocation={onShareLocation}
-            onPickVideo={() => videoFileRef.current?.click()}
-            onPickAudioFile={() => audioFileRef.current?.click()}
+
+        {audioRecorder.recording ? (
+          <CrmAudioRecordingBar
+            elapsedMs={audioRecorder.elapsedMs}
+            paused={audioRecorder.paused}
+            waveform={audioRecorder.waveform}
+            onCancel={audioRecorder.cancel}
+            onTogglePause={audioRecorder.togglePause}
+            onSend={audioRecorder.finishRecording}
+            className="w-full"
           />
-          <CrmEmojiPicker
-            onSelect={onInsertEmoji}
-            disabled={closed || (!selectedId && !composeTarget)}
-          />
-          <CrmAudioRecorder
-            disabled={attachDisabled}
-            onRecorded={onSendFile}
-          />
-        </div>
-        <Textarea
-          ref={composerRef}
-          placeholder="Digite uma mensagem…"
-          title="Enter para enviar · Shift+Enter para nova linha"
-          value={text}
-          onChange={(e) => onTextChange(e.target.value)}
-          onInput={onComposerInput}
-          disabled={closed}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              onSend();
-            }
-          }}
-          rows={1}
-          className="max-h-[6rem] min-h-[2.25rem] min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-2 py-2 text-[13px] leading-snug shadow-none focus-visible:ring-0"
-        />
-        <div className="flex shrink-0 items-center gap-0.5">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8 shrink-0 rounded-full text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
-            onClick={onHumanize}
-            disabled={humanizing || sending || !text.trim() || closed}
-            title="Reformular com IA"
-          >
-            {humanizing ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8 shrink-0 rounded-full"
-            onClick={onSchedule}
-            disabled={sending || !text.trim() || !!composeTarget || !selectedId || closed}
-            title="Agendar envio"
-          >
-            <CalendarClock className="size-4" />
-          </Button>
-          <Button
-            size="icon"
-            className="size-8 shrink-0 rounded-full bg-[#25D366] hover:bg-[#20bd5a]"
-            onClick={onSend}
-            disabled={sending || !text.trim() || closed}
-          >
-            {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-          </Button>
-        </div>
+        ) : (
+          <>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <CrmComposerAttachMenu
+                disabled={attachDisabled}
+                onPickPhotoOrPdf={() => fileRef.current?.click()}
+                onShareContact={onShareContact}
+                onShareLocation={onShareLocation}
+                onPickVideo={() => videoFileRef.current?.click()}
+                onPickAudioFile={() => audioFileRef.current?.click()}
+              />
+              <CrmEmojiPicker
+                onSelect={onInsertEmoji}
+                disabled={closed || (!selectedId && !composeTarget)}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                disabled={attachDisabled}
+                className="size-9 shrink-0 rounded-full"
+                onPointerDown={() => void audioRecorder.warmMicrophone()}
+                onTouchStart={() => void audioRecorder.warmMicrophone()}
+                onClick={() => void audioRecorder.start()}
+                title="Gravar áudio"
+              >
+                <Mic className="size-4" />
+              </Button>
+            </div>
+            <Textarea
+              ref={composerRef}
+              placeholder="Digite uma mensagem…"
+              title="Enter para enviar · Shift+Enter para nova linha"
+              value={text}
+              onChange={(e) => onTextChange(e.target.value)}
+              onInput={onComposerInput}
+              disabled={closed}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  onSend();
+                }
+              }}
+              rows={1}
+              className="max-h-[6rem] min-h-[2.25rem] min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-2 py-2 text-[13px] leading-snug shadow-none focus-visible:ring-0"
+            />
+            <div className="flex shrink-0 items-center gap-0.5">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 shrink-0 rounded-full text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                onClick={onHumanize}
+                disabled={humanizing || sending || !text.trim() || closed}
+                title="Reformular com IA"
+              >
+                {humanizing ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 shrink-0 rounded-full"
+                onClick={onSchedule}
+                disabled={sending || !text.trim() || !!composeTarget || !selectedId || closed}
+                title="Agendar envio"
+              >
+                <CalendarClock className="size-4" />
+              </Button>
+              <Button
+                size="icon"
+                className="size-8 shrink-0 rounded-full bg-[#25D366] hover:bg-[#20bd5a]"
+                onClick={onSend}
+                disabled={sending || !text.trim() || closed}
+              >
+                {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

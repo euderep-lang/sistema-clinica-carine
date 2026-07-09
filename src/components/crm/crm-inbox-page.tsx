@@ -1472,6 +1472,7 @@ export function CrmInboxPage() {
           return;
         }
       } else if (mediaType === "audio") {
+        const preparing = toast.loading("Preparando áudio…");
         try {
           prepared = await prepareAudioFileForWhatsApp(file);
           mediaType = "audio";
@@ -1481,6 +1482,8 @@ export function CrmInboxPage() {
               "Não foi possível converter o áudio. Tente um arquivo MP3 ou OGG.",
           );
           return;
+        } finally {
+          toast.dismiss(preparing);
         }
       } else if (mediaType === "document") {
         try {

@@ -127,7 +127,7 @@ export function CrmAudioPlayer({ src, outbound, className }: Props) {
   const pct = duration > 0 ? (current / duration) * 100 : 0;
 
   return (
-    <div className={cn("flex w-[min(100%,39rem)] items-center gap-1.5", className)}>
+    <div className={cn("flex w-full items-center gap-1.5", className)}>
       <audio
         ref={audioRef}
         src={playbackSrc}

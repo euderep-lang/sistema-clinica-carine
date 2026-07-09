@@ -115,7 +115,7 @@ const CrmMessageBubbleInner = memo(function CrmMessageBubbleInner({
   const senderName = message.sender_profile?.full_name?.trim();
   const showSenderAbove = message.direction === "outbound" && !!senderName;
 
-  const bubbleMaxW = isAudio ? "max-w-[min(78%,45rem)]" : "max-w-[min(78%,15rem)]";
+  const bubbleMaxW = isAudio ? "w-[min(92%,22rem)]" : "max-w-[min(78%,15rem)]";
 
   if (isDeleted) {
     const deletedLabel =
@@ -191,6 +191,7 @@ const CrmMessageBubbleInner = memo(function CrmMessageBubbleInner({
       className={cn(
         "group relative scroll-mt-20 rounded-[10px] text-[12px] leading-snug transition-shadow",
         bubbleMaxW,
+        isAudio && "w-full",
         isAudio ? "px-2 py-1.5" : "px-2.5 py-1.5",
         message.direction === "outbound"
           ? cn("rounded-tr-[3px] bg-[#d9fdd3] text-zinc-900 dark:bg-emerald-900/40 dark:text-emerald-50", !showSenderAbove && "ml-auto")
