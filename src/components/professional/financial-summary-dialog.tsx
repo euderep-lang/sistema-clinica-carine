@@ -119,7 +119,7 @@ export function FinancialSummaryDialog({
           </p>
         </DialogHeader>
         <div
-          className={`overflow-y-auto overscroll-contain ${
+          className={`min-w-0 overflow-x-auto overflow-y-auto overscroll-x-contain overscroll-contain ${
             kind === "received" && paymentSummary.length > 0
               ? "max-h-[calc(85vh-14rem)]"
               : "max-h-[calc(85vh-9rem)]"

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useEffect } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, BarChart3, LogOut, MessageCircle, MoreVertical, Users } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
@@ -12,7 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/mock-auth";
-import { CRM_PWA_THEME } from "@/lib/crm-pwa";
+import { CRM_PWA_THEME, isIosSafari, isCrmStandalone } from "@/lib/crm-pwa";
 import { performAppSignOut } from "@/lib/crm-sign-out";
 import { useCrmViewportLock } from "@/hooks/use-crm-viewport-lock";
 import { ClinicOsIcon } from "@/components/clinicos-icon";
@@ -59,6 +60,12 @@ export function CrmPwaShell({ children, activeTab, hideBottomNav, header }: CrmP
 
   useCrmViewportLock(true);
 
+  useEffect(() => {
+    if (!isCrmStandalone() || !isIosSafari()) return;
+    document.documentElement.classList.add("ios-standalone-safe");
+    return () => document.documentElement.classList.remove("ios-standalone-safe");
+  }, []);
+
   const handleLogout = async () => {
     await performAppSignOut(signOut);
     navigate({ to: "/crm/login", replace: true });
@@ -70,7 +77,7 @@ export function CrmPwaShell({ children, activeTab, hideBottomNav, header }: CrmP
 
   return (
     <div
-      className="crm-mobile-shell fixed left-[var(--crm-vv-offset-left,0)] top-[var(--crm-vv-offset-top,0)] z-50 flex flex-col overflow-hidden bg-[#111b21]"
+      className="crm-mobile-shell app-safe-area-top app-safe-area-x fixed left-[var(--crm-vv-offset-left,0)] top-[var(--crm-vv-offset-top,0)] z-50 flex flex-col overflow-hidden bg-[#111b21]"
       style={{
         width: "var(--crm-vv-width, 100%)",
         height: "var(--crm-vv-height, 100svh)",
@@ -82,11 +89,8 @@ export function CrmPwaShell({ children, activeTab, hideBottomNav, header }: CrmP
         ["--crm-wa-header" as string]: CRM_PWA_THEME,
       }}
     >
-      <header
-        className="shrink-0 bg-[#075E54] text-white shadow-sm"
-        style={{ paddingTop: "max(0px, env(safe-area-inset-top))" }}
-      >
-        <div className="flex h-14 items-center gap-2 px-2">
+      <header className="shrink-0 bg-[#075E54] text-white shadow-sm">
+        <div className="flex min-h-14 items-center gap-2 px-1">
           {header?.showBack ? (
             <button
               type="button"
@@ -146,10 +150,7 @@ export function CrmPwaShell({ children, activeTab, hideBottomNav, header }: CrmP
 
       {!hideBottomNav ? (
         <nav
-          className="shrink-0 border-t border-black/5 bg-[#f0f2f5] dark:border-white/10 dark:bg-[#1f2c34]"
-          style={{
-            paddingBottom: "max(0px, env(safe-area-inset-bottom))",
-          }}
+          className="app-safe-area-bottom shrink-0 border-t border-black/5 bg-[#f0f2f5] dark:border-white/10 dark:bg-[#1f2c34]"
         >
           <div className="flex h-[52px] items-stretch justify-around">
             {tabs.map((tab) => {

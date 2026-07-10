@@ -31,10 +31,12 @@ export function useCrmViewportLock(active: boolean) {
       if (vv) {
         root.style.setProperty("--crm-vv-height", `${vv.height}px`);
         root.style.setProperty("--crm-vv-width", `${vv.width}px`);
-        root.style.setProperty("--crm-vv-offset-top", `${vv.offsetTop}px`);
-        root.style.setProperty("--crm-vv-offset-left", `${vv.offsetLeft}px`);
         const keyboard = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
         root.style.setProperty("--crm-keyboard-inset", `${keyboard}px`);
+        // Só desloca o frame com o teclado aberto — offsetTop em repouso cortava o topo no iOS.
+        const offsetTop = keyboard > 40 ? vv.offsetTop : 0;
+        root.style.setProperty("--crm-vv-offset-top", `${offsetTop}px`);
+        root.style.setProperty("--crm-vv-offset-left", `${vv.offsetLeft}px`);
       } else if (isMobileViewport()) {
         root.style.setProperty("--crm-vv-height", "100svh");
         root.style.setProperty("--crm-vv-width", "100%");

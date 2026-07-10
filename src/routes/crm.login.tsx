@@ -151,13 +151,11 @@ function CrmLoginPage() {
 
   return (
     <div
-      className="crm-mobile-shell fixed left-[var(--crm-vv-offset-left,0)] top-[var(--crm-vv-offset-top,0)] z-50 flex flex-col overflow-hidden bg-[#111b21] text-white"
+      className="crm-mobile-shell app-safe-area-top app-safe-area-x app-safe-area-bottom fixed left-[var(--crm-vv-offset-left,0)] top-[var(--crm-vv-offset-top,0)] z-50 flex flex-col overflow-hidden bg-[#111b21] text-white"
       style={{
         width: "var(--crm-vv-width, 100%)",
         height: "var(--crm-vv-height, 100svh)",
         maxHeight: "var(--crm-vv-height, 100svh)",
-        paddingTop: "max(0px, env(safe-area-inset-top))",
-        paddingBottom: "max(0px, env(safe-area-inset-bottom))",
       }}
     >
       <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-10">

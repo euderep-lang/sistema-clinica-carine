@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { Ban, Loader2, MoreVertical, Reply, Trash2 } from "lucide-react";
+import { Ban, Forward, Loader2, MoreVertical, Reply, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,6 +30,7 @@ interface CrmMessageBubbleProps {
   resolveMediaUrl: (mediaId: string, mimeType?: string | null) => Promise<string>;
   replyTo?: WaMessage | null;
   onReply?: (message: WaMessage) => void;
+  onForward?: (message: WaMessage) => void;
   onDelete?: (message: WaMessage, scope: "everyone" | "me") => void;
   highlighted?: boolean;
   /** Chamado quando mídia carrega e altera a altura do bubble (mantém scroll no fim). */
@@ -51,6 +52,7 @@ const CrmMessageBubbleInner = memo(function CrmMessageBubbleInner({
   resolveMediaUrl,
   replyTo,
   onReply,
+  onForward,
   onDelete,
   highlighted,
   onContentResize,
@@ -141,8 +143,14 @@ const CrmMessageBubbleInner = memo(function CrmMessageBubbleInner({
     );
   }
 
+  const canForward =
+    !!onForward &&
+    message.message_type !== "reaction" &&
+    message.message_type !== "unknown";
+  const hasActions = onReply || onForward || onDelete;
+
   const actionsMenu =
-    onReply || onDelete ? (
+    hasActions ? (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
@@ -165,7 +173,13 @@ const CrmMessageBubbleInner = memo(function CrmMessageBubbleInner({
               Responder
             </DropdownMenuItem>
           ) : null}
-          {onDelete && (onReply ? <DropdownMenuSeparator /> : null)}
+          {canForward ? (
+            <DropdownMenuItem onClick={() => onForward(message)}>
+              <Forward className="size-3.5" />
+              Encaminhar
+            </DropdownMenuItem>
+          ) : null}
+          {onDelete && (onReply || canForward) ? <DropdownMenuSeparator /> : null}
           {onDelete && message.direction === "outbound" ? (
             <DropdownMenuItem
               onClick={() => onDelete(message, "everyone")}

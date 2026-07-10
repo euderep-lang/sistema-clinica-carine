@@ -29,7 +29,7 @@ export function FinancialShell({
           }
         />
         <FinancialNav activeTab={activeTab} onTabChange={onTabChange} />
-        {children}
+        <div className="min-w-0">{children}</div>
       </div>
     </DashboardShell>
   );

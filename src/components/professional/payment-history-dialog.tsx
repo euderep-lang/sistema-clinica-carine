@@ -155,7 +155,7 @@ export function PaymentHistoryDialog({
             </Select>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-auto rounded-lg border">
+          <div className="table-scroll min-h-0 flex-1 overflow-x-auto overflow-y-auto overscroll-x-contain rounded-lg border">
             <Table>
               <TableHeader>
                 <TableRow>

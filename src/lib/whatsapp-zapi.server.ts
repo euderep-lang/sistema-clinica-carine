@@ -279,6 +279,30 @@ export async function sendZApiLocation(
 }
 
 /**
+ * Encaminha uma mensagem existente no WhatsApp para outro contato.
+ * Docs: POST /forward-message — phone (destino), messageId, messagePhone (chat de origem)
+ */
+export async function forwardZApiMessage(
+  config: ZApiConfig,
+  destPhone: string,
+  waMessageId: string,
+  sourcePhone: string,
+) {
+  const json = await zapiRequest<{ messageId?: string; id?: string; zaapId?: string }>(
+    config,
+    "/forward-message",
+    {
+      phone: destPhone,
+      messageId: waMessageId,
+      messagePhone: sourcePhone,
+    },
+  );
+  const messageId = json.messageId ?? json.id ?? json.zaapId;
+  if (!messageId) throw new Error("Z-API não retornou ID da mensagem encaminhada");
+  return { messageId };
+}
+
+/**
  * Apaga uma mensagem no WhatsApp ("apagar para todos" / revoke).
  * owner=true quando a mensagem foi enviada por nós; false quando foi recebida.
  * Docs: DELETE /messages?messageId=&phone=&owner=

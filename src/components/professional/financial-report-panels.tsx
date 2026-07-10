@@ -249,7 +249,7 @@ function CrossPanel({ ctx }: { ctx: ReportQueryCtx }) {
         title="Análise cruzada por profissional"
         description={`${periodLabel(ctx)} · produção, recebimentos, despesas e comissão`}
       />
-      <CardContent className="overflow-x-auto p-0">
+      <CardContent className="min-w-0 overflow-x-auto p-0">
         <Table>
           <TableHeader>
             <TableRow>
@@ -329,7 +329,7 @@ export function CommissionReportPanel({ ctx }: { ctx: ReportQueryCtx }) {
         title="Relatório de comissão"
         description={`${periodLabel(ctx)} · comissão estimada sobre o recebido no período`}
       />
-      <CardContent className="space-y-4">
+      <CardContent className="min-w-0 space-y-4">
         <div className="flex flex-wrap gap-4 text-sm">
           <span>Produção: <strong>{fmt(totals.production)}</strong></span>
           <span>Recebido: <strong>{fmt(totals.received)}</strong></span>
@@ -429,7 +429,7 @@ function SalesByProfessionalPanel({ ctx }: { ctx: ReportQueryCtx }) {
         </CardContent>
       </Card>
       <Card>
-        <CardContent className="overflow-x-auto p-0">
+        <CardContent className="min-w-0 overflow-x-auto p-0">
           <Table>
             <TableHeader>
               <TableRow>
@@ -499,7 +499,7 @@ function SalesByPeriodPanel({ ctx }: { ctx: ReportQueryCtx }) {
         </CardContent>
       </Card>
       <Card>
-        <CardContent className="overflow-x-auto p-0">
+        <CardContent className="min-w-0 overflow-x-auto p-0">
           <Table>
             <TableHeader>
               <TableRow>
@@ -576,7 +576,7 @@ function PaymentMethodPanel({ ctx }: { ctx: ReportQueryCtx }) {
         </CardContent>
       </Card>
       <Card>
-        <CardContent className="overflow-x-auto p-0">
+        <CardContent className="min-w-0 overflow-x-auto p-0">
           <Table>
             <TableHeader>
               <TableRow>
@@ -645,7 +645,7 @@ function TopProceduresPanel({ ctx }: { ctx: ReportQueryCtx }) {
         </CardContent>
       </Card>
       <Card>
-        <CardContent className="overflow-x-auto p-0">
+        <CardContent className="min-w-0 overflow-x-auto p-0">
           <Table>
             <TableHeader>
               <TableRow>
@@ -783,7 +783,7 @@ function ReceivablePanel({ ctx }: { ctx: ReportQueryCtx }) {
   return (
     <Card>
       <ReportHeader title="Contas a receber" description={`Vencimento entre ${periodLabel(ctx)}`} />
-      <CardContent className="space-y-4">
+      <CardContent className="min-w-0 space-y-4">
         <div className="flex flex-wrap gap-4 text-sm">
           <span>Total: <strong>{fmt(totals.amount)}</strong></span>
           <span>Recebido: <strong>{fmt(totals.paid)}</strong></span>
@@ -894,7 +894,7 @@ function ExpensesPanel({ ctx }: { ctx: ReportQueryCtx }) {
         </CardContent>
       </Card>
       <Card>
-        <CardContent className="overflow-x-auto p-0">
+        <CardContent className="min-w-0 overflow-x-auto p-0">
           <Table>
             <TableHeader>
               <TableRow>

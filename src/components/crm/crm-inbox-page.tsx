@@ -30,6 +30,7 @@ import { CrmConnectionBadge } from "@/components/crm/crm-connection-badge";
 import { CrmMetricsStrip } from "@/components/crm/crm-metrics-strip";
 import { CrmGlobalSearch } from "@/components/crm/crm-global-search";
 import { CrmBroadcastDialog } from "@/components/crm/crm-broadcast-dialog";
+import { CrmForwardMessageDialog } from "@/components/crm/crm-forward-message-dialog";
 import { PatientFormDialog } from "@/components/patient-form-dialog";
 import {
   crmChatBg,
@@ -120,6 +121,7 @@ import {
   cancelScheduledWaMessage,
   deleteWaMessage,
   fetchWaMediaUrl,
+  forwardWaMessage,
   getWhatsAppStatus,
   listScheduledWaMessages,
   markWaConversationRead,
@@ -216,6 +218,8 @@ export function CrmInboxPage() {
   const [mobileView, setMobileView] = useState<"list" | "chat" | "details">("list");
   const [visibleCount, setVisibleCount] = useState(30);
   const [replyTo, setReplyTo] = useState<WaMessage | null>(null);
+  const [forwardMessage, setForwardMessage] = useState<WaMessage | null>(null);
+  const [forwardOpen, setForwardOpen] = useState(false);
   const [closeReason, setCloseReason] = useState(WA_CLOSE_REASONS[0]);
   const [patientSearch, setPatientSearch] = useState("");
   const [patientOptions, setPatientOptions] = useState<{ id: string; full_name: string; phone: string | null }[]>([]);
@@ -303,6 +307,7 @@ export function CrmInboxPage() {
   const syncChatsFn = useServerFn(syncWaChatsFromZApi);
   const mediaUrlFn = useServerFn(fetchWaMediaUrl);
   const deleteMessageFn = useServerFn(deleteWaMessage);
+  const forwardMessageFn = useServerFn(forwardWaMessage);
   const startConvFn = useServerFn(startWaConversation);
   const closeFn = useServerFn(closeWaConversation);
   const reopenFn = useServerFn(reopenWaConversation);
@@ -1802,6 +1807,40 @@ export function CrmInboxPage() {
     [deleteMessageFn],
   );
 
+  const handleForwardMessage = useCallback((message: WaMessage) => {
+    if (message.deleted_at) {
+      toast.error("Não é possível encaminhar uma mensagem apagada");
+      return;
+    }
+    if (message.message_type === "reaction") {
+      toast.error("Não é possível encaminhar reações");
+      return;
+    }
+    setForwardMessage(message);
+    setForwardOpen(true);
+  }, []);
+
+  const confirmForwardMessage = useCallback(
+    async (targetConversationId: string) => {
+      if (!forwardMessage) return;
+      try {
+        const res = await forwardMessageFn({
+          data: { messageId: forwardMessage.id, targetConversationId },
+        });
+        toast.success("Mensagem encaminhada");
+        setForwardOpen(false);
+        setForwardMessage(null);
+        if (res.targetConversationId) {
+          void loadConversationsRef.current({ silent: true });
+        }
+      } catch (e) {
+        toast.error((e as Error).message || "Falha ao encaminhar mensagem");
+        throw e;
+      }
+    },
+    [forwardMessage, forwardMessageFn],
+  );
+
   const patientLink = useMemo(() => {
     if (!selected?.patient_id) return null;
     if (profile?.role === "professional") {
@@ -2274,6 +2313,7 @@ export function CrmInboxPage() {
                           resolveMediaUrl={resolveMediaUrl}
                           replyTo={m.reply_to_message_id ? messagesById.get(m.reply_to_message_id) : null}
                           onReply={setReplyTo}
+                          onForward={handleForwardMessage}
                           onDelete={handleDeleteMessage}
                           highlighted={msgSearchHighlightIds.has(m.id)}
                           onContentResize={handleChatContentResize}
@@ -2499,6 +2539,18 @@ export function CrmInboxPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CrmForwardMessageDialog
+        open={forwardOpen}
+        onOpenChange={(open) => {
+          setForwardOpen(open);
+          if (!open) setForwardMessage(null);
+        }}
+        message={forwardMessage}
+        conversations={conversations}
+        currentConversationId={selectedId}
+        onConfirm={confirmForwardMessage}
+      />
 
       <PatientFormDialog
         open={createPatientOpen}

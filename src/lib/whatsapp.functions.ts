@@ -5,15 +5,18 @@ import { convertAudioBase64ToWhatsAppOgg } from "@/lib/wa-audio-convert.server";
 import { findConversationByPhone, normalizeBrazilPhone } from "@/lib/wa-phone";
 import { onOutboundMessageForFollowUp } from "@/lib/wa-follow-up.server";
 import {
+  getWhatsAppProvider,
   getWhatsAppStatusPayload,
   isWhatsAppConfigured,
   providerDeleteMessage,
+  providerForwardMessage,
   providerResolveMediaUrl,
   providerSendContact,
   providerSendLocation,
   providerSendMedia,
   providerSendText,
 } from "@/lib/whatsapp-provider.server";
+import { extractWaContact, extractWaLocation } from "@/lib/wa-message-content";
 import { sendMetaSocialText } from "@/lib/whatsapp-meta.server";
 import { geocodeAddressLine } from "@/lib/wa-geocode.server";
 import { formatClinicAddress, type ClinicAddress } from "@/lib/settings-helpers";
@@ -48,6 +51,137 @@ function configError() {
     return "WhatsApp não configurado. Defina ZAPI_INSTANCE_ID e ZAPI_TOKEN no .env";
   }
   return "WhatsApp não configurado. Defina WHATSAPP_ACCESS_TOKEN e WHATSAPP_PHONE_NUMBER_ID no .env";
+}
+
+type ForwardMessageRow = {
+  id: string;
+  conversation_id: string;
+  wa_message_id: string | null;
+  message_type: string;
+  body: string | null;
+  media_id: string | null;
+  media_mime: string | null;
+  media_filename: string | null;
+  deleted_at: string | null;
+  raw_payload: unknown;
+};
+
+function forwardPreview(type: string, body: string | null, filename?: string | null): string {
+  const t = body?.trim();
+  if (type === "text" && t) return t.slice(0, 120);
+  if (type === "audio") return "🎤 Áudio";
+  if (type === "image" || type === "sticker") return t && !/^📷/i.test(t) ? `📷 ${t.slice(0, 100)}` : "📷 Imagem";
+  if (type === "video") return t && !/^🎬/i.test(t) ? `🎬 ${t.slice(0, 100)}` : "🎬 Vídeo";
+  if (type === "document") return `📎 ${filename ?? t ?? "Documento"}`;
+  if (type === "contact") return t ?? "👤 Contato";
+  if (type === "location") return t ?? "📍 Localização";
+  return t?.slice(0, 120) ?? "Mensagem";
+}
+
+function isForwardMediaPlaceholder(body: string | null | undefined, type: string): boolean {
+  const t = body?.trim() ?? "";
+  if (!t) return true;
+  if (type === "audio") return /^(🎤\s*)?Áudio$/i.test(t);
+  if (type === "image" || type === "sticker") return /^📷/.test(t) || t === "Imagem";
+  if (type === "video") return /^🎬/.test(t) || t === "Vídeo";
+  if (type === "document") return /^📎/.test(t);
+  return false;
+}
+
+async function mediaRefToBase64(
+  mediaRef: string,
+  mimeType: string,
+  filename: string,
+): Promise<{ base64: string; mimeType: string; filename: string }> {
+  if (mediaRef.startsWith("data:")) {
+    const match = mediaRef.match(/^data:([^;]+);base64,(.+)$/s);
+    if (!match?.[2]) throw new Error("Mídia inválida");
+    return { base64: match[2], mimeType: match[1] || mimeType, filename };
+  }
+  if (mediaRef.startsWith("http://") || mediaRef.startsWith("https://")) {
+    const res = await fetch(mediaRef);
+    if (!res.ok) throw new Error("Não foi possível baixar a mídia para encaminhar");
+    const buf = Buffer.from(await res.arrayBuffer());
+    const resolvedMime = res.headers.get("content-type")?.split(";")[0]?.trim() || mimeType;
+    return { base64: buf.toString("base64"), mimeType: resolvedMime, filename };
+  }
+  throw new Error("Mídia indisponível para encaminhar");
+}
+
+async function resendMessageForForward(message: ForwardMessageRow, destPhone: string): Promise<string> {
+  const type = message.message_type;
+
+  if (type === "text") {
+    const text = message.body?.trim();
+    if (!text) throw new Error("Mensagem sem texto para encaminhar");
+    const { messageId } = await providerSendText(destPhone, text);
+    return messageId;
+  }
+
+  if (type === "contact") {
+    const contact = extractWaContact({
+      message_type: type,
+      body: message.body,
+      raw_payload: message.raw_payload,
+    });
+    if (!contact?.phone) throw new Error("Contato sem telefone para encaminhar");
+    const { messageId } = await providerSendContact(destPhone, contact.name, contact.phone);
+    return messageId;
+  }
+
+  if (type === "location") {
+    const location = extractWaLocation({
+      message_type: type,
+      body: message.body,
+      raw_payload: message.raw_payload,
+    });
+    if (!location) throw new Error("Localização indisponível para encaminhar");
+    const { messageId } = await providerSendLocation(
+      destPhone,
+      location.title,
+      location.address ?? "",
+      location.latitude,
+      location.longitude,
+    );
+    return messageId;
+  }
+
+  const mediaType =
+    type === "sticker" ? "image" : type === "image" || type === "audio" || type === "video" || type === "document"
+      ? type
+      : null;
+  if (!mediaType) throw new Error(`Tipo de mensagem não suportado: ${type}`);
+  if (!message.media_id) throw new Error("Mídia indisponível para encaminhar");
+
+  let { base64, mimeType, filename } = await mediaRefToBase64(
+    message.media_id,
+    message.media_mime ?? "application/octet-stream",
+    message.media_filename ?? "arquivo",
+  );
+
+  if (mediaType === "audio" && !/audio\/ogg|application\/ogg/i.test(mimeType)) {
+    const converted = await convertAudioBase64ToWhatsAppOgg(base64, mimeType);
+    if (converted) {
+      base64 = converted.base64;
+      mimeType = converted.mimeType;
+      filename = converted.filename;
+    }
+  }
+
+  const caption =
+    message.body?.trim() && !isForwardMediaPlaceholder(message.body, type)
+      ? message.body.trim()
+      : undefined;
+
+  const { messageId } = await providerSendMedia(
+    destPhone,
+    mediaType,
+    base64,
+    mimeType,
+    filename,
+    caption,
+  );
+  return messageId;
 }
 
 export const getWhatsAppStatus = createServerFn({ method: "GET" }).handler(async () => getWhatsAppStatusPayload());
@@ -664,6 +798,141 @@ export const deleteWaMessage = createServerFn({ method: "POST" })
     });
 
     return { ok: true };
+  });
+
+export const forwardWaMessage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: { messageId: string; targetConversationId: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const profile = await requireCrmAccess(supabase, userId);
+    if (!isWhatsAppConfigured()) throw new Error(configError());
+
+    const { data: msg } = await supabase
+      .from("wa_messages" as never)
+      .select(
+        "id, conversation_id, wa_message_id, message_type, body, media_id, media_mime, media_filename, deleted_at, raw_payload",
+      )
+      .eq("id", data.messageId)
+      .eq("tenant_id", profile.tenant_id)
+      .maybeSingle();
+    if (!msg) throw new Error("Mensagem não encontrada");
+
+    const message = msg as ForwardMessageRow;
+    if (message.deleted_at) throw new Error("Não é possível encaminhar uma mensagem apagada");
+    if (message.message_type === "reaction") {
+      throw new Error("Não é possível encaminhar reações");
+    }
+    if (message.conversation_id === data.targetConversationId) {
+      throw new Error("Selecione outra conversa para encaminhar");
+    }
+
+    const { data: sourceConv } = await supabase
+      .from("wa_conversations" as never)
+      .select("contact_phone, channel")
+      .eq("id", message.conversation_id)
+      .maybeSingle();
+    const { data: targetConv } = await supabase
+      .from("wa_conversations" as never)
+      .select("id, contact_phone, channel, status, first_response_at")
+      .eq("id", data.targetConversationId)
+      .eq("tenant_id", profile.tenant_id)
+      .maybeSingle();
+
+    const sourceRow = sourceConv as { contact_phone: string; channel?: string } | null;
+    const targetRow = targetConv as {
+      id: string;
+      contact_phone: string;
+      channel?: string;
+      status: string;
+      first_response_at: string | null;
+    } | null;
+    if (!sourceRow || !targetRow) throw new Error("Conversa não encontrada");
+    if ((sourceRow.channel ?? "whatsapp") !== "whatsapp" || (targetRow.channel ?? "whatsapp") !== "whatsapp") {
+      throw new Error("Encaminhar só funciona em conversas do WhatsApp");
+    }
+
+    const sourcePhone = normalizeBrazilPhone(sourceRow.contact_phone);
+    const destPhone = normalizeBrazilPhone(targetRow.contact_phone);
+
+    let newWaMessageId: string;
+    let usedNativeForward = false;
+
+    if (message.wa_message_id && getWhatsAppProvider() === "zapi") {
+      try {
+        const result = await providerForwardMessage(destPhone, message.wa_message_id, sourcePhone);
+        newWaMessageId = result.messageId;
+        usedNativeForward = true;
+      } catch {
+        newWaMessageId = await resendMessageForForward(message, destPhone);
+      }
+    } else {
+      newWaMessageId = await resendMessageForForward(message, destPhone);
+    }
+
+    const preview = forwardPreview(message.message_type, message.body, message.media_filename);
+    const now = new Date().toISOString();
+
+    let storedMediaRef = message.media_id;
+    if (
+      storedMediaRef &&
+      !storedMediaRef.startsWith("http") &&
+      !storedMediaRef.startsWith("data:") &&
+      usedNativeForward
+    ) {
+      storedMediaRef = null;
+    }
+
+    await supabase.from("wa_messages" as never).insert({
+      tenant_id: profile.tenant_id,
+      conversation_id: data.targetConversationId,
+      wa_message_id: newWaMessageId,
+      direction: "outbound",
+      message_type: message.message_type === "sticker" ? "image" : message.message_type,
+      body: message.body,
+      media_id: storedMediaRef,
+      media_mime: message.media_mime,
+      media_filename: message.media_filename,
+      status: "sent",
+      sent_by: userId,
+    } as never);
+
+    const convUpdate: Record<string, unknown> = {
+      last_message_at: now,
+      last_message_preview: preview.slice(0, 120),
+      updated_at: now,
+    };
+    if (!targetRow.first_response_at) convUpdate.first_response_at = now;
+    if (targetRow.status === "closed") {
+      convUpdate.status = "open";
+      convUpdate.close_reason = null;
+      convUpdate.closed_at = null;
+      convUpdate.closed_by = null;
+    }
+
+    await supabase
+      .from("wa_conversations" as never)
+      .update(convUpdate as never)
+      .eq("id", data.targetConversationId);
+
+    logAuditSafe({
+      tenantId: profile.tenant_id,
+      actorId: userId,
+      category: "whatsapp",
+      action: "whatsapp.message_forwarded",
+      summary: `Mensagem encaminhada: ${preview.slice(0, 80)}`,
+      entityType: "conversation",
+      entityId: data.targetConversationId,
+      conversationId: data.targetConversationId,
+      details: {
+        source_message_id: message.id,
+        source_conversation_id: message.conversation_id,
+        native_forward: usedNativeForward,
+      },
+      source: "ui",
+    });
+
+    return { ok: true, targetConversationId: data.targetConversationId };
   });
 
 export const fetchWaMediaUrl = createServerFn({ method: "POST" })

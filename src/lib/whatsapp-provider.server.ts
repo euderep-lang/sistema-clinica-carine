@@ -8,6 +8,7 @@ import {
 } from "@/lib/whatsapp-meta.server";
 import {
   deleteZApiMessage,
+  forwardZApiMessage,
   getZApiConfig,
   getZApiContactPhoto,
   getZApiStatus,
@@ -155,6 +156,20 @@ export async function providerDeleteMessage(
     return;
   }
   throw new Error("Apagar para todos disponível apenas com Z-API");
+}
+
+export async function providerForwardMessage(
+  destPhone: string,
+  waMessageId: string,
+  sourcePhone: string,
+) {
+  const provider = getWhatsAppProvider();
+  if (provider === "zapi") {
+    const config = getZApiConfig();
+    if (!config) throw new Error("Z-API não configurada");
+    return forwardZApiMessage(config, destPhone, waMessageId, sourcePhone);
+  }
+  throw new Error("Encaminhamento nativo disponível apenas com Z-API");
 }
 
 export async function providerResolveMediaUrl(mediaRef: string, mimeType?: string | null) {

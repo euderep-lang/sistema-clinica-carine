@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import {
   BILL_STATUS_CLASS,
   BILL_STATUS_LABEL,
@@ -585,28 +586,28 @@ export function BillDetailDialog({
                 </span>
               )}
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-5">
-              <div>
+            <div className="mt-3 flex gap-4 overflow-x-auto pb-1 text-sm [-ms-overflow-style:none] [scrollbar-width:none] sm:grid sm:grid-cols-3 sm:gap-x-6 sm:gap-y-2 sm:pb-0 lg:grid-cols-5 [&::-webkit-scrollbar]:hidden">
+              <div className="shrink-0 sm:shrink">
                 <span className="text-muted-foreground">Total</span>
-                <div className="font-semibold tabular-nums">{fmt(originalAmount)}</div>
+                <div className="font-semibold tabular-nums whitespace-nowrap">{fmt(originalAmount)}</div>
               </div>
               {discountTotal > 0 && (
-                <div>
+                <div className="shrink-0 sm:shrink">
                   <span className="text-muted-foreground">Desconto</span>
-                  <div className="font-semibold tabular-nums text-violet-700">- {fmt(discountTotal)}</div>
+                  <div className="font-semibold tabular-nums whitespace-nowrap text-violet-700">- {fmt(discountTotal)}</div>
                 </div>
               )}
-              <div>
+              <div className="shrink-0 sm:shrink">
                 <span className="text-muted-foreground">Líquido</span>
-                <div className="font-semibold tabular-nums">{fmt(bill.amount)}</div>
+                <div className="font-semibold tabular-nums whitespace-nowrap">{fmt(bill.amount)}</div>
               </div>
-              <div>
+              <div className="shrink-0 sm:shrink">
                 <span className="text-muted-foreground">Recebido</span>
-                <div className="font-semibold tabular-nums text-emerald-700">{fmt(bill.paid_amount)}</div>
+                <div className="font-semibold tabular-nums whitespace-nowrap text-emerald-700">{fmt(bill.paid_amount)}</div>
               </div>
-              <div>
+              <div className="shrink-0 sm:shrink">
                 <span className="text-muted-foreground">Em aberto</span>
-                <div className="font-semibold tabular-nums text-amber-700">{fmt(outstanding)}</div>
+                <div className="font-semibold tabular-nums whitespace-nowrap text-amber-700">{fmt(outstanding)}</div>
               </div>
             </div>
           </DialogHeader>
@@ -638,9 +639,9 @@ export function BillDetailDialog({
                     )}
                   </div>
                   {items.length > 0 ? (
-                    <div className="overflow-hidden rounded-lg border bg-background">
+                    <div className="table-scroll overflow-x-auto rounded-lg border bg-background">
                       {canAddItems && (
-                        <div className="hidden border-b bg-muted/40 px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[minmax(0,1fr)_7.5rem_4.5rem_10.5rem_2.5rem] sm:items-center sm:gap-3">
+                        <div className="grid min-w-[32rem] grid-cols-[minmax(0,1fr)_7.5rem_4.5rem_10.5rem_2.5rem] items-center gap-3 border-b bg-muted/40 px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                           <span>Item</span>
                           <span className="text-right">Preço un.</span>
                           <span className="text-center">Qtd</span>
@@ -648,7 +649,7 @@ export function BillDetailDialog({
                           <span />
                         </div>
                       )}
-                      <ul className="divide-y">
+                      <ul className={cn("divide-y", canAddItems && "min-w-[32rem]")}>
                         {items.map((item) => {
                           const name = item.services?.name ?? "Procedimento";
                           const qtyVal = Math.max(
@@ -662,9 +663,14 @@ export function BillDetailDialog({
                           return (
                             <li
                               key={item.id}
-                              className="px-4 py-3 sm:grid sm:grid-cols-[minmax(0,1fr)_7.5rem_4.5rem_10.5rem_2.5rem] sm:items-center sm:gap-3"
+                              className={cn(
+                                "px-4 py-3",
+                                canAddItems
+                                  ? "grid grid-cols-[minmax(0,1fr)_7.5rem_4.5rem_10.5rem_2.5rem] items-center gap-3"
+                                  : "sm:grid sm:grid-cols-[minmax(0,1fr)_7.5rem_4.5rem_10.5rem_2.5rem] sm:items-center sm:gap-3",
+                              )}
                             >
-                              <div className="min-w-0 pb-2 sm:pb-0">
+                              <div className="min-w-0">
                                 <p className="text-sm font-medium leading-snug break-words">
                                   {name}
                                 </p>
@@ -677,63 +683,46 @@ export function BillDetailDialog({
 
                               {canAddItems ? (
                                 <>
-                                  <div className="grid grid-cols-2 gap-2 sm:contents">
-                                    <div className="space-y-1 sm:space-y-0">
-                                      <Label className="text-[11px] text-muted-foreground sm:sr-only">
-                                        Preço un.
-                                      </Label>
-                                      <Input
-                                        placeholder="0,00"
-                                        value={
-                                          itemPrice[item.id] ??
-                                          formatBRLInput(Number(item.unit_price))
-                                        }
-                                        disabled={savingItemId === item.id}
-                                        onChange={(e) =>
-                                          setItemPrice((prev) => ({
-                                            ...prev,
-                                            [item.id]: e.target.value,
-                                          }))
-                                        }
-                                        onBlur={() => void commitItem(item)}
-                                        onKeyDown={(e) => {
-                                          if (e.key === "Enter") e.currentTarget.blur();
-                                        }}
-                                        className="h-9 w-full text-right tabular-nums"
-                                      />
-                                    </div>
-                                    <div className="space-y-1 sm:space-y-0">
-                                      <Label className="text-[11px] text-muted-foreground sm:sr-only">
-                                        Qtd
-                                      </Label>
-                                      <Input
-                                        type="number"
-                                        min={1}
-                                        value={itemQty[item.id] ?? String(item.quantity)}
-                                        disabled={savingItemId === item.id}
-                                        onChange={(e) =>
-                                          setItemQty((prev) => ({
-                                            ...prev,
-                                            [item.id]: e.target.value,
-                                          }))
-                                        }
-                                        onBlur={() => void commitItem(item)}
-                                        onKeyDown={(e) => {
-                                          if (e.key === "Enter") e.currentTarget.blur();
-                                        }}
-                                        className="h-9 w-full text-center tabular-nums"
-                                      />
-                                    </div>
-                                  </div>
-                                  <div className="mt-2 flex items-center justify-between gap-2 sm:mt-0 sm:block sm:text-right">
-                                    <span className="text-[11px] text-muted-foreground sm:hidden">
-                                      Subtotal
-                                    </span>
-                                    <span className="text-sm font-semibold tabular-nums whitespace-nowrap">
-                                      {fmt(lineTotal)}
-                                    </span>
-                                  </div>
-                                  <div className="mt-2 flex justify-end sm:mt-0 sm:justify-center">
+                                  <Input
+                                    placeholder="0,00"
+                                    value={
+                                      itemPrice[item.id] ??
+                                      formatBRLInput(Number(item.unit_price))
+                                    }
+                                    disabled={savingItemId === item.id}
+                                    onChange={(e) =>
+                                      setItemPrice((prev) => ({
+                                        ...prev,
+                                        [item.id]: e.target.value,
+                                      }))
+                                    }
+                                    onBlur={() => void commitItem(item)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") e.currentTarget.blur();
+                                    }}
+                                    className="h-9 w-full text-right tabular-nums"
+                                  />
+                                  <Input
+                                    type="number"
+                                    min={1}
+                                    value={itemQty[item.id] ?? String(item.quantity)}
+                                    disabled={savingItemId === item.id}
+                                    onChange={(e) =>
+                                      setItemQty((prev) => ({
+                                        ...prev,
+                                        [item.id]: e.target.value,
+                                      }))
+                                    }
+                                    onBlur={() => void commitItem(item)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") e.currentTarget.blur();
+                                    }}
+                                    className="h-9 w-full text-center tabular-nums"
+                                  />
+                                  <span className="text-right text-sm font-semibold tabular-nums whitespace-nowrap">
+                                    {fmt(lineTotal)}
+                                  </span>
+                                  <div className="flex justify-center">
                                     <Button
                                       type="button"
                                       size="icon"
@@ -955,7 +944,7 @@ export function BillDetailDialog({
                     )}
                     <div className="space-y-2">
                       <Label className="text-xs">Forma de pagamento</Label>
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      <div className="table-scroll flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:grid sm:grid-cols-3 sm:overflow-visible sm:pb-0 [&::-webkit-scrollbar]:hidden">
                         {paymentMethods.map((m) => (
                           <button
                             key={m.value}
@@ -965,7 +954,7 @@ export function BillDetailDialog({
                               setPayMethod(m.value);
                               if (!m.supports_installments) setCreditInstallments("1");
                             }}
-                            className={`flex h-10 items-center justify-center gap-1 rounded-md border px-2 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                            className={`flex h-10 shrink-0 items-center justify-center gap-1 rounded-md border px-3 text-xs whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-40 sm:shrink sm:px-2 ${
                               payMethod === m.value
                                 ? "border-primary bg-primary/5 font-medium"
                                 : "border-border hover:bg-muted/50"

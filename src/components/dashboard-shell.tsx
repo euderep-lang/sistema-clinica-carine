@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
 import { LogOut, User } from "lucide-react";
@@ -52,6 +52,17 @@ export function DashboardShell({
     navigate({ to: "/login", replace: true });
   };
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const standalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (navigator as Navigator & { standalone?: boolean }).standalone === true;
+    if (standalone && /iPad|iPhone|iPod/.test(navigator.userAgent)) {
+      document.documentElement.classList.add("ios-standalone-safe");
+      return () => document.documentElement.classList.remove("ios-standalone-safe");
+    }
+  }, []);
+
   return (
     <SidebarProvider>
       <ClinicSidebar />
@@ -63,7 +74,7 @@ export function DashboardShell({
           Ir para o conteúdo
         </a>
 
-        <header className="sticky top-0 z-20 flex h-[3.25rem] items-center gap-3 border-b border-border bg-card px-4 lg:px-6">
+        <header className="app-safe-area-top app-safe-area-x sticky top-0 z-20 flex min-h-[3.25rem] shrink-0 items-center gap-3 border-b border-border bg-card px-4 lg:px-6">
           <SidebarTrigger
             className="size-9 shrink-0 text-muted-foreground hover:bg-muted hover:text-foreground"
             title="Recolher ou expandir menu (⌘B)"

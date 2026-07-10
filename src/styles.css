@@ -259,6 +259,39 @@
   pointer-events: none;
 }
 
+/* Tabelas — scroll horizontal nativo no mobile (sem precisar dar zoom) */
+.table-scroll {
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
+}
+
+/* Área segura — iPhone (Dynamic Island) e PWA/APK instalado */
+.app-safe-area-top {
+  padding-top: constant(safe-area-inset-top);
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.app-safe-area-bottom {
+  padding-bottom: constant(safe-area-inset-bottom);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.app-safe-area-x {
+  padding-left: max(0.5rem, env(safe-area-inset-left, 0px));
+  padding-right: max(0.5rem, env(safe-area-inset-right, 0px));
+}
+
+/* WebView/PWA às vezes não reporta env() — fallback mínimo no app instalado */
+@media (display-mode: standalone) {
+  .app-safe-area-top {
+    padding-top: max(3.25rem, env(safe-area-inset-top, 0px));
+  }
+}
+
+html.ios-standalone-safe .app-safe-area-top {
+  padding-top: max(3.25rem, env(safe-area-inset-top, 0px));
+}
+
 /* CRM mobile — frame fixo estilo WhatsApp (iPhone / PWA) */
 body.crm-mobile-app {
   overflow: hidden;

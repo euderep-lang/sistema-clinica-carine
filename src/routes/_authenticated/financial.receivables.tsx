@@ -77,7 +77,7 @@ export function Page() {
             <Button onClick={() => setNewOpen(true)}><Plus className="h-4 w-4 mr-2" />Nova Cobrança</Button>
           </div>
         </div>
-        <Card><CardContent className="p-0"><Table>
+        <Card><CardContent className="min-w-0 p-0"><Table>
           <TableHeader><TableRow><TableHead>Paciente</TableHead><TableHead>Profissional</TableHead><TableHead>Descrição</TableHead><TableHead>Valor</TableHead><TableHead>Vencimento</TableHead><TableHead>Forma</TableHead><TableHead>Situação</TableHead></TableRow></TableHeader>
           <TableBody>
             {rows.length === 0 ? <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-10">Nenhuma cobrança</TableCell></TableRow> :

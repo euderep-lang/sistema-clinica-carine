@@ -408,7 +408,7 @@ export function FinancialCobrancasTab({
         </div>
       </PageSection>
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="min-w-0 p-0">
           <Table>
             <TableHeader>
               <TableRow>

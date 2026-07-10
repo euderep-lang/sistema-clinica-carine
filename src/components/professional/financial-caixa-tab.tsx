@@ -178,7 +178,7 @@ export function FinancialCaixaTab({
           <CardHeader>
             <CardTitle className="text-base text-emerald-700">Recebimentos do dia</CardTitle>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="min-w-0 p-0">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -228,7 +228,7 @@ export function FinancialCaixaTab({
           <CardHeader>
             <CardTitle className="text-base text-red-700">Despesas pagas no dia</CardTitle>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="min-w-0 p-0">
             <Table>
               <TableHeader>
                 <TableRow>
