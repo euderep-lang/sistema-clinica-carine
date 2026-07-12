@@ -8,7 +8,8 @@ export type ClinicalDocType = "atestado" | "declaracao" | "exames";
 export const CLINICAL_DOC_TITLE: Record<ClinicalDocType, string> = {
   atestado: "ATESTADO MÉDICO",
   declaracao: "DECLARAÇÃO DE COMPARECIMENTO",
-  exames: "SOLICITAÇÃO DE EXAMES",
+  /** Metadados/UI — o PDF de pedidos não exibe título fixo (exames, fórmulas, orientações…). */
+  exames: "Solicitar pedido",
 };
 
 export interface ClinicalDocData {
@@ -534,18 +535,22 @@ export function generateClinicalDocumentPDF(data: ClinicalDocData): Blob {
     cy = drawHeaderNoLetterhead(doc, data, x + w / 2, cy);
   }
 
-  // Título
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  const title = CLINICAL_DOC_TITLE[data.type];
-  const titleW = doc.getTextWidth(title);
-  const titleX = contentX + contentW / 2;
-  doc.text(title, titleX, cy, { align: "center" });
-  cy += 2.5;
-  doc.setDrawColor(0);
-  doc.setLineWidth(0.35);
-  doc.line(titleX - titleW / 2, cy, titleX + titleW / 2, cy);
-  cy += 12;
+  // Título fixo só em atestado/declaração — pedidos clínicos (exames, fórmulas, orientações) vão direto ao conteúdo.
+  if (data.type !== "exames") {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    const title = CLINICAL_DOC_TITLE[data.type];
+    const titleW = doc.getTextWidth(title);
+    const titleX = contentX + contentW / 2;
+    doc.text(title, titleX, cy, { align: "center" });
+    cy += 2.5;
+    doc.setDrawColor(0);
+    doc.setLineWidth(0.35);
+    doc.line(titleX - titleW / 2, cy, titleX + titleW / 2, cy);
+    cy += 12;
+  } else {
+    cy += 4;
+  }
 
   // Dados do paciente
   doc.setFont("helvetica", "normal");
@@ -707,6 +712,6 @@ export function buildClinicalDocBody(opts: {
     ];
   }
 
-  // exames
-  return ["Solicito os exames abaixo relacionados:"];
+  // Pedidos clínicos (exames, fórmulas, orientações): corpo livre no editor — sem frase padrão de exames.
+  return [];
 }

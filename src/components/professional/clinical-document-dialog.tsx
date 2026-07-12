@@ -11,6 +11,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Popover,
@@ -113,6 +120,8 @@ export function ClinicalDocumentDialog({
   const [tplName, setTplName] = useState("");
   const [tplDefault, setTplDefault] = useState(false);
   const [tplCategory, setTplCategory] = useState<TemplateCategory>("exames");
+  const [browseTplCategory, setBrowseTplCategory] = useState<TemplateCategory>("exames");
+  const [selectedBrowseTplId, setSelectedBrowseTplId] = useState<string | null>(null);
   const [editingTplId, setEditingTplId] = useState<string | null>(null);
 
   const title = CLINICAL_DOC_TITLE[docType];
@@ -214,6 +223,8 @@ export function ClinicalDocumentDialog({
     setTplName("");
     setTplDefault(false);
     setTplCategory("exames");
+    setBrowseTplCategory("exames");
+    setSelectedBrowseTplId(null);
     (async () => {
       try {
         const [{ data: pt }, tpls] = await Promise.all([
@@ -230,8 +241,15 @@ export function ClinicalDocumentDialog({
         const def = tpls.find((t) => t.is_default);
         const nameForDoc = ptLite?.full_name ?? patientName ?? "";
         if (def) {
+          setBrowseTplCategory((def.category ?? "exames") as TemplateCategory);
+          setSelectedBrowseTplId(def.id);
           applyTemplate(def, nameForDoc);
         } else {
+          const firstCat =
+            (TEMPLATE_CATEGORIES.find((c) =>
+              tpls.some((t) => (t.category ?? "exames") === c.value),
+            )?.value as TemplateCategory | undefined) ?? "exames";
+          setBrowseTplCategory(firstCat);
           setEditorContent(buildDefaultHtml({ name: nameForDoc, date: todayISO() }, {}));
         }
       } catch (e) {
@@ -305,12 +323,23 @@ export function ClinicalDocumentDialog({
     [examsText],
   );
 
-  const groupedTemplates = useMemo(() => {
-    return TEMPLATE_CATEGORIES.map((cat) => ({
-      ...cat,
-      items: templates.filter((t) => (t.category ?? "exames") === cat.value),
-    })).filter((g) => g.items.length > 0);
-  }, [templates]);
+  const templatesInBrowseCategory = useMemo(
+    () => templates.filter((t) => (t.category ?? "exames") === browseTplCategory),
+    [templates, browseTplCategory],
+  );
+
+  const selectedBrowseTemplate = useMemo(
+    () => templates.find((t) => t.id === selectedBrowseTplId) ?? null,
+    [templates, selectedBrowseTplId],
+  );
+
+  useEffect(() => {
+    if (!useCategories) return;
+    setSelectedBrowseTplId((prev) => {
+      if (prev && templatesInBrowseCategory.some((t) => t.id === prev)) return prev;
+      return templatesInBrowseCategory[0]?.id ?? null;
+    });
+  }, [useCategories, templatesInBrowseCategory]);
 
   const buildPayload = (): ClinicalDocPayload => {
     const htmlPart = richHtmlHasContent(bodyHtml) ? { bodyHtml } : {};
@@ -529,84 +558,150 @@ export function ClinicalDocumentDialog({
             </p>
 
             {/* Modelos */}
-            <div className="flex flex-wrap items-end gap-2 rounded-lg border bg-muted/20 p-3">
-              <div className="flex-1 space-y-2">
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <Label className="text-xs">Meus modelos</Label>
-                {templates.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">Nenhum modelo salvo ainda.</p>
-                ) : useCategories ? (
-                  <div className="space-y-2">
-                    {groupedTemplates.map((group) => (
-                      <div key={group.value} className="space-y-1">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          {group.label}
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {group.items.map((t) => (
-                            <span
-                              key={t.id}
-                              className={cn(
-                                "inline-flex items-center gap-1 rounded-md border bg-card px-2 py-1 text-xs",
-                                editingTplId === t.id && "border-primary ring-1 ring-primary",
-                              )}
-                            >
-                              <button type="button" className="font-medium hover:text-primary" onClick={() => applyTemplate(t)}>
-                                {t.is_default && <Star className="mr-1 inline size-3 fill-amber-400 text-amber-400" />}
-                                {t.name}
-                              </button>
-                              <button type="button" onClick={() => editTemplate(t)} title="Editar modelo" className="text-muted-foreground hover:text-primary">
-                                <Pencil className="size-3" />
-                              </button>
-                              <button type="button" onClick={() => void handleDeleteTemplate(t.id)} title="Remover modelo" className="text-muted-foreground hover:text-destructive">
-                                <Trash2 className="size-3" />
-                              </button>
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-1.5">
-                    {templates.map((t) => (
-                      <span
-                        key={t.id}
-                        className={cn(
-                          "inline-flex items-center gap-1 rounded-md border bg-card px-2 py-1 text-xs",
-                          editingTplId === t.id && "border-primary ring-1 ring-primary",
-                        )}
-                      >
-                        <button type="button" className="font-medium hover:text-primary" onClick={() => applyTemplate(t)}>
-                          {t.is_default && <Star className="mr-1 inline size-3 fill-amber-400 text-amber-400" />}
-                          {t.name}
-                        </button>
-                        <button type="button" onClick={() => editTemplate(t)} title="Editar modelo" className="text-muted-foreground hover:text-primary">
-                          <Pencil className="size-3" />
-                        </button>
-                        <button type="button" onClick={() => void handleDeleteTemplate(t.id)} title="Remover modelo" className="text-muted-foreground hover:text-destructive">
-                          <Trash2 className="size-3" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (saveTplOpen) {
+                      cancelTemplateEdit();
+                    } else {
+                      setEditingTplId(null);
+                      setSaveTplOpen(true);
+                    }
+                  }}
+                >
+                  <Save className="mr-1 size-3.5" />
+                  Salvar como modelo
+                </Button>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  if (saveTplOpen) {
-                    cancelTemplateEdit();
-                  } else {
-                    setEditingTplId(null);
-                    setSaveTplOpen(true);
-                  }
-                }}
-              >
-                <Save className="mr-1 size-3.5" />
-                Salvar como modelo
-              </Button>
+
+              {templates.length === 0 ? (
+                <p className="mt-2 text-xs text-muted-foreground">Nenhum modelo salvo ainda.</p>
+              ) : useCategories ? (
+                <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,10.5rem)_minmax(0,1fr)]">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Categoria</Label>
+                    <Select
+                      value={browseTplCategory}
+                      onValueChange={(v) => setBrowseTplCategory(v as TemplateCategory)}
+                    >
+                      <SelectTrigger className="h-9 bg-background">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TEMPLATE_CATEGORIES.map((cat) => (
+                          <SelectItem key={cat.value} value={cat.value}>
+                            {cat.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">
+                      Modelos
+                      {templatesInBrowseCategory.length > 0
+                        ? ` (${templatesInBrowseCategory.length})`
+                        : ""}
+                    </Label>
+                    <div
+                      role="listbox"
+                      aria-label="Modelos da categoria"
+                      className="max-h-40 overflow-y-auto overscroll-contain rounded-md border bg-background"
+                    >
+                      {templatesInBrowseCategory.length === 0 ? (
+                        <p className="px-3 py-6 text-center text-xs text-muted-foreground">
+                          Nenhum modelo nesta categoria.
+                        </p>
+                      ) : (
+                        templatesInBrowseCategory.map((t) => (
+                          <button
+                            key={t.id}
+                            type="button"
+                            role="option"
+                            aria-selected={selectedBrowseTplId === t.id}
+                            onClick={() => setSelectedBrowseTplId(t.id)}
+                            onDoubleClick={() => applyTemplate(t)}
+                            className={cn(
+                              "flex w-full items-center gap-2 border-b px-3 py-2 text-left text-sm last:border-b-0",
+                              selectedBrowseTplId === t.id
+                                ? "bg-primary/10 font-medium text-primary"
+                                : "hover:bg-muted/50",
+                              editingTplId === t.id && "ring-1 ring-inset ring-primary/40",
+                            )}
+                          >
+                            {t.is_default ? (
+                              <Star className="size-3.5 shrink-0 fill-amber-400 text-amber-400" />
+                            ) : (
+                              <span className="size-3.5 shrink-0" aria-hidden />
+                            )}
+                            <span className="truncate">{t.name}</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                    {selectedBrowseTemplate ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => applyTemplate(selectedBrowseTemplate)}
+                        >
+                          Usar modelo
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => editTemplate(selectedBrowseTemplate)}
+                        >
+                          <Pencil className="mr-1 size-3.5" />
+                          Editar
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => void handleDeleteTemplate(selectedBrowseTemplate.id)}
+                        >
+                          <Trash2 className="mr-1 size-3.5" />
+                          Excluir
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {templates.map((t) => (
+                    <span
+                      key={t.id}
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-md border bg-card px-2 py-1 text-xs",
+                        editingTplId === t.id && "border-primary ring-1 ring-primary",
+                      )}
+                    >
+                      <button type="button" className="font-medium hover:text-primary" onClick={() => applyTemplate(t)}>
+                        {t.is_default && <Star className="mr-1 inline size-3 fill-amber-400 text-amber-400" />}
+                        {t.name}
+                      </button>
+                      <button type="button" onClick={() => editTemplate(t)} title="Editar modelo" className="text-muted-foreground hover:text-primary">
+                        <Pencil className="size-3" />
+                      </button>
+                      <button type="button" onClick={() => void handleDeleteTemplate(t.id)} title="Remover modelo" className="text-muted-foreground hover:text-destructive">
+                        <Trash2 className="size-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {saveTplOpen && (
