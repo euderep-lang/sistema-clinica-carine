@@ -1,7 +1,7 @@
 import { fmtDateFull } from "@/lib/locale";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CalendarDays, ChevronLeft, ChevronRight, Eye, LayoutGrid, List, Lock, MapPin, Pencil, PlayCircle, Plus, Video } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Eye, LayoutGrid, List, Lock, MapPin, Pencil, PlayCircle, Plus, Video, X } from "lucide-react";
 import { toast } from "sonner";
 import { EditAppointmentDialog } from "@/components/agenda/edit-appointment-dialog";
 import { NewAppointmentDialog } from "@/components/agenda/new-appointment-dialog";
@@ -41,10 +41,12 @@ import {
   APPOINTMENT_STATUS_LABEL,
   APPOINTMENT_TYPE_LABEL,
   isAppointmentEditable,
+  canCancelAppointment,
   PROFESSIONAL_AGENDA_STATUS_ITEM,
   PROFESSIONAL_AGENDA_STATUS_OPTIONS,
   PROFESSIONAL_AGENDA_STATUS_TRIGGER,
   PROFESSIONAL_AGENDA_STATUS_VALUES,
+  showsOnAgendaGrid,
 } from "@/lib/appointment-types";
 import { useAuth } from "@/lib/mock-auth";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -108,13 +110,18 @@ function ProfessionalAgendaPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile, date, viewMode, weekStart, weekEnd]);
 
+  const gridRows = useMemo(
+    () => rows.filter((r) => showsOnAgendaGrid(r)),
+    [rows],
+  );
+
   const visibleRows = useMemo(() => {
-    if (viewMode === "weekly") return rows;
-    return rows.filter((r) => r.date === date);
-  }, [rows, viewMode, date]);
+    if (viewMode === "weekly") return gridRows;
+    return gridRows.filter((r) => r.date === date);
+  }, [gridRows, viewMode, date]);
 
   const summary = useMemo(() => {
-    const source = viewMode === "weekly" ? rows : visibleRows;
+    const source = viewMode === "weekly" ? gridRows : visibleRows;
     const total = source.filter((r) => r.status !== "cancelled").length;
     const done = source.filter((r) => r.status === "completed").length;
     const pending = source.filter(
@@ -123,12 +130,17 @@ function ProfessionalAgendaPage() {
     return { total, done, pending };
   }, [rows, visibleRows, viewMode]);
 
-  const updateStatus = async (id: string, status: string) => {
+  const updateStatus = async (id: string, status: string, cancelReason?: string) => {
+    const payload: { status: string; cancel_reason?: string } = { status };
+    if (status === "cancelled" && cancelReason) {
+      payload.cancel_reason = cancelReason;
+    }
+
     const { data, error } = await supabase
       .from("appointments")
-      .update({ status })
+      .update(payload)
       .eq("id", id)
-      .select("id, status")
+      .select("id, status, cancel_reason")
       .maybeSingle();
     if (error) {
       toast.error(error.message);
@@ -156,10 +168,14 @@ function ProfessionalAgendaPage() {
     const row = rows.find((r) => r.id === id);
     const result = await requestStatusChange(
       status,
-      async () => {
-        const ok = await updateStatus(id, status);
+      async (ctx) => {
+        const ok = await updateStatus(id, status, ctx?.cancelReason);
         if (ok) {
-          toast.success("Situação atualizada");
+          if (status === "cancelled") {
+            toast.success("Agendamento cancelado");
+          } else {
+            toast.success("Situação atualizada");
+          }
           if (status === "completed" || status === "no_show") {
             toast.info(AUTOMATION_QUEUED_MESSAGE);
           }
@@ -295,7 +311,7 @@ function ProfessionalAgendaPage() {
         {viewMode === "weekly" && (
           <ProfessionalAgendaWeekView
             weekStart={weekStart}
-            rows={rows}
+            rows={gridRows}
             loading={loading}
             onStatusChange={handleStatusChange}
             onStart={(a) => void startAppointment(a)}
@@ -433,13 +449,25 @@ function ProfessionalAgendaPage() {
                                 Editar
                               </Button>
                             )}
+                            {canCancelAppointment(a.status) && a.patient_id && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                title="Cancelar"
+                                onClick={() => void handleStatusChange(a.id, "cancelled")}
+                              >
+                                <X className="mr-1 size-4" />
+                                Cancelar
+                              </Button>
+                            )}
                             <AgendaContactActions
                               phone={a.patients?.phone}
                               patientId={a.patient_id}
                               patientName={a.patients?.full_name}
                               size="icon"
                             />
-                            {["scheduled", "confirmed", "rescheduled"].includes(a.status) &&
+                            {["scheduled", "confirmed"].includes(a.status) &&
                               a.patient_id && (
                                 <Button size="sm" onClick={() => void startAppointment(a)}>
                                   <PlayCircle className="mr-1 size-4" />
@@ -532,7 +560,7 @@ function ProfessionalAgendaPage() {
         lockProfessional
         onSaved={(savedDate) => {
           if (savedDate !== date) setDate(savedDate);
-          else void load({ silent: true });
+          void load();
         }}
       />
 

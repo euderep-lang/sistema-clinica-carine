@@ -32,6 +32,12 @@ import { patchFormForProfessional, type AppointmentProfessionalOption } from "@/
 import { addMinutes, addOneHour } from "@/lib/agenda-utils";
 import { getTenantSetting } from "@/lib/settings-helpers";
 import { checkAppointmentConflicts } from "@/lib/appointment-conflicts";
+import {
+  hasAppointmentSlotChanged,
+  moveAppointmentToNewSlot,
+  usesRescheduleCopyModel,
+  type AppointmentSlotFields,
+} from "@/lib/appointment-reschedule";
 import { useAuth } from "@/lib/mock-auth";
 import { normalizeSearch } from "@/lib/search";
 import { PatientSearchField } from "@/components/patient-search-field";
@@ -83,6 +89,8 @@ export function EditAppointmentDialog({
   const [patientLabel, setPatientLabel] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [originalSlot, setOriginalSlot] = useState<AppointmentSlotFields | null>(null);
+  const [originalStatus, setOriginalStatus] = useState<string>("scheduled");
   const [form, setForm] = useState({
     patient_id: "",
     room_id: "none",
@@ -131,7 +139,7 @@ export function EditAppointmentDialog({
         supabase
           .from("appointments")
           .select(
-            "id, patient_id, professional_id, room_id, date, start_time, end_time, type, modality, specialty, notes, patients(full_name)",
+            "id, patient_id, professional_id, room_id, date, start_time, end_time, type, modality, specialty, notes, status, patients(full_name)",
           )
           .eq("id", appointment.id)
           .maybeSingle(),
@@ -152,6 +160,14 @@ export function EditAppointmentDialog({
       }
 
       const patient = appt.patients as { full_name: string } | null;
+      setOriginalStatus(appt.status ?? "scheduled");
+      setOriginalSlot({
+        date: appt.date,
+        start_time: appt.start_time.slice(0, 5),
+        end_time: (appt.end_time ?? addOneHour(appt.start_time)).slice(0, 5),
+        professional_id: appt.professional_id ?? null,
+        room_id: appt.room_id ?? null,
+      });
       setPatientLabel(patient?.full_name ?? appointment.patients?.full_name ?? "");
       setForm({
         patient_id: appt.patient_id ?? "",
@@ -191,14 +207,26 @@ export function EditAppointmentDialog({
     }
     setSaving(true);
 
+    const nextSlot: AppointmentSlotFields = {
+      date: form.date,
+      start_time: form.start_time,
+      end_time: form.end_time || addOneHour(form.start_time),
+      professional_id: professionalId,
+      room_id: form.room_id === "none" ? null : form.room_id,
+    };
+
+    const slotChanged =
+      originalSlot !== null && hasAppointmentSlotChanged(originalSlot, nextSlot);
+    const useCopyModel = slotChanged && usesRescheduleCopyModel(originalStatus);
+
     try {
       const conflict = await checkAppointmentConflicts({
         tenantId: profile.tenant_id,
-        date: form.date,
-        startTime: form.start_time,
-        endTime: form.end_time || addOneHour(form.start_time),
-        professionalId,
-        roomId: form.room_id,
+        date: nextSlot.date,
+        startTime: nextSlot.start_time,
+        endTime: nextSlot.end_time,
+        professionalId: nextSlot.professional_id,
+        roomId: nextSlot.room_id === null ? "none" : nextSlot.room_id,
         excludeAppointmentId: appointment.id,
       });
       if (conflict.hasConflict) {
@@ -210,6 +238,33 @@ export function EditAppointmentDialog({
       setSaving(false);
       toast.error(`Não foi possível verificar disponibilidade: ${(e as Error).message}`);
       return;
+    }
+
+    if (useCopyModel) {
+      try {
+        const moved = await moveAppointmentToNewSlot({
+          appointmentId: appointment.id,
+          tenantId: profile.tenant_id,
+          createdBy: profile.id,
+          slot: nextSlot,
+          fields: {
+            patient_id: form.patient_id,
+            type: form.type || "consultation",
+            modality: form.modality || DEFAULT_APPOINTMENT_MODALITY,
+            specialty: form.specialty || null,
+            notes: form.notes || null,
+          },
+        });
+        setSaving(false);
+        toast.success("Consulta remarcada");
+        onOpenChange(false);
+        onSaved(moved.date);
+        return;
+      } catch (e) {
+        setSaving(false);
+        toast.error((e as Error).message);
+        return;
+      }
     }
 
     const { error } = await supabase

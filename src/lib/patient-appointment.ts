@@ -24,7 +24,7 @@ export async function findPatientAppointmentToday(
     .eq("patient_id", patientId)
     .eq("professional_id", professionalId)
     .eq("date", todayIso())
-    .in("status", ["in_progress", "scheduled", "confirmed", "rescheduled", "completed"]);
+    .in("status", ["in_progress", "scheduled", "confirmed", "completed"]);
 
   if (error || !data?.length) return null;
 

@@ -294,7 +294,9 @@ export function AgendaWeekView({
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {Object.entries(APPOINTMENT_STATUS_LABEL).map(([value, label]) => (
+                                      {Object.entries(APPOINTMENT_STATUS_LABEL)
+                                        .filter(([value]) => value !== "rescheduled" && value !== "blocked")
+                                        .map(([value, label]) => (
                                         <SelectItem key={value} value={value} className="text-xs">
                                           {label}
                                         </SelectItem>

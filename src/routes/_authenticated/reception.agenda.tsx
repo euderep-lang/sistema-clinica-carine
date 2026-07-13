@@ -46,6 +46,7 @@ import {
   isBlockAppointment,
   resolveAppointmentDurations,
   resolveAppointmentTypes,
+  showsOnAgendaGrid,
 } from "@/lib/appointment-types";
 import {
   addMinutes,
@@ -231,6 +232,7 @@ function AgendaPage() {
     const fromMin = timeToMinutes(timeFrom);
     const toMin = timeToMinutes(timeTo);
     return rows.filter((row) => {
+      if (!showsOnAgendaGrid(row, { showCancelled })) return false;
       if (!showCancelled && row.status === "cancelled") return false;
       if (filterProfessional !== "all" && row.professional_id !== filterProfessional) return false;
       if (filterRoom === "none" && row.room_id) return false;
@@ -245,6 +247,7 @@ function AgendaPage() {
     const fromMin = timeToMinutes(timeFrom);
     const toMin = timeToMinutes(timeTo);
     return rows.filter((row) => {
+      if (!showsOnAgendaGrid(row, { showCancelled })) return false;
       if (!showCancelled && row.status === "cancelled") return false;
       if (filterProfessional !== "all" && row.professional_id !== filterProfessional) return false;
       const startMin = timeToMinutes(row.start_time.slice(0, 5));
@@ -324,12 +327,12 @@ function AgendaPage() {
 
   const handleRescheduled = (newDate: string) => {
     if (newDate !== date) setDate(newDate);
-    else load();
+    void load();
   };
 
   const handleEdited = (newDate: string) => {
     if (newDate !== date) setDate(newDate);
-    else void load();
+    void load();
   };
 
   const save = async () => {
@@ -427,12 +430,21 @@ function AgendaPage() {
     });
   };
 
-  const updateStatus = async (id: string, status: string) => {
-    const { error } = await supabase.from("appointments").update({ status }).eq("id", id);
+  const updateStatus = async (id: string, status: string, cancelReason?: string) => {
+    const payload: { status: string; cancel_reason?: string } = { status };
+    if (status === "cancelled" && cancelReason) {
+      payload.cancel_reason = cancelReason;
+    }
+
+    const { error } = await supabase.from("appointments").update(payload).eq("id", id);
     if (error) toast.error(error.message);
     else {
       setRows((current) => current.map((r) => (r.id === id ? { ...r, status } : r)));
-      toast.success("Situação atualizada");
+      if (status === "cancelled") {
+        toast.success("Agendamento cancelado");
+      } else {
+        toast.success("Situação atualizada");
+      }
       if (status === "completed" || status === "no_show") {
         toast.info(AUTOMATION_QUEUED_MESSAGE);
       }
@@ -440,7 +452,11 @@ function AgendaPage() {
   };
 
   const handleStatusChange = (id: string, status: string, patientName?: string | null) => {
-    void requestStatusChange(status, () => updateStatus(id, status), { patientName });
+    void requestStatusChange(
+      status,
+      (ctx) => updateStatus(id, status, ctx?.cancelReason),
+      { patientName },
+    );
   };
 
   const handlePrint = () => {

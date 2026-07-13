@@ -6,11 +6,10 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
 import { addOneHour, formatTimeInterval, timeToMinutes } from "@/lib/agenda-utils";
 import { checkAppointmentConflicts } from "@/lib/appointment-conflicts";
+import { moveAppointmentToNewSlot } from "@/lib/appointment-reschedule";
 import { APPOINTMENT_TYPE_LABEL } from "@/lib/appointment-types";
-import { useAuth } from "@/lib/mock-auth";
 import type { AgendaRow } from "@/components/agenda/agenda-timeline-view";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -66,6 +65,20 @@ export function AgendaRescheduleDialog({
       return;
     }
 
+    const nextEnd = form.end_time || addOneHour(form.start_time);
+    const unchanged =
+      form.date === appointment.date &&
+      form.start_time === appointment.start_time.slice(0, 5) &&
+      nextEnd.slice(0, 5) === (appointment.end_time ?? addOneHour(appointment.start_time)).slice(0, 5) &&
+      (form.room_id === "none" ? null : form.room_id) === (appointment.room_id ?? null);
+
+    if (unchanged) {
+      setSaving(false);
+      toast.message("Nenhuma alteração de horário");
+      onOpenChange(false);
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -73,7 +86,7 @@ export function AgendaRescheduleDialog({
         tenantId: profile.tenant_id,
         date: form.date,
         startTime: form.start_time,
-        endTime: form.end_time || addOneHour(form.start_time),
+        endTime: nextEnd,
         professionalId: appointment.professional_id,
         roomId: form.room_id,
         excludeAppointmentId: appointment.id,
@@ -89,25 +102,27 @@ export function AgendaRescheduleDialog({
       return;
     }
 
-    const { error } = await supabase
-      .from("appointments")
-      .update({
-        date: form.date,
-        start_time: form.start_time,
-        end_time: form.end_time || addOneHour(form.start_time),
-        room_id: form.room_id === "none" ? null : form.room_id,
-      })
-      .eq("id", appointment.id);
-    setSaving(false);
-
-    if (error) {
-      toast.error(error.message);
-      return;
+    try {
+      const moved = await moveAppointmentToNewSlot({
+        appointmentId: appointment.id,
+        tenantId: profile.tenant_id,
+        createdBy: profile.id,
+        slot: {
+          date: form.date,
+          start_time: form.start_time,
+          end_time: nextEnd,
+          professional_id: appointment.professional_id,
+          room_id: form.room_id === "none" ? null : form.room_id,
+        },
+      });
+      setSaving(false);
+      toast.success("Agendamento reagendado");
+      onOpenChange(false);
+      onSaved(moved.date);
+    } catch (e) {
+      setSaving(false);
+      toast.error((e as Error).message);
     }
-
-    toast.success("Agendamento reagendado");
-    onOpenChange(false);
-    onSaved(form.date);
   };
 
   if (!appointment) return null;

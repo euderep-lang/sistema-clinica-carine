@@ -97,14 +97,52 @@ export function isAppointmentEditable(row: {
   status?: string | null;
 } | null | undefined): boolean {
   if (!row || isBlockAppointment(row)) return false;
-  return !["completed", "cancelled", "no_show"].includes(row.status ?? "");
+  return !["completed", "cancelled", "no_show", "rescheduled"].includes(row.status ?? "");
+}
+
+/** Exibe o agendamento na grade da agenda (ocupa horário visível). */
+export function showsOnAgendaGrid(
+  row: { status?: string | null },
+  options?: { showCancelled?: boolean },
+): boolean {
+  const status = row.status ?? "";
+  if (status === "rescheduled") return false;
+  if (status === "cancelled") return options?.showCancelled ?? false;
+  return true;
+}
+
+/** Pode cancelar pela agenda (some da grade após confirmar). */
+export function canCancelAppointment(status: string | null | undefined): boolean {
+  return ["scheduled", "confirmed", "in_progress"].includes(status ?? "");
+}
+
+export const APPOINTMENT_CANCEL_REASON_OTHER = "Outro";
+
+export const APPOINTMENT_CANCEL_REASONS = [
+  "Paciente solicitou",
+  "Paciente não confirmou / sem resposta",
+  "Paciente desistiu",
+  "Profissional indisponível",
+  "Erro de agendamento",
+  APPOINTMENT_CANCEL_REASON_OTHER,
+] as const;
+
+export function resolveAppointmentCancelReason(
+  preset: string,
+  customText: string,
+): string | null {
+  if (!preset) return null;
+  if (preset === APPOINTMENT_CANCEL_REASON_OTHER) {
+    const text = customText.trim();
+    return text.length > 0 ? text : null;
+  }
+  return preset;
 }
 
 /** Situações editáveis pelo profissional na Minha Agenda */
 export const PROFESSIONAL_AGENDA_STATUS_OPTIONS = [
   { value: "scheduled", label: "Agendando" },
   { value: "confirmed", label: "Confirmado" },
-  { value: "rescheduled", label: "Remarcado" },
   { value: "cancelled", label: "Cancelado" },
 ] as const;
 

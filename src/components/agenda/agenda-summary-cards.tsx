@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { APPOINTMENT_STATUS_LABEL } from "@/lib/appointment-types";
+import { APPOINTMENT_STATUS_LABEL, showsOnAgendaGrid } from "@/lib/appointment-types";
 
 export type AgendaSummaryRow = {
   id: string;
@@ -42,9 +42,9 @@ const CARD_META: Record<
 function rowsForKey(rows: AgendaSummaryRow[], key: SummaryKey): AgendaSummaryRow[] {
   switch (key) {
     case "active":
-      return rows.filter((r) => r.status !== "cancelled");
+      return rows.filter((r) => showsOnAgendaGrid(r, { showCancelled: true }) && r.status !== "cancelled");
     case "pending":
-      return rows.filter((r) => r.status === "scheduled" || r.status === "rescheduled");
+      return rows.filter((r) => r.status === "scheduled");
     case "confirmed":
       return rows.filter((r) => r.status === "confirmed");
     case "completed":
@@ -57,8 +57,9 @@ function rowsForKey(rows: AgendaSummaryRow[], key: SummaryKey): AgendaSummaryRow
 export function useAgendaSummaryTotals(rows: AgendaSummaryRow[]) {
   return useMemo(
     () => ({
-      active: rows.filter((r) => r.status !== "cancelled").length,
-      pending: rows.filter((r) => r.status === "scheduled" || r.status === "rescheduled").length,
+      active: rows.filter((r) => showsOnAgendaGrid(r, { showCancelled: true }) && r.status !== "cancelled")
+        .length,
+      pending: rows.filter((r) => r.status === "scheduled").length,
       confirmed: rows.filter((r) => r.status === "confirmed").length,
       completed: rows.filter((r) => r.status === "completed").length,
       cancelled: rows.filter((r) => r.status === "cancelled").length,
