@@ -150,11 +150,11 @@ export function FinancialCaixaTab({
 
       <PageSection title={`Caixa — ${fmtDate(date)}`}>
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-2 sm:gap-4 lg:grid-cols-5">
-          <StatCard label="Entradas (bruto)" value={fmt(stats.gross)} icon={ArrowDownLeft} tone="success" />
-          <StatCard label="Taxas" value={fmt(stats.fees)} icon={Landmark} tone="warning" />
-          <StatCard label="Entradas (líquido)" value={fmt(stats.inflow)} icon={ArrowDownLeft} tone="success" />
-          <StatCard label="Saídas" value={fmt(stats.outflow)} icon={ArrowUpRight} tone="danger" />
-          <StatCard label="Saldo do dia" value={fmt(stats.balance)} icon={Landmark} />
+          <StatCard label="Entradas (bruto)" value={fmt(stats.gross)} sub="Recebimentos do dia" icon={ArrowDownLeft} tone="success" />
+          <StatCard label="Taxas" value={fmt(stats.fees)} sub="Cartão no dia" icon={Landmark} tone="warning" />
+          <StatCard label="Entradas (líquido)" value={fmt(stats.inflow)} sub="Após taxas" icon={ArrowDownLeft} tone="success" />
+          <StatCard label="Saídas" value={fmt(stats.outflow)} sub="Despesas pagas no dia" icon={ArrowUpRight} tone="danger" />
+          <StatCard label="Saldo do dia" value={fmt(stats.balance)} sub="Líquido − saídas" icon={Landmark} />
         </div>
       </PageSection>
 

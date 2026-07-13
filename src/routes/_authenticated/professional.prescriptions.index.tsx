@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { fmtDateTimeFromDate } from "@/lib/locale";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Plus, FileDown, Copy, FilePlus2, PenLine, Trash2 } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
+import { Plus, FileDown, Copy, FilePlus2, PenLine, Trash2, Send, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { softDelete } from "@/lib/trash";
 import { useAuth } from "@/lib/mock-auth";
+import { sendPrescriptionViaCrm } from "@/lib/whatsapp.functions";
 
 export const Route = createFileRoute("/_authenticated/professional/prescriptions/")({
   component: PrescriptionsList,
@@ -38,7 +40,7 @@ interface RxRow {
   created_at: string;
   updated_at: string;
   signed_at: string | null;
-  patients: { full_name: string } | null;
+  patients: { full_name: string; phone: string | null } | null;
 }
 
 function formatRxGeneratedAt(row: RxRow) {
@@ -99,13 +101,15 @@ function PrescriptionsList() {
   const [q, setQ] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<RxRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [sendingId, setSendingId] = useState<string | null>(null);
+  const sendPrescriptionFn = useServerFn(sendPrescriptionViaCrm);
 
   const load = async () => {
     setLoading(true);
     let query = supabase
       .from("prescriptions" as never)
       .select(
-        "id, date, type, status, patient_id, pdf_url, created_at, updated_at, signed_at, patients!inner(full_name)",
+        "id, date, type, status, patient_id, pdf_url, created_at, updated_at, signed_at, patients!inner(full_name, phone)",
         { count: "exact" },
       )
       .eq("professional_id", profile!.id)
@@ -139,6 +143,34 @@ function PrescriptionsList() {
 
   const editDraft = (id: string) => {
     navigate({ to: "/professional/prescriptions/new", search: { edit: id } as never });
+  };
+
+  const sendViaCrm = async (row: RxRow) => {
+    if (!row.signed_at) {
+      toast.error("A receita precisa estar assinada digitalmente para envio pelo CRM");
+      return;
+    }
+    if (!row.pdf_url) {
+      toast.error("PDF da receita não disponível");
+      return;
+    }
+    if (!row.patients?.phone) {
+      toast.error("Paciente sem telefone cadastrado");
+      return;
+    }
+
+    setSendingId(row.id);
+    try {
+      const result = await sendPrescriptionFn({ data: { prescriptionId: row.id } });
+      toast.success("Receita enviada pelo CRM WhatsApp");
+      if (result.conversationId) {
+        navigate({ to: "/crm/inbox", search: { conversation: result.conversationId } });
+      }
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSendingId(null);
+    }
   };
 
   const confirmDelete = async () => {
@@ -233,9 +265,26 @@ function PrescriptionsList() {
                             Continuar
                           </Button>
                         ) : (
-                          <Button size="sm" variant="ghost" onClick={() => openPdf(r.pdf_url)} disabled={!r.pdf_url}>
-                            <FileDown className="h-4 w-4" />
-                          </Button>
+                          <>
+                            <Button size="sm" variant="ghost" onClick={() => openPdf(r.pdf_url)} disabled={!r.pdf_url}>
+                              <FileDown className="h-4 w-4" />
+                            </Button>
+                            {r.signed_at && r.pdf_url ? (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                title="Enviar PDF assinado pelo CRM WhatsApp"
+                                disabled={sendingId === r.id || !r.patients?.phone}
+                                onClick={() => void sendViaCrm(r)}
+                              >
+                                {sendingId === r.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Send className="h-4 w-4" />
+                                )}
+                              </Button>
+                            ) : null}
+                          </>
                         )}
                         <Button size="sm" variant="ghost" onClick={() => duplicate(r.id)}><Copy className="h-4 w-4" /></Button>
                         <Button size="sm" variant="ghost" onClick={() => navigate({ to: "/professional/prescriptions/new", search: { patient_id: r.patient_id } as never })}><FilePlus2 className="h-4 w-4" /></Button>

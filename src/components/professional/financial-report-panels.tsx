@@ -168,14 +168,26 @@ function MetricsPanel({ ctx }: { ctx: ReportQueryCtx }) {
         />
         <CardContent>
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
-            <StatCard label="Produção" value={fmt(data.production)} icon={Wallet} />
-            <StatCard label="Recebido bruto" value={fmt(data.received)} icon={TrendingUp} tone="success" />
-            <StatCard label="Recebido líquido" value={fmt(data.netReceived)} icon={HandCoins} tone="success" />
-            <StatCard label="Pendente (período)" value={fmt(data.pending)} icon={TrendingDown} tone="warning" />
-            <StatCard label="Total em aberto" value={fmt(data.totalOpen)} icon={Receipt} tone="danger" />
-            <StatCard label="Taxas" value={fmt(data.fees)} sub="Sobre pagamentos" tone="warning" />
-            <StatCard label="Despesas pagas" value={fmt(data.expenses)} tone="danger" />
-            <StatCard label="Resultado" value={fmt(data.result)} tone={data.result >= 0 ? "success" : "danger"} />
+            <StatCard label="Produção" value={fmt(data.production)} sub="Competência no período" icon={Wallet} />
+            <StatCard label="Recebido bruto" value={fmt(data.received)} sub="Data do pagamento" icon={TrendingUp} tone="success" />
+            <StatCard label="Recebido líquido" value={fmt(data.netReceived)} sub="Após taxas de cartão" icon={HandCoins} tone="success" />
+            <StatCard label="Pendente (período)" value={fmt(data.pending)} sub="Saldo em aberto (competência)" icon={TrendingDown} tone="warning" />
+            <StatCard label="Total em aberto" value={fmt(data.totalOpen)} sub="Todas as faturas" icon={Receipt} tone="danger" />
+            <StatCard label="Taxas" value={fmt(data.fees)} sub="Sobre recebimentos" tone="warning" />
+            <StatCard label="Despesas pagas" value={fmt(data.expenses)} sub="Data do pagamento (DRE 4.01)" tone="danger" />
+            <StatCard label="Comissões" value={fmt(data.commissions)} sub="Sobre recebido (DRE 4.02)" tone="warning" />
+            <StatCard
+              label="Resultado operacional"
+              value={fmt(data.operatingResult)}
+              sub="Produção − descontos − despesas − comissões − taxas"
+              tone={data.operatingResult >= 0 ? "success" : "danger"}
+            />
+            <StatCard
+              label="Saldo caixa"
+              value={fmt(data.cashResult)}
+              sub="Líquido recebido − despesas pagas"
+              tone={data.cashResult >= 0 ? "success" : "danger"}
+            />
           </div>
           <div className="mt-6 grid gap-3 sm:grid-cols-3 text-sm">
             <div className="rounded-lg border bg-muted/20 px-4 py-3">
@@ -331,8 +343,8 @@ export function CommissionReportPanel({ ctx }: { ctx: ReportQueryCtx }) {
       />
       <CardContent className="min-w-0 space-y-4">
         <div className="flex flex-wrap gap-4 text-sm">
-          <span>Produção: <strong>{fmt(totals.production)}</strong></span>
-          <span>Recebido: <strong>{fmt(totals.received)}</strong></span>
+          <span>Produção: <strong>{fmt(totals.production)}</strong> <span className="text-muted-foreground">(competência)</span></span>
+          <span>Recebido: <strong>{fmt(totals.received)}</strong> <span className="text-muted-foreground">(pagamentos)</span></span>
           <span>Comissão total: <strong>{fmt(totals.commission)}</strong></span>
         </div>
         <Table>
@@ -713,6 +725,13 @@ function ProductionPanel({ ctx }: { ctx: ReportQueryCtx }) {
               style={{ borderLeftWidth: 4, borderLeftColor: item.fill }}
             >
               <p className="text-xs text-muted-foreground">{item.name}</p>
+              <p className="mt-0.5 text-[0.65rem] text-muted-foreground/80">
+                {item.name === "Produção"
+                  ? "Por competência"
+                  : item.name === "Recebido"
+                    ? "Pagamentos no período"
+                    : "Saldo em aberto (competência)"}
+              </p>
               <p className="mt-1 text-lg font-semibold">{fmt(item.value)}</p>
             </div>
           ))}
@@ -876,7 +895,10 @@ function ExpensesPanel({ ctx }: { ctx: ReportQueryCtx }) {
   return (
     <div className="space-y-4">
       <Card>
-        <ReportHeader title="Despesas por categoria" description={periodLabel(ctx)} />
+        <ReportHeader
+          title="Despesas por categoria"
+          description={`${periodLabel(ctx)} · por vencimento (contas a pagar)`}
+        />
         <CardContent>
           {byCategory.length === 0 ? (
             <p className="text-muted-foreground">Sem despesas no período.</p>

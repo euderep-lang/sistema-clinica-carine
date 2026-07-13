@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, MoreHorizontal, Pencil, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
+import { PageSection } from "@/components/layout/page-section";
+import { StatCard } from "@/components/layout/stat-card";
 import { ExpenseDialog } from "@/components/professional/expense-dialog";
 import { DateRangeFilter, firstDayOfMonth, todayISO } from "@/components/professional/date-range-filter";
 import { Button } from "@/components/ui/button";
@@ -44,6 +46,7 @@ import {
   loadProfessionalExpenses,
   loadTenantExpenses,
   markExpensePaid,
+  sumExpenseTotals,
   type ExpenseRow,
 } from "@/lib/expenses";
 import { FinancialProfessionalFilter } from "@/components/professional/financial-professional-filter";
@@ -63,6 +66,7 @@ export function FinancialDespesasTab({
   const [category, setCategory] = useState("all");
   const [from, setFrom] = useState(firstDayOfMonth());
   const [to, setTo] = useState(todayISO());
+  const [dateField, setDateField] = useState<"due_date" | "paid_date">("due_date");
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<ExpenseRow | null>(null);
@@ -78,10 +82,10 @@ export function FinancialDespesasTab({
               category,
               from,
               to,
-              dateField: "due_date",
+              dateField,
               professionalFilter,
             })
-          : loadProfessionalExpenses(profile.id, { status, category, from, to, dateField: "due_date" }),
+          : loadProfessionalExpenses(profile.id, { status, category, from, to, dateField }),
         loadExpenseCategories(),
       ]);
       setRows(data);
@@ -91,7 +95,7 @@ export function FinancialDespesasTab({
     } finally {
       setLoading(false);
     }
-  }, [profile, status, category, from, to, scope, professionalFilter]);
+  }, [profile, status, category, from, to, dateField, scope, professionalFilter]);
 
   useEffect(() => {
     void load();
@@ -108,18 +112,9 @@ export function FinancialDespesasTab({
     );
   }, [rows, search]);
 
-  const totals = useMemo(() => {
-    let total = 0;
-    let paid = 0;
-    let pending = 0;
-    for (const r of filtered) {
-      if (r.status === "cancelled") continue;
-      total += Number(r.amount);
-      if (r.status === "paid") paid += Number(r.amount);
-      else pending += Number(r.amount);
-    }
-    return { total, paid, pending };
-  }, [filtered]);
+  const totals = useMemo(() => sumExpenseTotals(filtered), [filtered]);
+
+  const dateFieldLabel = dateField === "due_date" ? "vencimento" : "pagamento";
 
   const openNew = () => {
     setEditTarget(null);
@@ -169,6 +164,18 @@ export function FinancialDespesasTab({
             <FinancialProfessionalFilter value={professionalFilter} onChange={onProfessionalFilterChange} />
           )}
           <DateRangeFilter from={from} to={to} onFromChange={setFrom} onToChange={setTo} />
+          <Select
+            value={dateField}
+            onValueChange={(v) => setDateField(v as "due_date" | "paid_date")}
+          >
+            <SelectTrigger className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="due_date">Por vencimento</SelectItem>
+              <SelectItem value="paid_date">Por pagamento</SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={status} onValueChange={setStatus}>
             <SelectTrigger className="w-40">
               <SelectValue placeholder="Situação" />
@@ -205,11 +212,44 @@ export function FinancialDespesasTab({
         </Button>
       </div>
 
-      <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-        <span>Total: <strong className="text-foreground">{fmt(totals.total)}</strong></span>
-        <span>Pago: <strong className="text-emerald-700">{fmt(totals.paid)}</strong></span>
-        <span>Pendente: <strong className="text-amber-700">{fmt(totals.pending)}</strong></span>
-      </div>
+      <PageSection
+        title="Resumo"
+        description={
+          dateField === "due_date"
+            ? `Contas com vencimento entre ${fmtDate(from)} e ${fmtDate(to)} — visão de contas a pagar`
+            : `Contas pagas entre ${fmtDate(from)} e ${fmtDate(to)} — igual ao DRE e ao caixa`
+        }
+      >
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
+          <StatCard
+            size="sm"
+            label="Total"
+            value={fmt(totals.total)}
+            sub={`Por ${dateFieldLabel}`}
+            tone="default"
+          />
+          <StatCard
+            size="sm"
+            label="Pago"
+            value={fmt(totals.paid)}
+            sub={dateField === "paid_date" ? "Pagas no período" : "Situação paga"}
+            tone="success"
+          />
+          <StatCard
+            size="sm"
+            label="Pendente"
+            value={fmt(totals.pending)}
+            sub={dateField === "paid_date" ? "Só no filtro por vencimento" : "A pagar no período"}
+            tone="warning"
+          />
+        </div>
+        {dateField === "due_date" ? (
+          <p className="mt-3 text-xs text-muted-foreground">
+            Para comparar com o DRE (linha 4.01), use o filtro &quot;Por pagamento&quot; com situação
+            &quot;Paga&quot;. O DRE também inclui comissões e taxas de cartão, que não aparecem aqui.
+          </p>
+        ) : null}
+      </PageSection>
 
       <Card>
         <CardContent className="min-w-0 p-0">
@@ -221,7 +261,9 @@ export function FinancialDespesasTab({
                 <TableHead>Categoria</TableHead>
                 <TableHead>Fornecedor</TableHead>
                 <TableHead className="text-center">Valor</TableHead>
-                <TableHead className="text-center">Vencimento</TableHead>
+                <TableHead className="text-center">
+                  {dateField === "paid_date" ? "Pagamento" : "Vencimento"}
+                </TableHead>
                 <TableHead className="text-center">Forma</TableHead>
                 <TableHead className="text-center">Situação</TableHead>
                 <TableHead className="w-12" />
@@ -251,7 +293,13 @@ export function FinancialDespesasTab({
                       <TableCell>{r.category ?? "—"}</TableCell>
                       <TableCell>{r.supplier ?? "—"}</TableCell>
                       <TableCell className="text-center tabular-nums">{fmt(r.amount)}</TableCell>
-                      <TableCell className="text-center">{fmtDate(r.due_date)}</TableCell>
+                      <TableCell className="text-center">
+                        {dateField === "paid_date"
+                          ? r.paid_date
+                            ? fmtDate(r.paid_date)
+                            : "—"
+                          : fmtDate(r.due_date)}
+                      </TableCell>
                       <TableCell className="text-center">
                         {r.payment_method ? paymentLabel(r.payment_method) : "—"}
                       </TableCell>

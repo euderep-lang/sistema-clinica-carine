@@ -245,8 +245,16 @@ export function PatientFinancialTab({ patientId }: PatientFinancialTabProps) {
     if (!reverseTarget) return;
     setActionLoading(true);
     try {
-      await reverseSale(reverseTarget.id, "Estorno pela recepção");
-      toast.success(billHasSaleItems(reverseTarget) ? "Venda estornada" : "Cobrança cancelada");
+      const result = (await reverseSale(reverseTarget.id, "Estorno pela recepção")) as {
+        payments_reversed?: number;
+      } | null;
+      const paymentsMsg =
+        result?.payments_reversed && result.payments_reversed > 0
+          ? ` · ${result.payments_reversed} pagamento(s) estornado(s)`
+          : "";
+      toast.success(
+        (billHasSaleItems(reverseTarget) ? "Venda estornada" : "Cobrança cancelada") + paymentsMsg,
+      );
       setReverseTarget(null);
       await load();
     } catch (e) {

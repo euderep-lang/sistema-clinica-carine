@@ -61,15 +61,25 @@ import {
   addSaleItems,
   billCanReceive,
   loadSaleChargeItems,
+  loadSaleItemInsumosByBill,
   receiveBillPayment,
   removeSaleItem,
   updateSaleItem,
   type SaleBillRow,
   type SaleChargeItem,
+  type SaleItemInsumo,
 } from "@/lib/sales";
+import { ProcedureInventoryDialog } from "@/components/professional/procedure-inventory-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
 import { matchesSearch } from "@/lib/search";
+import {
+  buildProcedureInventoryQueue,
+  expandSaleItemsWithPerUnitInventory,
+  isClinicalService,
+  sortProceduresForDisplay,
+  type InventoryLinkInput,
+} from "@/lib/procedures";
 import { RetroactivePaymentDateField, resolvePaymentDate, validatePaymentDate } from "@/components/professional/retroactive-payment-date-field";
 import {
   PaymentFeeBearerField,
@@ -87,8 +97,10 @@ type DiscountMode = "amount" | "percent";
 interface PickerService {
   id: string;
   name: string;
+  category: string | null;
   default_price: number;
   session_count: number;
+  hasLinkedInventory: boolean;
 }
 
 function resolveDiscountValue(
@@ -135,6 +147,7 @@ export function BillDetailDialog({
 }: BillDetailDialogProps) {
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<SaleChargeItem[]>([]);
+  const [itemInsumos, setItemInsumos] = useState<Record<string, SaleItemInsumo[]>>({});
   const [payments, setPayments] = useState<BillPaymentRow[]>([]);
   const [discounts, setDiscounts] = useState<BillDiscountRow[]>([]);
   const [methodConfigs, setMethodConfigs] = useState<PaymentMethodConfig[]>(
@@ -163,6 +176,8 @@ export function BillDetailDialog({
   const [addQuantities, setAddQuantities] = useState<Record<string, number>>({});
   const [addPrices, setAddPrices] = useState<Record<string, string>>({});
   const [addSaving, setAddSaving] = useState(false);
+  const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [saleInventory, setSaleInventory] = useState<Record<string, InventoryLinkInput[]>>({});
   const [itemQty, setItemQty] = useState<Record<string, string>>({});
   const [itemPrice, setItemPrice] = useState<Record<string, string>>({});
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
@@ -222,7 +237,7 @@ export function BillDetailDialog({
       const isOps = profile?.role !== "professional";
       let serviceQuery = supabase
         .from("services")
-        .select("id, name, default_price, session_count")
+        .select("id, name, category, default_price, session_count")
         .eq("active", true)
         .order("name");
       if (profile?.tenant_id) serviceQuery = serviceQuery.eq("tenant_id", profile.tenant_id);
@@ -230,13 +245,18 @@ export function BillDetailDialog({
         serviceQuery = serviceQuery.or(`professional_id.eq.${profile.id},professional_id.is.null`);
       }
 
-      const [chargeItems, billPayments, billDiscounts, svcRes] = await Promise.all([
+      const linkQuery = supabase.from("service_inventory_items").select("service_id");
+
+      const [chargeItems, billPayments, billDiscounts, svcRes, linkRes, insumos] = await Promise.all([
         loadSaleChargeItems(bill.id),
         loadBillPayments({ billId: bill.id, limit: 50 }),
         loadBillDiscounts({ billId: bill.id, limit: 50 }),
         serviceQuery,
+        linkQuery,
+        loadSaleItemInsumosByBill(bill.id),
       ]);
       setItems(chargeItems);
+      setItemInsumos(insumos);
       setItemQty(
         Object.fromEntries(chargeItems.map((it) => [it.id, String(it.quantity)])),
       );
@@ -245,13 +265,18 @@ export function BillDetailDialog({
       );
       setPayments(billPayments);
       setDiscounts(billDiscounts);
+      const linked = new Set((linkRes.data ?? []).map((r) => r.service_id as string));
       setServices(
-        (svcRes.data ?? []).map((s) => ({
-          id: s.id as string,
-          name: s.name as string,
-          default_price: Number(s.default_price),
-          session_count: Number(s.session_count ?? 1),
-        })),
+        sortProceduresForDisplay(
+          (svcRes.data ?? []).map((s) => ({
+            id: s.id as string,
+            name: s.name as string,
+            category: (s.category as string | null) ?? null,
+            default_price: Number(s.default_price),
+            session_count: Number(s.session_count ?? 1),
+            hasLinkedInventory: linked.has(s.id as string),
+          })),
+        ),
       );
       setPayAmount("");
       setPayDiscount("");
@@ -383,6 +408,8 @@ export function BillDetailDialog({
     setServiceSearch("");
     setAddQuantities({});
     setAddPrices({});
+    setSaleInventory({});
+    setInventoryOpen(false);
   };
 
   const closeAddItemsDialog = () => {
@@ -390,22 +417,30 @@ export function BillDetailDialog({
     resetAddItemsForm();
   };
 
-  const submitAddItems = async () => {
+  const inventoryPendingQueue = useMemo(
+    () =>
+      buildProcedureInventoryQueue(
+        addSelection.filter((s) => !isClinicalService(s.category) && !s.hasLinkedInventory),
+        addQuantities,
+        saleInventory,
+      ),
+    [addSelection, addQuantities, saleInventory],
+  );
+
+  const submitAddItems = async (inventoryOverride?: Record<string, InventoryLinkInput[]>) => {
     if (!bill || addSelection.length === 0) return;
+    const inventoryMap = inventoryOverride ?? saleInventory;
     setAddSaving(true);
     try {
       const result = await addSaleItems(
         bill.id,
-        addSelection.map((s) => {
-          const price =
-            parseBRLInput(addPrices[s.id] ?? formatBRLInput(s.default_price)) ||
-            s.default_price;
-          return {
-            service_id: s.id,
-            quantity: addQuantities[s.id] ?? 1,
-            unit_price: price,
-          };
-        }),
+        expandSaleItemsWithPerUnitInventory(
+          addSelection,
+          addQuantities,
+          (s) =>
+            parseBRLInput(addPrices[s.id] ?? formatBRLInput(s.default_price)) || s.default_price,
+          inventoryMap,
+        ),
       );
       toast.success(`${fmt(result.added_total)} adicionado(s) à conta`);
       closeAddItemsDialog();
@@ -415,6 +450,21 @@ export function BillDetailDialog({
     } finally {
       setAddSaving(false);
     }
+  };
+
+  const handleInventoryConfirmAll = (inventory: Record<string, InventoryLinkInput[]>) => {
+    const nextInventory = { ...saleInventory, ...inventory };
+    setSaleInventory(nextInventory);
+    setInventoryOpen(false);
+    void submitAddItems(nextInventory);
+  };
+
+  const handleAddItemsClick = () => {
+    if (inventoryPendingQueue.length === 0) {
+      void submitAddItems();
+      return;
+    }
+    setInventoryOpen(true);
   };
 
   const commitItem = async (item: SaleChargeItem) => {
@@ -674,6 +724,15 @@ export function BillDetailDialog({
                                 <p className="text-sm font-medium leading-snug break-words">
                                   {name}
                                 </p>
+                                {item.service_id &&
+                                  (itemInsumos[item.service_id] ?? []).map((insumo) => (
+                                    <p
+                                      key={`${item.id}-${insumo.name}`}
+                                      className="mt-0.5 text-[11px] leading-snug text-muted-foreground/90"
+                                    >
+                                      {insumo.name} · {insumo.quantity} {insumo.unit}
+                                    </p>
+                                  ))}
                                 {item.services && item.services.session_count > 1 && (
                                   <p className="mt-0.5 text-xs text-muted-foreground">
                                     {item.services.session_count} sessões por unidade
@@ -1159,7 +1218,7 @@ export function BillDetailDialog({
               </Button>
               <Button
                 type="button"
-                onClick={() => void submitAddItems()}
+                onClick={handleAddItemsClick}
                 disabled={addSaving || addSelection.length === 0}
               >
                 {addSaving && <Loader2 className="mr-2 size-4 animate-spin" />}
@@ -1169,6 +1228,13 @@ export function BillDetailDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ProcedureInventoryDialog
+        open={inventoryOpen}
+        targets={inventoryPendingQueue}
+        onOpenChange={setInventoryOpen}
+        onConfirm={handleInventoryConfirmAll}
+      />
 
       <AlertDialog
         open={Boolean(removeItemTarget)}

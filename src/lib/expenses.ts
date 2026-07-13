@@ -17,6 +17,24 @@ export interface ExpenseRow {
   profiles?: { full_name: string } | null;
 }
 
+export function sumExpenseTotals(rows: ExpenseRow[]): {
+  total: number;
+  paid: number;
+  pending: number;
+} {
+  let total = 0;
+  let paid = 0;
+  let pending = 0;
+  for (const row of rows) {
+    if (row.status === "cancelled") continue;
+    const amount = Number(row.amount);
+    total += amount;
+    if (row.status === "paid") paid += amount;
+    else pending += amount;
+  }
+  return { total, paid, pending };
+}
+
 export interface ExpenseInput {
   description: string;
   category?: string | null;
@@ -44,7 +62,6 @@ export async function loadTenantExpenses(
     .select(
       "id, description, category, supplier, amount, due_date, paid_date, payment_method, status, notes, professional_id, created_at, profiles:professional_id(full_name)",
     )
-    .order("due_date", { ascending: false })
     .limit(500);
 
   if (filters?.professionalFilter && filters.professionalFilter !== "all") {
@@ -57,6 +74,7 @@ export async function loadTenantExpenses(
     q = q.eq("category", filters.category);
   }
   const dateField = filters?.dateField ?? "due_date";
+  q = q.order(dateField, { ascending: false });
   if (filters?.from) q = q.gte(dateField, filters.from);
   if (filters?.to) q = q.lte(dateField, filters.to);
 
@@ -81,7 +99,6 @@ export async function loadProfessionalExpenses(
       "id, description, category, supplier, amount, due_date, paid_date, payment_method, status, notes, professional_id, created_at",
     )
     .eq("professional_id", professionalId)
-    .order("due_date", { ascending: false })
     .limit(300);
 
   if (filters?.status && filters.status !== "all") {
@@ -91,6 +108,7 @@ export async function loadProfessionalExpenses(
     q = q.eq("category", filters.category);
   }
   const dateField = filters?.dateField ?? "due_date";
+  q = q.order(dateField, { ascending: false });
   if (filters?.from) q = q.gte(dateField, filters.from);
   if (filters?.to) q = q.lte(dateField, filters.to);
 

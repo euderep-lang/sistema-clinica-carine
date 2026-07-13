@@ -1,8 +1,9 @@
 import { fmtDateFull } from "@/lib/locale";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CalendarDays, ChevronLeft, ChevronRight, Eye, LayoutGrid, List, Lock, MapPin, PlayCircle, Plus, Video } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Eye, LayoutGrid, List, Lock, MapPin, Pencil, PlayCircle, Plus, Video } from "lucide-react";
 import { toast } from "sonner";
+import { EditAppointmentDialog } from "@/components/agenda/edit-appointment-dialog";
 import { NewAppointmentDialog } from "@/components/agenda/new-appointment-dialog";
 import { ScheduleBlockDialog } from "@/components/agenda/schedule-block-dialog";
 import { DashboardShell } from "@/components/dashboard-shell";
@@ -39,6 +40,7 @@ import {
   APPOINTMENT_MODALITY_SHORT,
   APPOINTMENT_STATUS_LABEL,
   APPOINTMENT_TYPE_LABEL,
+  isAppointmentEditable,
   PROFESSIONAL_AGENDA_STATUS_ITEM,
   PROFESSIONAL_AGENDA_STATUS_OPTIONS,
   PROFESSIONAL_AGENDA_STATUS_TRIGGER,
@@ -73,6 +75,8 @@ function ProfessionalAgendaPage() {
   const [loading, setLoading] = useState(true);
   const [newApptOpen, setNewApptOpen] = useState(false);
   const [blockOpen, setBlockOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editRow, setEditRow] = useState<ProfessionalAgendaAppointment | null>(null);
 
   const weekStart = useMemo(() => startOfWeekMonday(date), [date]);
   const weekEnd = useMemo(() => shiftDate(weekStart, 6), [weekStart]);
@@ -295,6 +299,10 @@ function ProfessionalAgendaPage() {
             loading={loading}
             onStatusChange={handleStatusChange}
             onStart={(a) => void startAppointment(a)}
+            onEdit={(a) => {
+              setEditRow(a);
+              setEditOpen(true);
+            }}
             onRemoveBlock={removeBlock}
             onDayClick={(day) => {
               setDate(day);
@@ -310,6 +318,10 @@ function ProfessionalAgendaPage() {
             loading={loading}
             onStatusChange={handleStatusChange}
             onStart={(a) => void startAppointment(a)}
+            onEdit={(a) => {
+              setEditRow(a);
+              setEditOpen(true);
+            }}
             onRemoveBlock={removeBlock}
           />
         )}
@@ -407,6 +419,20 @@ function ProfessionalAgendaPage() {
                         </TableCell>
                         <TableCell className="text-center">
                           <div className="flex flex-wrap justify-center gap-1">
+                            {isAppointmentEditable(a) && a.patient_id && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                title="Editar"
+                                onClick={() => {
+                                  setEditRow(a);
+                                  setEditOpen(true);
+                                }}
+                              >
+                                <Pencil className="mr-1 size-4" />
+                                Editar
+                              </Button>
+                            )}
                             <AgendaContactActions
                               phone={a.patients?.phone}
                               patientId={a.patient_id}
@@ -496,6 +522,17 @@ function ProfessionalAgendaPage() {
         onSaved={(savedDate) => {
           setDate(savedDate);
           void load();
+        }}
+      />
+
+      <EditAppointmentDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        appointment={editRow}
+        lockProfessional
+        onSaved={(savedDate) => {
+          if (savedDate !== date) setDate(savedDate);
+          else void load({ silent: true });
         }}
       />
 

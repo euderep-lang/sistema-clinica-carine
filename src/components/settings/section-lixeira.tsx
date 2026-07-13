@@ -40,7 +40,7 @@ function daysLeft(expiresAt: string): number {
   return Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
 }
 
-export function SectionLixeira() {
+export function SectionLixeira({ personal = false }: { personal?: boolean }) {
   const list = useServerFn(listTrash);
   const restore = useServerFn(restoreTrashItem);
   const purge = useServerFn(purgeTrashItem);
@@ -106,8 +106,9 @@ export function SectionLixeira() {
         <div>
           <h2 className="text-lg font-semibold">Lixeira</h2>
           <p className="text-sm text-muted-foreground">
-            Itens excluídos ficam aqui por 30 dias e podem ser restaurados. Depois disso são
-            removidos automaticamente.
+            {personal
+              ? "Itens que você excluiu ficam aqui por 30 dias. Restaure quando quiser voltar a usá-los."
+              : "Itens excluídos ficam aqui por 30 dias e podem ser restaurados. Depois disso são removidos automaticamente."}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>

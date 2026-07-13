@@ -26,9 +26,15 @@ import { paymentLabel } from "@/lib/payment-methods";
 import {
   billReceivedDisplayDate,
   type FinancialSummaryKind,
+  type PeriodPaymentDetail,
 } from "@/lib/financial-competence";
 import { billOpenAmount } from "@/lib/nfse";
 import type { SaleBillRow } from "@/lib/sales";
+
+export interface ReceivedPaymentSummaryRow {
+  payment: PeriodPaymentDetail;
+  bill?: SaleBillRow;
+}
 
 interface FinancialSummaryDialogProps {
   open: boolean;
@@ -37,6 +43,7 @@ interface FinancialSummaryDialogProps {
   title: string;
   description: string;
   bills: SaleBillRow[];
+  receivedPayments?: ReceivedPaymentSummaryRow[];
   showProfessional?: boolean;
   onBillClick: (billId: string) => void;
 }
@@ -48,15 +55,25 @@ export function FinancialSummaryDialog({
   title,
   description,
   bills,
+  receivedPayments,
   showProfessional = true,
   onBillClick,
 }: FinancialSummaryDialogProps) {
+  const usePaymentRows = kind === "received" && (receivedPayments?.length ?? 0) > 0;
+
   const paymentSummary = useMemo(() => {
     if (kind !== "received") return [];
     const map = new Map<string, number>();
-    for (const bill of bills) {
-      const method = bill.payment_method ?? "other";
-      map.set(method, (map.get(method) ?? 0) + Number(bill.paid_amount));
+    if (usePaymentRows && receivedPayments) {
+      for (const row of receivedPayments) {
+        const method = row.payment.payment_method ?? "other";
+        map.set(method, (map.get(method) ?? 0) + Number(row.payment.amount));
+      }
+    } else {
+      for (const bill of bills) {
+        const method = bill.payment_method ?? "other";
+        map.set(method, (map.get(method) ?? 0) + Number(bill.paid_amount));
+      }
     }
     return Array.from(map.entries())
       .map(([method, amount]) => ({
@@ -65,10 +82,13 @@ export function FinancialSummaryDialog({
         amount,
       }))
       .sort((a, b) => b.amount - a.amount);
-  }, [bills, kind]);
+  }, [bills, kind, receivedPayments, usePaymentRows]);
 
   const total = useMemo(() => {
     if (kind === "received") {
+      if (usePaymentRows && receivedPayments) {
+        return receivedPayments.reduce((sum, row) => sum + Number(row.payment.amount), 0);
+      }
       return bills.reduce((sum, bill) => sum + Number(bill.paid_amount), 0);
     }
     if (kind === "pending" || kind === "totalOpen") {
@@ -91,9 +111,13 @@ export function FinancialSummaryDialog({
       ? bills.length === 1
         ? "orçamento"
         : "orçamentos"
-      : bills.length === 1
-        ? "fatura"
-        : "faturas";
+      : kind === "received" && usePaymentRows
+        ? receivedPayments!.length === 1
+          ? "pagamento"
+          : "pagamentos"
+        : bills.length === 1
+          ? "fatura"
+          : "faturas";
 
   const colSpan =
     kind === "received"
@@ -115,7 +139,11 @@ export function FinancialSummaryDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
           <p className="pt-1 text-sm font-medium text-foreground">
-            {totalLabel}: {fmt(total)} · {bills.length} {countLabel}
+            {totalLabel}: {fmt(total)} ·{" "}
+            {kind === "received" && usePaymentRows
+              ? receivedPayments!.length
+              : bills.length}{" "}
+            {countLabel}
           </p>
         </DialogHeader>
         <div
@@ -152,7 +180,37 @@ export function FinancialSummaryDialog({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {bills.length === 0 ? (
+              {usePaymentRows ? (
+                receivedPayments!.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={colSpan} className="py-10 text-center text-muted-foreground">
+                      Nenhum pagamento encontrado.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  receivedPayments!.map((row) => (
+                    <TableRow
+                      key={`${row.payment.bill_receivable_id}-${row.payment.paid_date}-${row.payment.amount}-${row.payment.payment_method}`}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => onBillClick(row.payment.bill_receivable_id)}
+                    >
+                      <TableCell className="font-medium">
+                        {row.bill?.patients?.full_name ?? "—"}
+                      </TableCell>
+                      {showProfessional && (
+                        <TableCell className="text-xs text-muted-foreground">
+                          {row.bill?.profiles?.full_name ?? "—"}
+                        </TableCell>
+                      )}
+                      <TableCell className="text-center tabular-nums">{fmt(row.payment.amount)}</TableCell>
+                      <TableCell className="text-center">{fmtDate(row.payment.paid_date)}</TableCell>
+                      <TableCell className="text-center text-sm">
+                        {paymentLabel(row.payment.payment_method)}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )
+              ) : bills.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={colSpan} className="py-10 text-center text-muted-foreground">
                     Nenhuma fatura encontrada.

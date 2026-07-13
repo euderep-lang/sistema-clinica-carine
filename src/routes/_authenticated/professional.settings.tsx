@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Calendar, Bot, FileImage, Settings, ShieldCheck, UserCircle, type LucideIcon } from "lucide-react";
+import { Calendar, Bot, FileImage, Settings, ShieldCheck, Trash2, UserCircle, type LucideIcon } from "lucide-react";
 import { SectionAssistenteIa } from "@/components/professional/section-assistente-ia";
+import { SectionLixeira } from "@/components/settings/section-lixeira";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionAgendaTipos } from "@/components/professional/section-agenda-tipos";
@@ -14,7 +15,7 @@ export const Route = createFileRoute("/_authenticated/professional/settings")({
   component: ProfessionalSettingsPage,
 });
 
-type TabId = "perfil" | "agenda" | "timbrado" | "certificado" | "ia";
+type TabId = "perfil" | "agenda" | "timbrado" | "certificado" | "ia" | "lixeira";
 
 const TABS: { id: TabId; label: string; icon: LucideIcon; description: string }[] = [
   {
@@ -46,6 +47,12 @@ const TABS: { id: TabId; label: string; icon: LucideIcon; description: string }[
     label: "Assistente IA",
     icon: Bot,
     description: "Treine a IA de orçamentos e plano terapêutico com suas regras e preferências.",
+  },
+  {
+    id: "lixeira",
+    label: "Lixeira",
+    icon: Trash2,
+    description: "Restaure procedimentos e outros itens que você excluiu nos últimos 30 dias.",
   },
 ];
 
@@ -88,6 +95,7 @@ function ProfessionalSettingsPage() {
             {tab === "timbrado" && <SectionPapelTimbrado />}
             {tab === "certificado" && <SectionCertificadoDigital />}
             {tab === "ia" && <SectionAssistenteIa />}
+            {tab === "lixeira" && <SectionLixeira personal />}
           </div>
         </div>
       </div>

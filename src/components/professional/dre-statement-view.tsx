@@ -41,21 +41,28 @@ function DreSummaryCards({ data }: { data: DreStatementData }) {
     {
       label: "Receita líquida",
       value: data.netRevenue,
-      sub: "Após descontos",
+      sub: "Produção − descontos (competência)",
       icon: TrendingUp,
       tone: "text-emerald-700 dark:text-emerald-400 bg-emerald-500/10",
     },
     {
-      label: "Despesas totais",
-      value: data.operationalExpenses + data.commissions + data.financialExpenses,
-      sub: "Operacionais + comissões + taxas",
+      label: "Despesas pagas",
+      value: data.operationalExpenses,
+      sub: "Contas pagas no período (data pagamento)",
+      icon: Minus,
+      tone: "text-red-700 dark:text-red-400 bg-red-500/10",
+    },
+    {
+      label: "Comissões + taxas",
+      value: data.commissions + data.financialExpenses,
+      sub: `${fmt(data.commissions)} comissões · ${fmt(data.financialExpenses)} taxas`,
       icon: Minus,
       tone: "text-amber-700 dark:text-amber-400 bg-amber-500/10",
     },
     {
-      label: "Resultado",
+      label: "Resultado operacional",
       value: data.operatingResult,
-      sub: "Resultado operacional",
+      sub: "Receita líquida − despesas − comissões − taxas",
       icon: data.operatingResult >= 0 ? TrendingUp : TrendingDown,
       tone:
         data.operatingResult >= 0
@@ -65,7 +72,7 @@ function DreSummaryCards({ data }: { data: DreStatementData }) {
   ];
 
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {cards.map((card) => (
         <div key={card.label} className="rounded-xl border bg-card p-4 shadow-sm">
           <div className="flex items-start justify-between gap-2">
@@ -209,9 +216,10 @@ export function DreStatementView({
           </Tabs>
 
           <p className="text-xs leading-relaxed text-muted-foreground">
-            * Receita reconhecida por competência (produção). Comissões calculadas sobre valores recebidos
-            no período. Despesas e taxas consideram pagamentos efetivados. O anexo de caixa não compõe o
-            resultado contábil, apenas concilia o fluxo de recebimentos.
+            * Receita reconhecida por competência (produção). Despesas operacionais consideram a data
+            em que a conta foi paga — igual ao card &quot;Despesas pagas&quot; e ao caixa. Comissões
+            calculadas sobre valores recebidos no período. Taxas deduzidas dos recebimentos. O anexo de
+            caixa não compõe o resultado contábil, apenas concilia o fluxo de recebimentos.
           </p>
         </CardContent>
       </Card>

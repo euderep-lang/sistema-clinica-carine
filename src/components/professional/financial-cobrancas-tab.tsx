@@ -67,6 +67,8 @@ import {
 } from "@/lib/currency";
 import { DateRangeFilter, firstDayOfMonth, todayISO } from "@/components/professional/date-range-filter";
 import {
+  aggregateNetRevenueByChannel,
+  aggregatePeriodPaymentTotals,
   computeCompetencePeriodStats,
   computeOpenBudgetsStats,
   computeTotalOpenBalance,
@@ -78,7 +80,9 @@ import {
   filterTotalOpenBills,
   FINANCIAL_SUMMARY_META,
   financialSummaryDescription,
+  paymentBillIdsInPeriod,
   type FinancialSummaryKind,
+  type PeriodPaymentDetail,
 } from "@/lib/financial-competence";
 import { FinancialSummaryDialog } from "@/components/professional/financial-summary-dialog";
 import {
@@ -94,6 +98,7 @@ import {
 } from "@/lib/sales";
 import { FinancialProfessionalFilter } from "@/components/professional/financial-professional-filter";
 import {
+  applyPaymentProfessionalFilter,
   applyReceivableProfessionalFilter,
   RECEIVABLE_BILL_SELECT,
   type FinancialTabScopeProps,
@@ -122,6 +127,7 @@ export function FinancialCobrancasTab({
   const [summaryKind, setSummaryKind] = useState<FinancialSummaryKind | null>(null);
   const [periodFrom, setPeriodFrom] = useState(firstDayOfMonth());
   const [periodTo, setPeriodTo] = useState(todayISO());
+  const [periodPayments, setPeriodPayments] = useState<PeriodPaymentDetail[]>([]);
   const period = useMemo(() => {
     if (!periodFrom || !periodTo || periodFrom > periodTo) return null;
     return { from: periodFrom, to: periodTo };
@@ -163,17 +169,37 @@ export function FinancialCobrancasTab({
     }
     if (fetchError) toast.error(fetchError);
     setRows(all);
+
+    if (periodFrom && periodTo && periodFrom <= periodTo) {
+      const payQuery = applyPaymentProfessionalFilter(
+        supabase
+          .from("bill_payments" as never)
+          .select("payment_method, net_amount, amount, bill_receivable_id, paid_date")
+          .eq("status", "active")
+          .gte("paid_date", periodFrom)
+          .lte("paid_date", periodTo),
+        { scope, profileId: profile.id, professionalFilter },
+      );
+      const { data: payData, error: payError } = await payQuery;
+      if (payError) toast.error(payError.message);
+      else setPeriodPayments((payData ?? []) as PeriodPaymentDetail[]);
+    } else {
+      setPeriodPayments([]);
+    }
+
     setLoading(false);
-  }, [profile, scope, professionalFilter]);
+  }, [profile, scope, professionalFilter, periodFrom, periodTo]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  const paymentBillIds = useMemo(() => paymentBillIdsInPeriod(periodPayments), [periodPayments]);
+
   const periodRows = useMemo(() => {
     if (!period) return rows;
-    return filterBillsForCompetencePeriod(rows, period) as SaleBillRow[];
-  }, [rows, period]);
+    return filterBillsForCompetencePeriod(rows, period, paymentBillIds) as SaleBillRow[];
+  }, [rows, period, paymentBillIds]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -192,9 +218,14 @@ export function FinancialCobrancasTab({
   }, [periodRows, rows, search, status]);
 
   const stats = useMemo(() => {
-    if (!period) return { production: 0, received: 0, pending: 0 };
-    return computeCompetencePeriodStats(periodRows, period);
-  }, [periodRows, period]);
+    if (!period) return { production: 0, received: 0, receivedNet: 0, pending: 0 };
+    return computeCompetencePeriodStats(periodRows, period, { periodPayments });
+  }, [periodRows, period, periodPayments]);
+
+  const paymentTotals = useMemo(
+    () => aggregatePeriodPaymentTotals(periodPayments),
+    [periodPayments],
+  );
 
   const totalOpen = useMemo(() => computeTotalOpenBalance(rows), [rows]);
   const openBudgets = useMemo(() => computeOpenBudgetsStats(rows), [rows]);
@@ -209,7 +240,7 @@ export function FinancialCobrancasTab({
         filtered = filterProductionBills(rows, period!) as SaleBillRow[];
         break;
       case "received":
-        filtered = filterReceivedBills(rows, period!) as SaleBillRow[];
+        filtered = filterReceivedBills(rows, period!, paymentBillIds) as SaleBillRow[];
         break;
       case "pending":
         filtered = filterPendingMonthBills(rows, period!) as SaleBillRow[];
@@ -225,7 +256,15 @@ export function FinancialCobrancasTab({
     }
 
     return [...filtered].sort((a, b) => b.due_date.localeCompare(a.due_date));
-  }, [rows, period, summaryKind]);
+  }, [rows, period, summaryKind, paymentBillIds]);
+
+  const receivedPaymentsForSummary = useMemo(() => {
+    if (!period) return [];
+    const billMap = new Map(rows.map((r) => [r.id, r]));
+    return [...periodPayments]
+      .map((payment) => ({ payment, bill: billMap.get(payment.bill_receivable_id) }))
+      .sort((a, b) => b.payment.paid_date.localeCompare(a.payment.paid_date));
+  }, [periodPayments, rows, period]);
 
   const summaryMeta = summaryKind ? FINANCIAL_SUMMARY_META[summaryKind] : null;
   const summaryDescription = summaryKind
@@ -233,6 +272,10 @@ export function FinancialCobrancasTab({
     : "";
 
   const commissionEst = stats.received * (commissionPct / 100);
+  const netRevenueByChannel = useMemo(
+    () => aggregateNetRevenueByChannel(periodPayments),
+    [periodPayments],
+  );
   const detailBill = useMemo(
     () => rows.find((r) => r.id === detailBillId) ?? null,
     [rows, detailBillId],
@@ -242,8 +285,17 @@ export function FinancialCobrancasTab({
     if (!reverseTarget) return;
     setActionLoading(true);
     try {
-      await reverseSale(reverseTarget.id, scope === "clinic" ? "Estorno pela clínica" : "Estorno pelo profissional");
-      toast.success(billHasSaleItems(reverseTarget) ? "Venda estornada" : "Cobrança cancelada");
+      const result = (await reverseSale(
+        reverseTarget.id,
+        scope === "clinic" ? "Estorno pela clínica" : "Estorno pelo profissional",
+      )) as { payments_reversed?: number } | null;
+      const paymentsMsg =
+        result?.payments_reversed && result.payments_reversed > 0
+          ? ` · ${result.payments_reversed} pagamento(s) estornado(s)`
+          : "";
+      toast.success(
+        (billHasSaleItems(reverseTarget) ? "Venda estornada" : "Cobrança cancelada") + paymentsMsg,
+      );
       setReverseTarget(null);
       await load();
     } catch (e) {
@@ -352,20 +404,61 @@ export function FinancialCobrancasTab({
             : "Selecione um período válido"
         }
       >
+        {period ? (
+          <div className="mb-4 rounded-lg border bg-background p-4">
+            <p className="text-sm font-medium text-foreground">Dentro do período selecionado:</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Receita líquida por forma de pagamento (entradas registradas no período):
+            </p>
+            <ol className="mt-3 space-y-1.5 text-sm">
+              <li className="flex flex-wrap items-baseline justify-between gap-2 sm:justify-start sm:gap-8">
+                <span>1. Dinheiro:</span>
+                <span className="font-semibold tabular-nums">{fmt(netRevenueByChannel.cash)}</span>
+              </li>
+              <li className="flex flex-wrap items-baseline justify-between gap-2 sm:justify-start sm:gap-8">
+                <span>2. Cartão (débito ou crédito):</span>
+                <span className="font-semibold tabular-nums">{fmt(netRevenueByChannel.card)}</span>
+              </li>
+              <li className="flex flex-wrap items-baseline justify-between gap-2 sm:justify-start sm:gap-8">
+                <span>3. PIX:</span>
+                <span className="font-semibold tabular-nums">{fmt(netRevenueByChannel.pix)}</span>
+              </li>
+            </ol>
+            <div className="mt-3 space-y-1 border-t pt-3 text-sm">
+              <p className="flex flex-wrap items-baseline justify-between gap-2 text-muted-foreground sm:justify-start sm:gap-8">
+                <span>Total bruto recebido:</span>
+                <span className="font-semibold tabular-nums text-foreground">{fmt(paymentTotals.gross)}</span>
+              </p>
+              {paymentTotals.fees > 0 ? (
+                <p className="flex flex-wrap items-baseline justify-between gap-2 text-muted-foreground sm:justify-start sm:gap-8">
+                  <span>Taxas de cartão:</span>
+                  <span className="font-semibold tabular-nums text-foreground">− {fmt(paymentTotals.fees)}</span>
+                </p>
+              ) : null}
+              <p className="flex flex-wrap items-baseline justify-between gap-2 text-muted-foreground sm:justify-start sm:gap-8">
+                <span>Total líquido (Dinheiro + Cartão + PIX):</span>
+                <span className="font-semibold tabular-nums text-foreground">
+                  {fmt(netRevenueByChannel.total)}
+                </span>
+              </p>
+            </div>
+          </div>
+        ) : null}
+
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 2xl:grid-cols-6">
           <StatCard
             size="sm"
             label="Produção"
             value={fmt(stats.production)}
-            sub="Vendas no período"
+            sub="Competência no período"
             icon={Wallet}
             onClick={() => period && setSummaryKind("production")}
           />
           <StatCard
             size="sm"
-            label="Recebido"
+            label="Recebido bruto"
             value={fmt(stats.received)}
-            sub="Entradas no período"
+            sub="Data do pagamento"
             icon={TrendingUp}
             tone="success"
             onClick={() => period && setSummaryKind("received")}
@@ -374,7 +467,7 @@ export function FinancialCobrancasTab({
             size="sm"
             label="A receber"
             value={fmt(stats.pending)}
-            sub="Pendentes + vencidas do período"
+            sub="Saldo em aberto (competência)"
             icon={TrendingDown}
             tone="warning"
             onClick={() => period && setSummaryKind("pending")}
@@ -401,7 +494,13 @@ export function FinancialCobrancasTab({
             onClick={() => setSummaryKind("openBudgets")}
           />
           {scope === "professional" ? (
-            <StatCard size="sm" label="Comissão estimada" value={fmt(commissionEst)} sub={`${commissionPct}% sobre recebido`} icon={Wallet} />
+            <StatCard
+              size="sm"
+              label="Comissão estimada"
+              value={fmt(commissionEst)}
+              sub={`${commissionPct}% sobre recebido bruto`}
+              icon={Wallet}
+            />
           ) : (
             <StatCard size="sm" label="Cobranças" value={String(filtered.length)} sub="No período selecionado" icon={Wallet} />
           )}
@@ -521,6 +620,7 @@ export function FinancialCobrancasTab({
         title={summaryMeta?.title ?? ""}
         description={summaryDescription}
         bills={summaryBills}
+        receivedPayments={summaryKind === "received" ? receivedPaymentsForSummary : undefined}
         showProfessional={scope === "clinic"}
         onBillClick={(billId) => {
           setSummaryKind(null);
@@ -532,7 +632,21 @@ export function FinancialCobrancasTab({
       <PaymentHistoryDialog open={historyOpen} onOpenChange={setHistoryOpen} billId={historyBillId} onChanged={() => void load()} />
       <AlertDialog open={Boolean(reverseTarget)} onOpenChange={(o) => !o && setReverseTarget(null)}>
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Estornar cobrança?</AlertDialogTitle><AlertDialogDescription>A cobrança <strong>{reverseTarget?.description}</strong> será cancelada.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Estornar cobrança?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A cobrança <strong>{reverseTarget?.description}</strong> será cancelada.
+              {reverseTarget && Number(reverseTarget.paid_amount) > 0 ? (
+                <>
+                  {" "}
+                  Os pagamentos registrados ({fmt(Number(reverseTarget.paid_amount))}) serão estornados
+                  automaticamente antes do cancelamento.
+                </>
+              ) : null}{" "}
+              Insumos de sessões já utilizadas voltam ao estoque e as sessões do paciente serão
+              removidas.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={actionLoading}>Voltar</AlertDialogCancel>
             <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={actionLoading} onClick={(e) => { e.preventDefault(); void confirmReverse(); }}>Confirmar estorno</AlertDialogAction>

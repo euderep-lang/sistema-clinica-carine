@@ -1,7 +1,43 @@
-import { CalendarClock } from "lucide-react";
+import { CalendarClock, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { isAppointmentEditable } from "@/lib/appointment-types";
 import type { AgendaRow } from "@/components/agenda/agenda-timeline-view";
+
+export function AgendaEditButton({
+  row,
+  onEdit,
+  className,
+  size = "icon",
+}: {
+  row: AgendaRow;
+  onEdit: (row: AgendaRow) => void;
+  className?: string;
+  size?: "icon" | "sm";
+}) {
+  if (!isAppointmentEditable(row)) return null;
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size={size}
+      className={cn(
+        size === "icon" ? "size-7 shrink-0" : "h-8 gap-1.5",
+        className,
+      )}
+      title="Editar"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onEdit(row);
+      }}
+    >
+      <Pencil className={size === "icon" ? "size-3.5" : "size-4"} />
+      {size === "sm" && <span>Editar</span>}
+    </Button>
+  );
+}
 
 export function AgendaRescheduleButton({
   row,

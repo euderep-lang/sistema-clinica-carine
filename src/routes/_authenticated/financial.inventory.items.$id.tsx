@@ -22,7 +22,7 @@ export const Route = createFileRoute("/_authenticated/financial/inventory/items/
 interface Item {
   id: string; name: string; description: string | null; brand: string | null; category_id: string | null;
   unit: string; current_stock: number; min_stock: number; max_stock: number | null;
-  cost_price: number; sell_price: number; sku: string | null; active: boolean;
+  cost_price: number; sku: string | null; active: boolean;
   inventory_categories: { name: string; color: string } | null;
 }
 interface Movement {
@@ -47,7 +47,7 @@ function Page() {
 
   const load = async () => {
     const { data } = await supabase.from("inventory_items" as never)
-      .select("id,name,description,brand,category_id,unit,current_stock,min_stock,max_stock,cost_price,sell_price,sku,active,inventory_categories(name,color)")
+      .select("id,name,description,brand,category_id,unit,current_stock,min_stock,max_stock,cost_price,sku,active,inventory_categories(name,color)")
       .eq("id", id).maybeSingle() as unknown as { data: Item };
     setItem(data ?? null);
     setLoadedActive(Boolean(data?.active ?? true));
@@ -88,7 +88,7 @@ function Page() {
         name: item.name, description: item.description, brand: item.brand,
         category_id: item.category_id, unit: item.unit, min_stock: Number(item.min_stock),
         max_stock: item.max_stock != null ? Number(item.max_stock) : null,
-        cost_price: Number(item.cost_price), sell_price: Number(item.sell_price),
+        cost_price: Number(item.cost_price),
         sku: item.sku, active: item.active,
       } as never).eq("id", id);
       if (error) throw error;
@@ -212,8 +212,8 @@ function Page() {
               </div>
               <div><Label>Estoque mínimo</Label><Input type="number" step="0.01" value={String(item.min_stock)} onChange={(e) => setItem({ ...item, min_stock: Number(e.target.value) })} /></div>
               <div><Label>Estoque máximo</Label><Input type="number" step="0.01" value={item.max_stock ?? ""} onChange={(e) => setItem({ ...item, max_stock: e.target.value ? Number(e.target.value) : null })} /></div>
-              <div><Label>Preço de custo (R$)</Label><Input type="number" step="0.01" value={String(item.cost_price)} onChange={(e) => setItem({ ...item, cost_price: Number(e.target.value) })} /></div>
-              <div><Label>Preço de venda (R$)</Label><Input type="number" step="0.01" value={String(item.sell_price)} onChange={(e) => setItem({ ...item, sell_price: Number(e.target.value) })} /></div>
+              <div className="col-span-2"><Label>Preço de custo (R$)</Label><Input type="number" step="0.01" value={String(item.cost_price)} onChange={(e) => setItem({ ...item, cost_price: Number(e.target.value) })} /></div>
+              <p className="col-span-2 text-xs text-muted-foreground">O preço de venda é definido no procedimento vinculado, não no item de estoque.</p>
               <div className="flex items-center gap-2"><Switch checked={item.active} onCheckedChange={(v) => setItem({ ...item, active: v })} id="active" /><Label htmlFor="active">Ativo</Label></div>
               <div className="col-span-2 flex justify-end"><Button onClick={save}>Salvar alterações</Button></div>
             </CardContent></Card>

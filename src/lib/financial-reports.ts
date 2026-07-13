@@ -10,6 +10,7 @@ import {
   resolveCommissionFromClosings,
 } from "@/lib/commission-closings-report";
 import {
+  aggregatePeriodPaymentTotals,
   computeCompetencePeriodStats,
   computeTotalOpenBalance,
   filterProductionBills,
@@ -52,7 +53,12 @@ export interface FinancialMetrics {
   netReceived: number;
   fees: number;
   discounts: number;
+  netRevenue: number;
   expenses: number;
+  commissions: number;
+  cashResult: number;
+  operatingResult: number;
+  /** @deprecated Use operatingResult or cashResult explicitly in UI */
   result: number;
   billsInPeriod: number;
   paymentsCount: number;
@@ -178,20 +184,28 @@ export async function loadFinancialMetrics(
   supabase: SupabaseClient,
   ctx: ReportQueryCtx,
 ): Promise<FinancialMetrics> {
-  const [bills, payments, expenses] = await Promise.all([
+  const [bills, payments, expenses, commissionRows] = await Promise.all([
     loadBills(supabase, ctx),
     loadPayments(supabase, ctx),
     loadExpenses(supabase, ctx),
+    loadCommissionReport(supabase, ctx),
   ]);
 
-  const stats = computeCompetencePeriodStats(bills, period(ctx.filters));
+  const stats = computeCompetencePeriodStats(bills, period(ctx.filters), { periodPayments: payments });
   const productionBills = filterProductionBills(bills, period(ctx.filters));
-  const fees = payments.reduce((s, p) => s + Number(p.fee_amount ?? 0), 0);
-  const netReceived = payments.reduce((s, p) => s + Number(p.net_amount ?? p.amount), 0);
-  const discounts = bills
-    .filter((b) => b.status !== "cancelled")
-    .reduce((s, b) => s + Number(b.discount_value ?? 0), 0);
-  const expenseTotal = expenses.reduce((s, e) => s + Number(e.amount), 0);
+  const paymentTotals = aggregatePeriodPaymentTotals(payments);
+  const fees = paymentTotals.fees;
+  const netReceived = paymentTotals.net;
+  const discounts = roundChartMoney(
+    productionBills.reduce((sum, bill) => sum + Number(bill.discount_value ?? 0), 0),
+  );
+  const netRevenue = roundChartMoney(stats.production - discounts);
+  const expenseTotal = roundChartMoney(expenses.reduce((s, e) => s + Number(e.amount), 0));
+  const commissions = roundChartMoney(
+    commissionRows.reduce((sum, row) => sum + row.commissionAmount, 0),
+  );
+  const cashResult = roundChartMoney(netReceived - expenseTotal);
+  const operatingResult = roundChartMoney(netRevenue - expenseTotal - commissions - fees);
   const avgTicket =
     productionBills.length > 0
       ? roundChartMoney(
@@ -202,14 +216,18 @@ export async function loadFinancialMetrics(
 
   return {
     production: roundChartMoney(stats.production),
-    received: roundChartMoney(stats.received),
+    received: roundChartMoney(paymentTotals.gross),
     pending: roundChartMoney(stats.pending),
     totalOpen: roundChartMoney(computeTotalOpenBalance(bills)),
-    netReceived: roundChartMoney(netReceived || stats.received - fees),
+    netReceived: roundChartMoney(netReceived),
     fees: roundChartMoney(fees),
-    discounts: roundChartMoney(discounts),
-    expenses: roundChartMoney(expenseTotal),
-    result: roundChartMoney((netReceived || stats.received - fees) - expenseTotal),
+    discounts,
+    netRevenue,
+    expenses: expenseTotal,
+    commissions,
+    cashResult,
+    operatingResult,
+    result: operatingResult,
     billsInPeriod: productionBills.length,
     paymentsCount: payments.length,
     avgTicket,
@@ -405,6 +423,7 @@ export async function loadCrossReport(
   const expenses = await loadExpenses(supabase, ctx);
 
   const netByProf = new Map<string, number>();
+  const grossByProf = new Map<string, number>();
   const { data: payData, error: payErr } = await applyPaymentProfessionalFilter(
     supabase
       .from("bill_payments" as never)
@@ -422,6 +441,10 @@ export async function loadCrossReport(
 
   for (const row of (payData ?? []) as { professional_id: string | null; net_amount: number | null; amount: number }[]) {
     if (!row.professional_id) continue;
+    grossByProf.set(
+      row.professional_id,
+      (grossByProf.get(row.professional_id) ?? 0) + Number(row.amount),
+    );
     netByProf.set(
       row.professional_id,
       (netByProf.get(row.professional_id) ?? 0) + Number(row.net_amount ?? row.amount),
@@ -453,12 +476,13 @@ export async function loadCrossReport(
     .map((prof) => {
       const profBills = billsByProf.get(prof.id) ?? [];
       const stats = computeCompetencePeriodStats(profBills, period(ctx.filters));
+      const receivedGross = roundChartMoney(grossByProf.get(prof.id) ?? 0);
       const netReceived = roundChartMoney(netByProf.get(prof.id) ?? 0);
       const expensesTotal = roundChartMoney(expenseByProf.get(prof.id) ?? 0);
       const basePct = Number(prof.commission_pct ?? 0);
       const { commissionPct, commissionAmount } = resolveCommissionFromClosings(
         prof.id,
-        stats.received,
+        receivedGross,
         basePct,
         closings,
         period(ctx.filters),
@@ -468,7 +492,7 @@ export async function loadCrossReport(
         professionalId: prof.id,
         professionalName: prof.full_name,
         production: roundChartMoney(stats.production),
-        received: roundChartMoney(stats.received),
+        received: receivedGross,
         pending: roundChartMoney(stats.pending),
         expenses: expensesTotal,
         netReceived,

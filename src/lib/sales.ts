@@ -3,10 +3,16 @@ import { supabase } from "@/integrations/supabase/client";
 import type { FeeBearer } from "@/lib/payment-methods";
 import { archiveEntity, fetchRowForTrash } from "@/lib/trash";
 
+export interface SaleItemInventoryInput {
+  inventory_item_id: string;
+  quantity: number;
+}
+
 export interface SaleItemInput {
   service_id: string;
   quantity: number;
   unit_price?: number;
+  inventory_items?: SaleItemInventoryInput[];
 }
 
 export interface SaleBillRow {
@@ -271,7 +277,7 @@ export function billIsEditable(row: SaleBillRow) {
 }
 
 export function billCanReverse(row: SaleBillRow) {
-  return row.status !== "cancelled" && !billIsBudget(row) && Number(row.paid_amount) === 0;
+  return row.status !== "cancelled" && !billIsBudget(row);
 }
 
 export function billCanDelete(row: SaleBillRow) {
@@ -305,7 +311,13 @@ export async function convertBudgetToSale(budgetId: string) {
   };
 }
 
-export async function loadSaleChargeItems(billId: string): Promise<SaleChargeItem[]> {
+export interface SaleItemInsumo {
+  name: string;
+  quantity: number;
+  unit: string;
+}
+
+async function resolveChargeIdForBill(billId: string): Promise<string | null> {
   const { data: bill } = await supabase
     .from("bills_receivable")
     .select("consultation_charge_id")
@@ -323,6 +335,75 @@ export async function loadSaleChargeItems(billId: string): Promise<SaleChargeIte
     chargeId = charge?.id ?? null;
   }
 
+  return chargeId;
+}
+
+/** Insumos por procedimento (service_id) vinculados à venda/consulta. */
+export async function loadSaleItemInsumosByBill(
+  billId: string,
+): Promise<Record<string, SaleItemInsumo[]>> {
+  const chargeId = await resolveChargeIdForBill(billId);
+  if (!chargeId) return {};
+
+  const { data: packages, error: pkgError } = await supabase
+    .from("patient_session_packages")
+    .select(
+      "service_id, session_package_inventory_items(quantity, inventory_items(name, unit))",
+    )
+    .eq("consultation_charge_id", chargeId);
+
+  if (pkgError) throw new Error(pkgError.message);
+
+  const result: Record<string, SaleItemInsumo[]> = {};
+  const servicesNeedingDefault = new Set<string>();
+
+  for (const pkg of packages ?? []) {
+    const serviceId = pkg.service_id as string;
+    const packageItems = (pkg.session_package_inventory_items ?? []) as Array<{
+      quantity: number | string;
+      inventory_items: { name: string; unit: string } | null;
+    }>;
+
+    if (packageItems.length > 0) {
+      result[serviceId] = packageItems
+        .filter((row) => row.inventory_items?.name)
+        .map((row) => ({
+          name: row.inventory_items!.name,
+          quantity: Number(row.quantity),
+          unit: row.inventory_items!.unit,
+        }));
+    } else if (!result[serviceId]) {
+      servicesNeedingDefault.add(serviceId);
+    }
+  }
+
+  if (servicesNeedingDefault.size > 0) {
+    const { data: linked, error: linkError } = await supabase
+      .from("service_inventory_items")
+      .select("service_id, quantity, inventory_items(name, unit)")
+      .in("service_id", [...servicesNeedingDefault]);
+
+    if (linkError) throw new Error(linkError.message);
+
+    for (const row of linked ?? []) {
+      const serviceId = row.service_id as string;
+      if (result[serviceId]?.length) continue;
+      const item = row.inventory_items as { name: string; unit: string } | null;
+      if (!item?.name) continue;
+      if (!result[serviceId]) result[serviceId] = [];
+      result[serviceId].push({
+        name: item.name,
+        quantity: Number(row.quantity),
+        unit: item.unit,
+      });
+    }
+  }
+
+  return result;
+}
+
+export async function loadSaleChargeItems(billId: string): Promise<SaleChargeItem[]> {
+  const chargeId = await resolveChargeIdForBill(billId);
   if (!chargeId) return [];
 
   const { data, error } = await supabase

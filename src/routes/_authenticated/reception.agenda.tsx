@@ -5,10 +5,11 @@ import { useServerFn } from "@tanstack/react-start";
 import { Building2, CalendarDays, LayoutGrid, List, Lock, MapPin, Plus, Video } from "lucide-react";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/dashboard-shell";
-import { AgendaRescheduleButton } from "@/components/agenda/agenda-appointment-actions";
+import { AgendaEditButton, AgendaRescheduleButton } from "@/components/agenda/agenda-appointment-actions";
 import { AgendaContactActions } from "@/components/agenda/agenda-contact-actions";
 import { AgendaFiltersPanel } from "@/components/agenda/agenda-filters-panel";
 import { AgendaSummaryCards } from "@/components/agenda/agenda-summary-cards";
+import { EditAppointmentDialog } from "@/components/agenda/edit-appointment-dialog";
 import { AgendaRescheduleDialog } from "@/components/agenda/agenda-reschedule-dialog";
 import { ScheduleBlockDialog } from "@/components/agenda/schedule-block-dialog";
 import { AgendaRoomsOverview } from "@/components/agenda/agenda-rooms-overview";
@@ -149,6 +150,8 @@ function AgendaPage() {
   const [blockOpen, setBlockOpen] = useState(false);
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [rescheduleRow, setRescheduleRow] = useState<AgendaRow | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editRow, setEditRow] = useState<AgendaRow | null>(null);
   const [saving, setSaving] = useState(false);
   const [patientLabel, setPatientLabel] = useState("");
   const [form, setForm] = useState({
@@ -314,9 +317,19 @@ function AgendaPage() {
     setRescheduleOpen(true);
   };
 
+  const openEdit = (row: AgendaRow) => {
+    setEditRow(row);
+    setEditOpen(true);
+  };
+
   const handleRescheduled = (newDate: string) => {
     if (newDate !== date) setDate(newDate);
     else load();
+  };
+
+  const handleEdited = (newDate: string) => {
+    if (newDate !== date) setDate(newDate);
+    else void load();
   };
 
   const save = async () => {
@@ -505,6 +518,7 @@ function AgendaPage() {
                 loading={loading}
                 onSlotClick={handleSlotClick}
                 onReschedule={openReschedule}
+                onEdit={openEdit}
                 onStatusChange={handleStatusChange}
                 onRemoveBlock={removeBlock}
               />
@@ -517,6 +531,7 @@ function AgendaPage() {
                 onProfessionalChange={setFilterProfessional}
                 professionals={professionals}
                 onReschedule={openReschedule}
+                onEdit={openEdit}
                 onRemoveBlock={removeBlock}
               />
             ) : viewMode === "rooms" ? (
@@ -526,6 +541,7 @@ function AgendaPage() {
                 rooms={rooms}
                 loading={loading}
                 onReschedule={openReschedule}
+                onEdit={openEdit}
               />
             ) : (
               <Card className="w-full">
@@ -618,6 +634,7 @@ function AgendaPage() {
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-wrap items-center justify-center gap-2">
+                              <AgendaEditButton row={row} onEdit={openEdit} size="sm" />
                               <AgendaRescheduleButton row={row} onReschedule={openReschedule} size="sm" />
                               <Select value={row.status} onValueChange={(value) => handleStatusChange(row.id, value, row.patients?.full_name)}>
                                 <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
@@ -767,6 +784,13 @@ function AgendaPage() {
         appointment={rescheduleRow}
         rooms={rooms}
         onSaved={handleRescheduled}
+      />
+
+      <EditAppointmentDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        appointment={editRow}
+        onSaved={handleEdited}
       />
 
       <ScheduleBlockDialog

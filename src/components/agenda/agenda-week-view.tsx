@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AgendaContactActions } from "@/components/agenda/agenda-contact-actions";
-import { AgendaRescheduleButton } from "@/components/agenda/agenda-appointment-actions";
+import { AgendaEditButton, AgendaRescheduleButton } from "@/components/agenda/agenda-appointment-actions";
 import type { AgendaRow } from "@/components/agenda/agenda-timeline-view";
 import {
   AGENDA_DAY_END,
@@ -56,6 +56,7 @@ export function AgendaWeekView({
   loading,
   onSlotClick,
   onReschedule,
+  onEdit,
   onStatusChange,
   onRemoveBlock,
 }: {
@@ -64,6 +65,7 @@ export function AgendaWeekView({
   loading: boolean;
   onSlotClick: (date: string, time: string) => void;
   onReschedule: (row: AgendaRow) => void;
+  onEdit?: (row: AgendaRow) => void;
   onStatusChange: (id: string, status: string, patientName?: string | null) => void;
   onRemoveBlock?: (id: string) => void;
 }) {
@@ -306,6 +308,7 @@ export function AgendaWeekView({
                                       patientName={row.patients?.full_name}
                                       size="icon"
                                     />
+                                    {onEdit && <AgendaEditButton row={row} onEdit={onEdit} size="sm" />}
                                     <AgendaRescheduleButton row={row} onReschedule={onReschedule} size="sm" />
                                     {row.patient_id && (
                                       <Link

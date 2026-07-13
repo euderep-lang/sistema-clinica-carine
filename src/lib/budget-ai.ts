@@ -82,7 +82,7 @@ export async function loadBudgetCatalog(
       .order("name"),
     supabase
       .from("inventory_items")
-      .select("id, name, description, sell_price, cost_price, unit")
+      .select("id, name, description, cost_price, unit")
       .eq("tenant_id", tenantId)
       .eq("active", true)
       .order("name"),
@@ -112,15 +112,12 @@ export async function loadBudgetCatalog(
     id: string;
     name: string;
     description: string | null;
-    sell_price: number | null;
     cost_price: number | null;
     unit: string | null;
   }>) {
-    const price = Number(i.sell_price ?? 0);
     const cost = Number(i.cost_price ?? 0);
-    items.push({ id: i.id, source: "inventory", name: i.name, price, cost, sessionCount: 1 });
     const apres = i.description ? ` | ${i.description}` : i.unit ? ` | ${i.unit}` : "";
-    lines.push(`- ${i.name}${apres} | venda R$ ${fmtNum(price)} | custo R$ ${fmtNum(cost)}`);
+    lines.push(`- ${i.name}${apres} | custo R$ ${fmtNum(cost)} (preço de venda via procedimento)`);
   }
 
   return { context: lines.join("\n"), items };

@@ -91,6 +91,15 @@ export function isBlockAppointment(row: { type?: string | null; status?: string 
   return row?.type === APPOINTMENT_BLOCK_TYPE || row?.status === "blocked";
 }
 
+/** Consultas que ainda podem ser editadas (não bloqueio, não concluída/cancelada/falta). */
+export function isAppointmentEditable(row: {
+  type?: string | null;
+  status?: string | null;
+} | null | undefined): boolean {
+  if (!row || isBlockAppointment(row)) return false;
+  return !["completed", "cancelled", "no_show"].includes(row.status ?? "");
+}
+
 /** Situações editáveis pelo profissional na Minha Agenda */
 export const PROFESSIONAL_AGENDA_STATUS_OPTIONS = [
   { value: "scheduled", label: "Agendando" },

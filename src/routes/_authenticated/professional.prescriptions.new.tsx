@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { todayISO, fmtDate } from "@/lib/locale";
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { ArrowLeft, Plus, Trash2, Stethoscope, AlertTriangle, Shield, Copy, FileDown, Send } from "lucide-react";
-import { openCrmInbox } from "@/lib/crm-navigation";
+import { ArrowLeft, Plus, Trash2, Stethoscope, AlertTriangle, Shield, Copy, FileDown, Send, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { sendPrescriptionViaCrm } from "@/lib/whatsapp.functions";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -221,7 +222,15 @@ function NewPrescription() {
   const [loadingDraft, setLoadingDraft] = useState(Boolean(search.edit));
   const [saving, setSaving] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
-  const [doneDialog, setDoneDialog] = useState<{ blob: Blob; url: string; path: string; signed: boolean } | null>(null);
+  const [doneDialog, setDoneDialog] = useState<{
+    blob: Blob;
+    url: string;
+    path: string;
+    signed: boolean;
+    prescriptionId: string;
+  } | null>(null);
+  const [sendingWhats, setSendingWhats] = useState(false);
+  const sendPrescriptionFn = useServerFn(sendPrescriptionViaCrm);
   const [safeIdDialogOpen, setSafeIdDialogOpen] = useState(false);
   const [safeIdRenewal, setSafeIdRenewal] = useState(false);
   const [certStatus, setCertStatus] = useState<DigitalCertificateStatus | null>(null);
@@ -543,7 +552,7 @@ function NewPrescription() {
         });
 
         const url = URL.createObjectURL(blob);
-        setDoneDialog({ blob, url, path, signed });
+        setDoneDialog({ blob, url, path, signed, prescriptionId: rxId });
         toast.success(
           signed
             ? "Receita assinada digitalmente e salva no histórico do paciente"
@@ -567,13 +576,29 @@ function NewPrescription() {
     }
   };
 
-  const sendWhats = () => {
-    if (!patient?.phone) { toast.error("Paciente sem telefone"); return; }
-    openCrmInbox(navigate, {
-      patientId: patientId || undefined,
-      phone: patient.phone,
-      draft: "Segue sua receita médica",
-    });
+  const sendWhats = async () => {
+    if (!doneDialog?.prescriptionId) return;
+    if (!doneDialog.signed) {
+      toast.error("A receita precisa estar assinada digitalmente para envio pelo CRM");
+      return;
+    }
+    if (!patient?.phone) {
+      toast.error("Paciente sem telefone cadastrado");
+      return;
+    }
+
+    setSendingWhats(true);
+    try {
+      const result = await sendPrescriptionFn({ data: { prescriptionId: doneDialog.prescriptionId } });
+      toast.success("Receita enviada pelo CRM WhatsApp");
+      if (result.conversationId) {
+        navigate({ to: "/crm/inbox", search: { conversation: result.conversationId } });
+      }
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSendingWhats(false);
+    }
   };
 
   if (loadingDraft) {
@@ -799,7 +824,14 @@ function NewPrescription() {
           </p>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => doneDialog && window.open(doneDialog.url, "_blank")}><FileDown className="h-4 w-4 mr-2" />Baixar documento</Button>
-            <Button onClick={sendWhats}><Send className="h-4 w-4 mr-2" />Enviar pelo CRM</Button>
+            <Button onClick={() => void sendWhats()} disabled={sendingWhats || !doneDialog?.signed}>
+              {sendingWhats ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="mr-2 h-4 w-4" />
+              )}
+              Enviar pelo CRM
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

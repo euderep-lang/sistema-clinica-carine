@@ -6,6 +6,7 @@ import {
   SessionCheckoffDialog,
   type SessionCheckoffTarget,
 } from "@/components/professional/session-checkoff-dialog";
+import { ProcedureInventoryDialog } from "@/components/professional/procedure-inventory-dialog";
 import { PostConsultationFollowUpDialog } from "@/components/professional/post-consultation-follow-up-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,20 +24,28 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
 import { matchesSearch } from "@/lib/search";
 import { fmt, parseBRLInput } from "@/lib/currency";
+import {
+  buildProcedureInventoryQueue,
+  expandSaleItemsWithPerUnitInventory,
+  isClinicalService,
+  sortProceduresForDisplay,
+  type InventoryLinkInput,
+} from "@/lib/procedures";
 import { AUTOMATION_QUEUED_MESSAGE } from "@/lib/automation-messages";
 
 interface Procedure {
   id: string;
   name: string;
+  category: string | null;
   default_price: number;
   session_count: number;
+  hasLinkedInventory: boolean;
 }
 
 interface Room {
@@ -77,7 +86,8 @@ export function FinishConsultationDialog({
   const [priceTable, setPriceTable] = useState("particular");
   const [search, setSearch] = useState("");
   const [quantities, setQuantities] = useState<Record<string, number>>({});
-  const [prices, setPrices] = useState<Record<string, string>>({});
+  const [unitPrices, setUnitPrices] = useState<Record<string, string>>({});
+  const [totalPrices, setTotalPrices] = useState<Record<string, string>>({});
   const [patientName, setPatientName] = useState("Paciente");
   const [checkoffOpen, setCheckoffOpen] = useState(false);
   const [checkoffTarget, setCheckoffTarget] = useState<SessionCheckoffTarget | null>(null);
@@ -85,6 +95,8 @@ export function FinishConsultationDialog({
   const [loading, setLoading] = useState(false);
   const [followUpOpen, setFollowUpOpen] = useState(false);
   const [finishedAppointmentId, setFinishedAppointmentId] = useState<string | null>(null);
+  const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [saleInventory, setSaleInventory] = useState<Record<string, InventoryLinkInput[]>>({});
 
   const loadPackages = useCallback(async () => {
     const { data, error } = await supabase
@@ -132,32 +144,43 @@ export function FinishConsultationDialog({
     setLoading(true);
     setSearch("");
     setQuantities({});
-    setPrices({});
+    setUnitPrices({});
+    setTotalPrices({});
+    setSaleInventory({});
+    setInventoryQueue([]);
+    setInventoryTarget(null);
     setRoomId("geral");
     setPriceTable("particular");
 
     (async () => {
-      const [procRes, roomRes, , patientRes] = await Promise.all([
+      const [procRes, roomRes, , patientRes, linkRes] = await Promise.all([
         supabase
           .from("services")
-          .select("id,name,default_price,session_count")
+          .select("id,name,category,default_price,session_count")
           .eq("professional_id", profile.id)
           .eq("active", true)
           .order("name"),
         supabase.from("rooms").select("id,name").order("name"),
         loadPackages(),
         supabase.from("patients").select("full_name").eq("id", patientId).maybeSingle(),
+        supabase.from("service_inventory_items").select("service_id"),
       ]);
+
+      const linked = new Set((linkRes.data ?? []).map((r) => r.service_id));
 
       if (procRes.error) toast.error(procRes.error.message);
       else {
         setProcedures(
-          (procRes.data ?? []).map((p) => ({
-            id: p.id,
-            name: p.name,
-            default_price: Number(p.default_price),
-            session_count: Number(p.session_count ?? 1),
-          })),
+          sortProceduresForDisplay(
+            (procRes.data ?? []).map((p) => ({
+              id: p.id,
+              name: p.name,
+              category: p.category,
+              default_price: Number(p.default_price),
+              session_count: Number(p.session_count ?? 1),
+              hasLinkedInventory: linked.has(p.id),
+            })),
+          ),
         );
       }
 
@@ -180,43 +203,78 @@ export function FinishConsultationDialog({
     [procedures, quantities],
   );
 
-  const estimatedTotal = selectedNew.reduce((sum, p) => {
-    const qty = quantities[p.id] ?? 0;
-    const price = parseBRLInput(prices[p.id] ?? "") || p.default_price;
-    return sum + price * qty;
-  }, 0);
+  const fmtInput = (n: number) => (Math.round(n * 100) / 100).toFixed(2).replace(".", ",");
+
+  const lineUnitPrice = (proc: Procedure) => {
+    const parsed = parseBRLInput(unitPrices[proc.id] ?? "");
+    if (parsed > 0) return parsed;
+    return proc.default_price;
+  };
+
+  const lineTotalPrice = (proc: Procedure) => {
+    const parsed = parseBRLInput(totalPrices[proc.id] ?? "");
+    if (parsed > 0) return parsed;
+    const qty = quantities[proc.id] ?? 0;
+    return lineUnitPrice(proc) * qty;
+  };
+
+  const estimatedTotal = selectedNew.reduce((sum, p) => sum + lineTotalPrice(p), 0);
 
   const setQty = (id: string, value: string) => {
     const n = Math.max(0, parseInt(value, 10) || 0);
     setQuantities((prev) => ({ ...prev, [id]: n }));
-    if (n > 0) {
-      setPrices((prev) => {
-        if (prev[id]) return prev;
-        const proc = procedures.find((p) => p.id === id);
-        return {
-          ...prev,
-          [id]: proc && proc.default_price > 0 ? proc.default_price.toFixed(2).replace(".", ",") : "",
-        };
-      });
+    const proc = procedures.find((p) => p.id === id);
+    if (!proc) return;
+    if (n <= 0) {
+      setTotalPrices((prev) => ({ ...prev, [id]: "" }));
+      return;
+    }
+    const unitStr =
+      unitPrices[id] ?? (proc.default_price > 0 ? fmtInput(proc.default_price) : "");
+    const unitNum = parseBRLInput(unitStr) || proc.default_price;
+    if (!unitPrices[id] && unitStr) {
+      setUnitPrices((prev) => ({ ...prev, [id]: unitStr }));
+    }
+    setTotalPrices((prev) => ({ ...prev, [id]: fmtInput(unitNum * n) }));
+  };
+
+  const setUnit = (id: string, value: string) => {
+    setUnitPrices((prev) => ({ ...prev, [id]: value }));
+    const qty = quantities[id] ?? 0;
+    const unit = parseBRLInput(value);
+    if (qty > 0 && unit >= 0) {
+      setTotalPrices((prev) => ({ ...prev, [id]: fmtInput(unit * qty) }));
     }
   };
 
-  const finish = async () => {
+  const setTotal = (id: string, value: string) => {
+    setTotalPrices((prev) => ({ ...prev, [id]: value }));
+    const qty = quantities[id] ?? 0;
+    const total = parseBRLInput(value);
+    if (qty > 0 && total >= 0) {
+      setUnitPrices((prev) => ({ ...prev, [id]: fmtInput(total / qty) }));
+    }
+  };
+
+  const finish = async (inventoryOverride?: Record<string, InventoryLinkInput[]>) => {
     if (!profile) return;
+
+    const inventoryMap = inventoryOverride ?? saleInventory;
 
     setSaving(true);
     const { data, error } = await supabase.rpc("finish_consultation", {
       p_patient_id: patientId,
       p_room_id: roomId === "geral" ? null : roomId,
       p_price_table: priceTable,
-      p_new_items: selectedNew.map((p) => {
-        const price = parseBRLInput(prices[p.id] ?? "") || p.default_price;
-        return {
-          service_id: p.id,
-          quantity: quantities[p.id],
-          unit_price: price,
-        };
-      }),
+      p_new_items: expandSaleItemsWithPerUnitInventory(
+        selectedNew,
+        quantities,
+        (p) => {
+          const qty = quantities[p.id] ?? 0;
+          return qty > 0 ? lineTotalPrice(p) / qty : lineUnitPrice(p);
+        },
+        inventoryMap,
+      ),
       p_session_items: [],
     });
     setSaving(false);
@@ -242,6 +300,31 @@ export function FinishConsultationDialog({
     setFollowUpOpen(true);
   };
 
+  const inventoryPendingQueue = useMemo(
+    () =>
+      buildProcedureInventoryQueue(
+        selectedNew.filter((p) => !isClinicalService(p.category) && !p.hasLinkedInventory),
+        quantities,
+        saleInventory,
+      ),
+    [selectedNew, quantities, saleInventory],
+  );
+
+  const handleInventoryConfirmAll = (inventory: Record<string, InventoryLinkInput[]>) => {
+    const nextInventory = { ...saleInventory, ...inventory };
+    setSaleInventory(nextInventory);
+    setInventoryOpen(false);
+    void finish(nextInventory);
+  };
+
+  const handleFinishClick = () => {
+    if (inventoryPendingQueue.length === 0) {
+      void finish();
+      return;
+    }
+    setInventoryOpen(true);
+  };
+
   const goToAgenda = () => {
     setFollowUpOpen(false);
     navigate({ to: "/professional/agenda" });
@@ -250,12 +333,12 @@ export function FinishConsultationDialog({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90vh] max-w-2xl flex-col gap-0 p-0">
+      <DialogContent className="flex max-h-[90vh] max-w-3xl flex-col gap-0 p-0">
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>Finalizar Consultas</DialogTitle>
         </DialogHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-6 py-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-4">
           <div className="rounded-lg border p-4">
             <p className="mb-3 text-sm font-semibold text-foreground">Criar Fatura</p>
 
@@ -306,7 +389,7 @@ export function FinishConsultationDialog({
               </div>
             </div>
 
-            <ScrollArea className="mt-3 h-52 rounded-md border">
+            <div className="mt-3 max-h-60 overflow-y-auto rounded-md border">
               {loading ? (
                 <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
                   <Loader2 className="mr-2 size-4 animate-spin" />
@@ -317,11 +400,21 @@ export function FinishConsultationDialog({
                   Nenhum procedimento encontrado. Cadastre em Administrativo → Procedimentos.
                 </p>
               ) : (
-                <ul className="divide-y">
-                  {filtered.map((proc) => (
+                <>
+                  <div className="sticky top-0 z-10 flex items-center gap-2 border-b bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground">
+                    <span className="min-w-0 flex-1">Procedimento</span>
+                    <span className="w-14 shrink-0 text-center">Qtd</span>
+                    <span className="w-24 shrink-0 text-right">Unitário</span>
+                    <span className="w-24 shrink-0 text-right">Total</span>
+                  </div>
+                  <ul className="divide-y">
+                  {filtered.map((proc) => {
+                    const qty = quantities[proc.id] ?? 0;
+                    const hasQty = qty > 0;
+                    return (
                     <li
                       key={proc.id}
-                      className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/40"
+                      className="flex items-center gap-2 px-3 py-2.5 hover:bg-muted/40"
                     >
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{proc.name}</p>
@@ -330,31 +423,35 @@ export function FinishConsultationDialog({
                         )}
                       </div>
                       <Input
+                        type="number"
+                        min={0}
+                        value={qty}
+                        onChange={(e) => setQty(proc.id, e.target.value)}
+                        className="h-8 w-14 shrink-0 text-center"
+                      />
+                      <Input
                         placeholder="0,00"
-                        value={
-                          prices[proc.id] ??
-                          ((quantities[proc.id] ?? 0) > 0
-                            ? proc.default_price.toFixed(2).replace(".", ",")
-                            : "")
-                        }
-                        disabled={(quantities[proc.id] ?? 0) <= 0}
-                        onChange={(e) =>
-                          setPrices((prev) => ({ ...prev, [proc.id]: e.target.value }))
-                        }
+                        value={unitPrices[proc.id] ?? (hasQty && proc.default_price > 0 ? fmtInput(proc.default_price) : "")}
+                        disabled={!hasQty}
+                        onChange={(e) => setUnit(proc.id, e.target.value)}
                         className="h-8 w-24 shrink-0 text-right tabular-nums"
                       />
                       <Input
-                        type="number"
-                        min={0}
-                        value={quantities[proc.id] ?? 0}
-                        onChange={(e) => setQty(proc.id, e.target.value)}
-                        className="h-8 w-16 shrink-0 text-center"
+                        placeholder="0,00"
+                        value={
+                          totalPrices[proc.id] ??
+                          (hasQty ? fmtInput(lineUnitPrice(proc) * qty) : "")
+                        }
+                        disabled={!hasQty}
+                        onChange={(e) => setTotal(proc.id, e.target.value)}
+                        className="h-8 w-24 shrink-0 text-right tabular-nums"
                       />
                     </li>
-                  ))}
+                  );})}
                 </ul>
+                </>
               )}
-            </ScrollArea>
+            </div>
           </div>
 
           {packages.length > 0 && (
@@ -421,7 +518,7 @@ export function FinishConsultationDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancelar
           </Button>
-          <Button onClick={() => void finish()} disabled={saving}>
+          <Button onClick={handleFinishClick} disabled={saving}>
             {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
             Finalizar Consulta
           </Button>
@@ -434,6 +531,13 @@ export function FinishConsultationDialog({
       onOpenChange={setCheckoffOpen}
       target={checkoffTarget}
       onSuccess={() => void loadPackages()}
+    />
+
+    <ProcedureInventoryDialog
+      open={inventoryOpen}
+      targets={inventoryPendingQueue}
+      onOpenChange={setInventoryOpen}
+      onConfirm={handleInventoryConfirmAll}
     />
 
     <PostConsultationFollowUpDialog

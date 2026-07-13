@@ -21,7 +21,7 @@ import {
   isBlockAppointment,
 } from "@/lib/appointment-types";
 import { Lock, Unlock, Video, MapPin } from "lucide-react";
-import { AgendaRescheduleButton } from "@/components/agenda/agenda-appointment-actions";
+import { AgendaEditButton, AgendaRescheduleButton } from "@/components/agenda/agenda-appointment-actions";
 import { AgendaContactActions } from "@/components/agenda/agenda-contact-actions";
 import type { ReactNode } from "react";
 
@@ -69,6 +69,7 @@ export function AgendaTimelineView({
   headerExtra,
   showHeader = false,
   onReschedule,
+  onEdit,
   onRemoveBlock,
 }: {
   date: string;
@@ -81,6 +82,7 @@ export function AgendaTimelineView({
   /** Exibe a faixa verde com profissional · data · nº de horários (padrão oculto). */
   showHeader?: boolean;
   onReschedule?: (row: AgendaRow) => void;
+  onEdit?: (row: AgendaRow) => void;
   onRemoveBlock?: (id: string) => void;
 }) {
   const slots = buildHourSlots(AGENDA_DAY_START, AGENDA_DAY_END, AGENDA_SLOT_MINUTES);
@@ -267,6 +269,7 @@ export function AgendaTimelineView({
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+                      {onEdit && <AgendaEditButton row={row} onEdit={onEdit} />}
                       {onReschedule && <AgendaRescheduleButton row={row} onReschedule={onReschedule} />}
                       <AgendaContactActions
                         phone={row.patients?.phone}

@@ -5,9 +5,18 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Dialog,
   DialogContent,
@@ -34,6 +43,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { softDeactivate } from "@/lib/trash";
 import { useAuth } from "@/lib/mock-auth";
 import { fmt, parseBRLInput } from "@/lib/currency";
+import { sortProceduresForDisplay } from "@/lib/procedures";
 
 interface Procedure {
   id: string;
@@ -68,13 +78,14 @@ export function SectionMeusProcedimentos() {
     useState<string>(NO_CONSULTATION_SERVICE);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Procedure | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Procedure | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
   const [cat, setCat] = useState("");
   const [price, setPrice] = useState("");
   const [dur, setDur] = useState("30");
   const [sessions, setSessions] = useState("1");
-  const [active, setActive] = useState(true);
   const [inventoryLinks, setInventoryLinks] = useState<InventoryLink[]>([]);
 
   const load = async () => {
@@ -85,9 +96,14 @@ export function SectionMeusProcedimentos() {
         "id,name,description,category,default_price,duration_minutes,session_count,active",
       )
       .eq("professional_id", profile.id)
+      .eq("active", true)
       .order("name");
     if (error) toast.error(error.message);
-    setItems((data ?? []).map((p) => ({ ...p, session_count: Number(p.session_count ?? 1) })) as Procedure[]);
+    setItems(
+      sortProceduresForDisplay(
+        (data ?? []).map((p) => ({ ...p, session_count: Number(p.session_count ?? 1) })) as Procedure[],
+      ),
+    );
   };
 
   const loadInventory = async () => {
@@ -160,7 +176,6 @@ export function SectionMeusProcedimentos() {
     setPrice("");
     setDur("30");
     setSessions("1");
-    setActive(true);
     setInventoryLinks([]);
     setOpen(true);
   };
@@ -173,7 +188,6 @@ export function SectionMeusProcedimentos() {
     setPrice(String(item.default_price));
     setDur(String(item.duration_minutes ?? 30));
     setSessions(String(item.session_count));
-    setActive(item.active);
     await loadInventoryLinks(item.id);
     setOpen(true);
   };
@@ -207,7 +221,7 @@ export function SectionMeusProcedimentos() {
       default_price: parseBRLInput(price) || 0,
       duration_minutes: Number(dur) || 30,
       session_count: Math.max(1, Number(sessions) || 1),
-      active,
+      active: true,
     };
     try {
       if (editing) {
@@ -235,20 +249,25 @@ export function SectionMeusProcedimentos() {
     }
   };
 
-  const remove = async (item: Procedure) => {
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
       await softDeactivate({
         entityType: "service",
         table: "services",
-        id: item.id,
-        label: item.name,
-        summary: item.category ?? null,
+        id: deleteTarget.id,
+        label: deleteTarget.name,
+        summary: deleteTarget.category ?? null,
         children: [{ table: "service_inventory_items", fk: "service_id" }],
       });
-      toast.success("Procedimento movido para a lixeira");
+      setDeleteTarget(null);
+      toast.success("Procedimento movido para a lixeira. Restaure em Minhas configurações → Lixeira.");
       load();
     } catch (e) {
       toast.error((e as Error).message);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -256,13 +275,13 @@ export function SectionMeusProcedimentos() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          Cadastre procedimentos com preço, pacotes de sessões e insumos de estoque consumidos a
-          cada uso. Ao finalizar a consulta, cobrança, estoque e sessões são atualizados
-          automaticamente.
+          Cadastre serviços e procedimentos com preço e pacotes de sessões. Procedimentos podem
+          vincular insumos de estoque (baixa automática no uso); serviços como consultas não
+          precisam de estoque vinculado.
         </p>
         <Button onClick={openNew}>
           <Plus className="mr-2 size-4" />
-          Novo procedimento
+          Novo serviço / procedimento
         </Button>
       </div>
 
@@ -287,7 +306,6 @@ export function SectionMeusProcedimentos() {
               <SelectContent>
                 <SelectItem value={NO_CONSULTATION_SERVICE}>Não lançar automaticamente</SelectItem>
                 {items
-                  .filter((i) => i.active)
                   .map((i) => (
                     <SelectItem key={i.id} value={i.id}>
                       {i.name} — {fmt(i.default_price)}
@@ -308,7 +326,6 @@ export function SectionMeusProcedimentos() {
               <SelectContent>
                 <SelectItem value={NO_CONSULTATION_SERVICE}>Não lançar automaticamente</SelectItem>
                 {items
-                  .filter((i) => i.active)
                   .map((i) => (
                     <SelectItem key={i.id} value={i.id}>
                       {i.name} — {fmt(i.default_price)}
@@ -329,14 +346,13 @@ export function SectionMeusProcedimentos() {
               <TableHead>Preço</TableHead>
               <TableHead>Sessões</TableHead>
               <TableHead>Duração</TableHead>
-              <TableHead>Situação</TableHead>
               <TableHead />
             </TableRow>
           </TableHeader>
           <TableBody>
             {items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
                   Nenhum procedimento cadastrado ainda.
                 </TableCell>
               </TableRow>
@@ -356,20 +372,13 @@ export function SectionMeusProcedimentos() {
                     </Badge>
                   </TableCell>
                   <TableCell>{item.duration_minutes ?? 30} min</TableCell>
-                  <TableCell>
-                    <Badge variant={item.active ? "default" : "secondary"}>
-                      {item.active ? "Ativo" : "Inativo"}
-                    </Badge>
-                  </TableCell>
                   <TableCell className="text-right">
                     <Button size="icon" variant="ghost" onClick={() => void openEdit(item)}>
                       <Pencil className="size-4" />
                     </Button>
-                    {item.active && (
-                      <Button size="icon" variant="ghost" onClick={() => remove(item)}>
-                        <Trash2 className="size-4" />
-                      </Button>
-                    )}
+                    <Button size="icon" variant="ghost" onClick={() => setDeleteTarget(item)}>
+                      <Trash2 className="size-4" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))
@@ -489,11 +498,6 @@ export function SectionMeusProcedimentos() {
                 ))
               )}
             </div>
-
-            <div className="flex items-center gap-2">
-              <Switch checked={active} onCheckedChange={setActive} />
-              <Label>Ativo</Label>
-            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
@@ -503,6 +507,32 @@ export function SectionMeusProcedimentos() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir procedimento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget
+                ? `"${deleteTarget.name}" sairá da sua lista e ficará na lixeira por 30 dias. Você pode restaurá-lo em Minhas configurações → Lixeira.`
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleting}
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmDelete();
+              }}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

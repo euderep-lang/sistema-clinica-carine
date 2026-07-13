@@ -1051,3 +1051,187 @@ export const startWaConversation = createServerFn({ method: "POST" })
 
     return { conversationId };
   });
+
+export const sendPrescriptionViaCrm = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: { prescriptionId: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const profile = await requireCrmAccess(supabase, userId);
+    if (!isWhatsAppConfigured()) throw new Error(configError());
+
+    const { data: rx, error: rxErr } = await supabase
+      .from("prescriptions" as never)
+      .select("id, tenant_id, patient_id, professional_id, pdf_url, signed_at, date, status")
+      .eq("id", data.prescriptionId)
+      .maybeSingle();
+    if (rxErr || !rx) throw new Error("Receita não encontrada");
+
+    const rxRow = rx as {
+      id: string;
+      tenant_id: string;
+      patient_id: string;
+      professional_id: string;
+      pdf_url: string | null;
+      signed_at: string | null;
+      date: string;
+      status: string;
+    };
+
+    if (rxRow.tenant_id !== profile.tenant_id) throw new Error("Sem permissão");
+    if (profile.role === "professional" && rxRow.professional_id !== userId) {
+      throw new Error("Sem permissão para enviar esta receita");
+    }
+    if (rxRow.status !== "finalized") throw new Error("Receita ainda não finalizada");
+    if (!rxRow.pdf_url) throw new Error("PDF da receita não disponível");
+    if (!rxRow.signed_at) throw new Error("Receita não assinada digitalmente");
+
+    const { data: patient, error: patErr } = await supabase
+      .from("patients")
+      .select("id, full_name, phone")
+      .eq("id", rxRow.patient_id)
+      .maybeSingle();
+    if (patErr || !patient) throw new Error("Paciente não encontrado");
+    if (!patient.phone) throw new Error("Paciente sem telefone cadastrado");
+
+    const phone = normalizeBrazilPhone(patient.phone);
+    if (!phone) throw new Error("Telefone do paciente inválido");
+
+    const { data: pdfBlob, error: dlErr } = await supabaseAdmin.storage
+      .from("prescriptions")
+      .download(rxRow.pdf_url);
+    if (dlErr || !pdfBlob) throw new Error("Erro ao carregar PDF da receita");
+
+    const bytes = Buffer.from(await pdfBlob.arrayBuffer());
+    if (bytes.length > 5 * 1024 * 1024) {
+      throw new Error("PDF muito grande para envio (máx. 5 MB)");
+    }
+    const base64 = bytes.toString("base64");
+    const dateSlug = (rxRow.date ?? "receita").replace(/-/g, "");
+    const filename = `receita_${dateSlug}.pdf`;
+
+    const now = new Date().toISOString();
+    const displayName = patient.full_name?.trim() || phone;
+
+    const { data: tenantConvs } = await supabaseAdmin
+      .from("wa_conversations" as never)
+      .select("id, contact_phone, contact_name, patient_id, last_message_at, created_at")
+      .eq("tenant_id", profile.tenant_id);
+
+    const existing = findConversationByPhone(
+      (tenantConvs ?? []) as {
+        id: string;
+        contact_phone: string;
+        contact_name: string | null;
+        patient_id: string | null;
+        last_message_at: string | null;
+        created_at: string;
+      }[],
+      phone,
+    );
+
+    let conversationId: string;
+
+    if (existing) {
+      conversationId = existing.id;
+      const { error: updateErr } = await supabaseAdmin
+        .from("wa_conversations" as never)
+        .update({
+          contact_phone: phone,
+          patient_id: rxRow.patient_id,
+          contact_name: displayName,
+          assigned_to: userId,
+          status: "open",
+          close_reason: null,
+          closed_at: null,
+          closed_by: null,
+          updated_at: now,
+        } as never)
+        .eq("id", existing.id);
+      if (updateErr) throw new Error(updateErr.message);
+    } else {
+      const { data: conv, error: insertErr } = await supabaseAdmin
+        .from("wa_conversations" as never)
+        .insert({
+          tenant_id: profile.tenant_id,
+          contact_phone: phone,
+          patient_id: rxRow.patient_id,
+          contact_name: displayName,
+          assigned_to: userId,
+          status: "open",
+          updated_at: now,
+        } as never)
+        .select("id")
+        .single();
+      if (insertErr || !conv) throw new Error(insertErr?.message ?? "Falha ao criar conversa");
+      conversationId = (conv as { id: string }).id;
+    }
+
+    const senderProfile = await loadWaSenderProfile(supabase, userId);
+    const captionDraft = await normalizeManualOutboundMessage(profile.tenant_id, "Segue sua receita médica.", {
+      conversationId,
+      contactName: displayName,
+    });
+    const caption = formatStaffWaTextForPatient(captionDraft, senderProfile);
+
+    const { messageId, mediaRef } = await providerSendMedia(
+      phone,
+      "document",
+      base64,
+      "application/pdf",
+      filename,
+      caption,
+    );
+
+    const preview = `📎 ${filename}`;
+    let storedMediaRef = mediaRef;
+    if (!storedMediaRef) {
+      const dataUri = `data:application/pdf;base64,${base64}`;
+      if (dataUri.length <= 600_000) storedMediaRef = dataUri;
+    }
+
+    await supabaseAdmin.from("wa_messages" as never).insert({
+      tenant_id: profile.tenant_id,
+      conversation_id: conversationId,
+      wa_message_id: messageId,
+      direction: "outbound",
+      message_type: "document",
+      body: caption,
+      media_id: storedMediaRef,
+      media_mime: "application/pdf",
+      media_filename: filename,
+      status: "sent",
+      sent_by: userId,
+    } as never);
+
+    await supabaseAdmin
+      .from("wa_conversations" as never)
+      .update({
+        last_message_at: now,
+        last_message_preview: preview,
+        updated_at: now,
+      } as never)
+      .eq("id", conversationId);
+
+    void onOutboundMessageForFollowUp({
+      tenantId: profile.tenant_id,
+      conversationId,
+      text: caption,
+      userId,
+    }).catch((e) => console.error("[CRM] follow-up outbound error:", e));
+
+    logAuditSafe({
+      tenantId: profile.tenant_id,
+      actorId: userId,
+      category: "whatsapp",
+      action: "whatsapp.prescription_sent",
+      summary: `Receita enviada pelo CRM: ${filename}`,
+      entityType: "prescription",
+      entityId: rxRow.id,
+      conversationId,
+      details: { prescription_id: rxRow.id, patient_id: rxRow.patient_id, filename },
+      source: "ui",
+    });
+
+    return { ok: true as const, conversationId };
+  });

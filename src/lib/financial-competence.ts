@@ -12,6 +12,72 @@ export interface CompetenceBill {
   professional_id?: string | null;
 }
 
+export interface NetRevenueByChannel {
+  cash: number;
+  card: number;
+  pix: number;
+  total: number;
+}
+
+export interface PeriodPaymentRow {
+  payment_method: string;
+  net_amount: number | null;
+  amount: number;
+}
+
+export interface PeriodPaymentDetail extends PeriodPaymentRow {
+  bill_receivable_id: string;
+  paid_date: string;
+}
+
+export function aggregatePeriodPaymentTotals(payments: PeriodPaymentRow[]): {
+  gross: number;
+  net: number;
+  fees: number;
+} {
+  let gross = 0;
+  let net = 0;
+  for (const payment of payments) {
+    const amount = Number(payment.amount);
+    const netAmount = Number(payment.net_amount ?? payment.amount);
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    gross += amount;
+    net += Number.isFinite(netAmount) && netAmount > 0 ? netAmount : amount;
+  }
+  return {
+    gross: Math.round(gross * 100) / 100,
+    net: Math.round(net * 100) / 100,
+    fees: Math.round((gross - net) * 100) / 100,
+  };
+}
+
+export function paymentBillIdsInPeriod(payments: PeriodPaymentDetail[]): Set<string> {
+  return new Set(payments.map((p) => p.bill_receivable_id));
+}
+
+export function aggregateNetRevenueByChannel(payments: PeriodPaymentRow[]): NetRevenueByChannel {
+  let cash = 0;
+  let card = 0;
+  let pix = 0;
+
+  for (const payment of payments) {
+    const net = Number(payment.net_amount ?? payment.amount);
+    if (!Number.isFinite(net) || net <= 0) continue;
+
+    const method = payment.payment_method;
+    if (method === "cash") cash += net;
+    else if (method === "pix") pix += net;
+    else if (method === "credit_card" || method === "debit_card") card += net;
+  }
+
+  return {
+    cash: Math.round(cash * 100) / 100,
+    card: Math.round(card * 100) / 100,
+    pix: Math.round(pix * 100) / 100,
+    total: Math.round((cash + card + pix) * 100) / 100,
+  };
+}
+
 export interface CompetencePeriodStats {
   production: number;
   received: number;
@@ -106,11 +172,16 @@ export function filterProductionBills(
   return result;
 }
 
-/** Cobranças com recebimento no período (alinhado ao card Recebido). */
+/** Cobranças com pagamento registrado no período (data do pagamento em bill_payments). */
 export function filterReceivedBills(
   bills: CompetenceBill[],
   period: { from: string; to: string },
+  paymentBillIds?: Set<string>,
 ): CompetenceBill[] {
+  if (paymentBillIds && paymentBillIds.size > 0) {
+    return bills.filter((bill) => paymentBillIds.has(bill.id));
+  }
+
   const groups = buildCompetenceGroups(bills);
   const result: CompetenceBill[] = [];
 
@@ -188,7 +259,7 @@ export const FINANCIAL_SUMMARY_META: Record<
   },
   received: {
     title: "Recebimentos do período",
-    description: "Valores recebidos no período selecionado.",
+    description: "Pagamentos registrados no período selecionado (data do recebimento).",
   },
   pending: {
     title: "A receber do período",
@@ -217,7 +288,7 @@ export function financialSummaryDescription(
     case "production":
       return `Faturas com competência entre ${range}.`;
     case "received":
-      return `Valores recebidos entre ${range}.`;
+      return `Pagamentos registrados entre ${range} (data do recebimento).`;
     case "pending":
       return `Saldo em aberto (pendentes + vencidas) das vendas com competência entre ${range}.`;
     default:
@@ -228,12 +299,13 @@ export function financialSummaryDescription(
 export function computeCompetencePeriodStats(
   bills: CompetenceBill[],
   period: { from: string; to: string },
-  options?: { useNetReceived?: boolean; netByBillId?: Map<string, number> },
+  options?: {
+    periodPayments?: PeriodPaymentRow[];
+    netByBillId?: Map<string, number>;
+  },
 ): CompetencePeriodStats {
   const groups = buildCompetenceGroups(bills);
   let production = 0;
-  let received = 0;
-  let receivedNet = 0;
   let pending = 0;
 
   for (const groupBills of groups.values()) {
@@ -242,7 +314,6 @@ export function computeCompetencePeriodStats(
     const competenceInPeriod = inPeriod(competenceDate, period.from, period.to);
 
     const totalAmount = groupBills.reduce((sum, b) => sum + Number(b.amount), 0);
-    const totalPaid = groupBills.reduce((sum, b) => sum + Number(b.paid_amount), 0);
     const totalPending = groupBills.reduce(
       (sum, b) => sum + Math.max(0, Number(b.amount) - Number(b.paid_amount)),
       0,
@@ -252,17 +323,6 @@ export function computeCompetencePeriodStats(
       if (competenceInPeriod) {
         production += totalAmount;
         pending += totalPending;
-        if (totalPaid > 0) {
-          received += totalPaid;
-          if (options?.useNetReceived && options.netByBillId) {
-            receivedNet += groupBills.reduce(
-              (sum, b) => sum + (options.netByBillId?.get(b.id) ?? Number(b.paid_amount)),
-              0,
-            );
-          } else {
-            receivedNet += totalPaid;
-          }
-        }
       }
       continue;
     }
@@ -274,7 +334,43 @@ export function computeCompetencePeriodStats(
         pending += Number(bill.amount) - Number(bill.paid_amount);
       }
     }
+  }
 
+  if (options?.periodPayments) {
+    const totals = aggregatePeriodPaymentTotals(options.periodPayments);
+    return {
+      production,
+      received: totals.gross,
+      receivedNet: totals.net,
+      pending,
+    };
+  }
+
+  let received = 0;
+  let receivedNet = 0;
+
+  for (const groupBills of groups.values()) {
+    const competenceDate = billCompetenceDate(groupBills[0]);
+    const installmentGroup = isInstallmentSale(groupBills[0]);
+    const competenceInPeriod = inPeriod(competenceDate, period.from, period.to);
+    const totalPaid = groupBills.reduce((sum, b) => sum + Number(b.paid_amount), 0);
+
+    if (installmentGroup) {
+      if (competenceInPeriod && totalPaid > 0) {
+        received += totalPaid;
+        if (options?.netByBillId) {
+          receivedNet += groupBills.reduce(
+            (sum, b) => sum + (options.netByBillId?.get(b.id) ?? Number(b.paid_amount)),
+            0,
+          );
+        } else {
+          receivedNet += totalPaid;
+        }
+      }
+      continue;
+    }
+
+    const bill = groupBills[0];
     const receivedDate = bill.paid_date ?? competenceDate;
     if (
       totalPaid > 0 &&
@@ -292,6 +388,7 @@ export function computeCompetencePeriodStats(
 export function filterBillsForCompetencePeriod(
   bills: CompetenceBill[],
   period: { from: string; to: string },
+  paymentBillIds?: Set<string>,
 ): CompetenceBill[] {
   const groups = buildCompetenceGroups(bills);
   const included = new Set<string>();
@@ -304,6 +401,10 @@ export function filterBillsForCompetencePeriod(
     }
     if (!isInstallmentSale(groupBills[0])) {
       const bill = groupBills[0];
+      if (paymentBillIds?.has(bill.id)) {
+        included.add(key);
+        continue;
+      }
       const receivedDate = bill.paid_date ?? competenceDate;
       if (
         Number(bill.paid_amount) > 0 &&
@@ -311,6 +412,9 @@ export function filterBillsForCompetencePeriod(
       ) {
         included.add(key);
       }
+    } else if (paymentBillIds) {
+      const hasPaymentInPeriod = groupBills.some((b) => paymentBillIds.has(b.id));
+      if (hasPaymentInPeriod) included.add(key);
     }
   }
 

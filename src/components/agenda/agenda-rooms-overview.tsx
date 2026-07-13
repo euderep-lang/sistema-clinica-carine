@@ -16,7 +16,7 @@ import {
 } from "@/lib/agenda-utils";
 import { APPOINTMENT_MODALITY_SHORT, APPOINTMENT_TYPE_LABEL } from "@/lib/appointment-types";
 import { Video, MapPin } from "lucide-react";
-import { AgendaRescheduleButton } from "@/components/agenda/agenda-appointment-actions";
+import { AgendaEditButton, AgendaRescheduleButton } from "@/components/agenda/agenda-appointment-actions";
 import { AgendaContactActions } from "@/components/agenda/agenda-contact-actions";
 import type { AgendaRow } from "@/components/agenda/agenda-timeline-view";
 
@@ -49,12 +49,14 @@ export function AgendaRoomsOverview({
   rooms,
   loading,
   onReschedule,
+  onEdit,
 }: {
   date: string;
   rows: AgendaRow[];
   rooms: RoomColumn[];
   loading: boolean;
   onReschedule?: (row: AgendaRow) => void;
+  onEdit?: (row: AgendaRow) => void;
 }) {
   const slots = buildHourSlots(AGENDA_DAY_START, AGENDA_DAY_END, AGENDA_SLOT_MINUTES);
   const totalMinutes = (AGENDA_DAY_END - AGENDA_DAY_START) * 60;
@@ -216,6 +218,7 @@ export function AgendaRoomsOverview({
                           {STATUS_LABEL[row.status] ?? row.status}
                         </Badge>
                         <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+                          {onEdit && <AgendaEditButton row={row} onEdit={onEdit} />}
                           {onReschedule && <AgendaRescheduleButton row={row} onReschedule={onReschedule} />}
                           <AgendaContactActions
                             phone={row.patients?.phone}

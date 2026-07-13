@@ -161,7 +161,7 @@ export async function buildAiSystemContext(
       .limit(400),
     supabaseAdmin
       .from("inventory_items")
-      .select("name, description, sell_price, cost_price, unit, category")
+      .select("name, description, cost_price, unit, category")
       .eq("tenant_id", tenantId)
       .eq("active", true)
       .order("name")
@@ -220,12 +220,12 @@ export async function buildAiSystemContext(
     sections.push("(nenhum procedimento cadastrado)");
   }
 
-  sections.push("", "ESTOQUE / INSUMOS / MEDICAMENTOS (preços de venda):");
+  sections.push("", "ESTOQUE / INSUMOS (apenas custo — preço de venda via procedimento):");
   if (inv?.length) {
     for (const i of inv) {
-      const price = fmtMoney(Number(i.sell_price ?? 0));
+      const cost = fmtMoney(Number(i.cost_price ?? 0));
       const apres = i.description || i.unit || i.category || "";
-      sections.push(`- ${i.name}${apres ? ` | ${apres}` : ""} | venda R$ ${price}`);
+      sections.push(`- ${i.name}${apres ? ` | ${apres}` : ""} | custo R$ ${cost}`);
     }
   } else {
     sections.push("(nenhum item de estoque cadastrado)");

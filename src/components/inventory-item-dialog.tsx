@@ -20,13 +20,13 @@ export function InventoryItemDialog({ open, onOpenChange, onSaved }:
   const [brand, setBrand] = useState(""); const [category, setCategory] = useState<string>("");
   const [unit, setUnit] = useState<string>("un");
   const [current, setCurrent] = useState("0"); const [min, setMin] = useState("0");
-  const [cost, setCost] = useState("0"); const [sell, setSell] = useState("0");
+  const [cost, setCost] = useState("0");
   const [sku, setSku] = useState(""); const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setName(""); setDescription(""); setBrand(""); setCategory(""); setUnit("un");
-    setCurrent("0"); setMin("0"); setCost("0"); setSell("0"); setSku("");
+    setCurrent("0"); setMin("0"); setCost("0"); setSku("");
     (async () => {
       const { data } = await supabase.from("inventory_categories" as never)
         .select("id,name").order("name") as unknown as { data: Category[] };
@@ -40,7 +40,7 @@ export function InventoryItemDialog({ open, onOpenChange, onSaved }:
     const { error } = await supabase.from("inventory_items" as never).insert({
       tenant_id: profile.tenant_id, name, description: description || null, brand: brand || null,
       category_id: category || null, unit, current_stock: Number(current), min_stock: Number(min),
-      cost_price: Number(cost), sell_price: Number(sell), sku: sku || null,
+      cost_price: Number(cost), sell_price: 0, sku: sku || null,
     } as never);
     setSaving(false);
     if (error) { toast.error("Erro ao criar item"); return; }
@@ -71,8 +71,8 @@ export function InventoryItemDialog({ open, onOpenChange, onSaved }:
           </div>
           <div><Label>Estoque atual</Label><Input type="number" step="0.01" value={current} onChange={(e) => setCurrent(e.target.value)} /></div>
           <div><Label>Estoque mínimo</Label><Input type="number" step="0.01" value={min} onChange={(e) => setMin(e.target.value)} /></div>
-          <div><Label>Preço de custo (R$)</Label><Input type="number" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} /></div>
-          <div><Label>Preço de venda (R$)</Label><Input type="number" step="0.01" value={sell} onChange={(e) => setSell(e.target.value)} /></div>
+          <div className="col-span-2"><Label>Preço de custo (R$)</Label><Input type="number" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} /></div>
+          <p className="col-span-2 text-xs text-muted-foreground">O preço de venda é definido no procedimento vinculado, não no item de estoque.</p>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>

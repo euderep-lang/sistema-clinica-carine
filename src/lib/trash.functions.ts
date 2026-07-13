@@ -26,36 +26,66 @@ function randomPassword(length = 12): string {
   return out;
 }
 
-async function requireAdminTenant(
+async function requireTenantMember(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
   userId: string,
-): Promise<{ tenant_id: string }> {
+): Promise<{ tenant_id: string; role: string; userId: string }> {
   const { data: caller, error } = await supabase
     .from("profiles")
     .select("role, tenant_id")
     .eq("id", userId)
     .maybeSingle();
   if (error || !caller) throw new Error("Perfil não encontrado");
-  if (caller.role !== "admin") throw new Error("Apenas administradores podem acessar a lixeira");
   if (!caller.tenant_id) throw new Error("Tenant não encontrado");
-  return { tenant_id: caller.tenant_id as string };
+  return { tenant_id: caller.tenant_id as string, role: caller.role as string, userId };
+}
+
+async function assertTrashAccess(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabaseAdmin: any,
+  trashId: string,
+  tenantId: string,
+  role: string,
+  userId: string,
+): Promise<{ label: string; entity_type: string; deleted_by: string | null }> {
+  const { data: rowData, error } = await supabaseAdmin
+    .from("trash_bin" as never)
+    .select("label, entity_type, deleted_by, tenant_id, restored_at")
+    .eq("id", trashId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (error || !rowData) throw new Error("Item não encontrado na lixeira");
+  const row = rowData as unknown as {
+    label: string;
+    entity_type: string;
+    deleted_by: string | null;
+    restored_at: string | null;
+  };
+  if (row.restored_at) throw new Error("Este item já foi restaurado");
+  if (role !== "admin" && row.deleted_by !== userId) {
+    throw new Error("Sem permissão para alterar este item da lixeira");
+  }
+  return row;
 }
 
 export const listTrash = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const caller = await requireAdminTenant(supabase, userId);
+    const caller = await requireTenantMember(supabase, userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from("trash_bin" as never)
       .select("id, entity_type, entity_id, label, summary, deleted_by_name, deleted_at, expires_at")
       .eq("tenant_id", caller.tenant_id)
       .is("restored_at", null)
-      .gt("expires_at", new Date().toISOString())
-      .order("deleted_at", { ascending: false });
+      .gt("expires_at", new Date().toISOString());
+    if (caller.role !== "admin") {
+      query = query.eq("deleted_by", caller.userId);
+    }
+    const { data, error } = await query.order("deleted_at", { ascending: false });
     if (error) throw new Error(error.message);
     return { items: (data ?? []) as unknown as TrashItem[] };
   });
@@ -65,12 +95,20 @@ export const restoreTrashItem = createServerFn({ method: "POST" })
   .validator((data: { id: string }) => data)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const caller = await requireAdminTenant(supabase, userId);
+    const caller = await requireTenantMember(supabase, userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    await assertTrashAccess(
+      supabaseAdmin,
+      data.id,
+      caller.tenant_id,
+      caller.role,
+      caller.userId,
+    );
 
     const { data: rowData, error: getErr } = await supabaseAdmin
       .from("trash_bin" as never)
-      .select("id, entity_type, label, snapshot, tenant_id, restored_at")
+      .select("id, entity_type, label, snapshot, tenant_id, restored_at, deleted_by")
       .eq("id", data.id)
       .eq("tenant_id", caller.tenant_id)
       .maybeSingle();
@@ -83,6 +121,9 @@ export const restoreTrashItem = createServerFn({ method: "POST" })
     };
     if (row.restored_at) {
       throw new Error("Este item já foi restaurado");
+    }
+    if (caller.role !== "admin" && row.entity_type === "user") {
+      throw new Error("Apenas administradores podem restaurar usuários");
     }
 
     const snapshot = row.snapshot;
@@ -161,16 +202,16 @@ export const purgeTrashItem = createServerFn({ method: "POST" })
   .validator((data: { id: string }) => data)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const caller = await requireAdminTenant(supabase, userId);
+    const caller = await requireTenantMember(supabase, userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data: rowData } = await supabaseAdmin
-      .from("trash_bin" as never)
-      .select("label, entity_type")
-      .eq("id", data.id)
-      .eq("tenant_id", caller.tenant_id)
-      .maybeSingle();
-    const row = rowData as unknown as { label?: string; entity_type?: string } | null;
+    const row = await assertTrashAccess(
+      supabaseAdmin,
+      data.id,
+      caller.tenant_id,
+      caller.role,
+      caller.userId,
+    );
 
     const { error } = await supabaseAdmin
       .from("trash_bin" as never)

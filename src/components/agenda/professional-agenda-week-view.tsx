@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Eye, PlayCircle } from "lucide-react";
+import { Eye, Pencil, PlayCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -31,6 +31,7 @@ import {
   APPOINTMENT_STATUS_LABEL,
   APPOINTMENT_TYPE_LABEL,
   isBlockAppointment,
+  isAppointmentEditable,
   PROFESSIONAL_AGENDA_STATUS_ITEM,
   PROFESSIONAL_AGENDA_STATUS_OPTIONS,
   PROFESSIONAL_AGENDA_STATUS_TRIGGER,
@@ -58,6 +59,7 @@ export function ProfessionalAgendaWeekView({
   loading,
   onStatusChange,
   onStart,
+  onEdit,
   onRemoveBlock,
   onDayClick,
 }: {
@@ -66,6 +68,7 @@ export function ProfessionalAgendaWeekView({
   loading: boolean;
   onStatusChange: (id: string, status: string) => Promise<boolean>;
   onStart: (appointment: ProfessionalAgendaAppointment) => void;
+  onEdit?: (appointment: ProfessionalAgendaAppointment) => void;
   onRemoveBlock?: (id: string) => void;
   onDayClick?: (date: string) => void;
 }) {
@@ -337,6 +340,12 @@ export function ProfessionalAgendaWeekView({
                                   patientName={row.patients?.full_name}
                                   size="icon"
                                 />
+                                {onEdit && isAppointmentEditable(row) && row.patient_id && (
+                                  <Button size="sm" variant="ghost" onClick={() => onEdit(row)}>
+                                    <Pencil className="mr-1 size-3.5" />
+                                    Editar
+                                  </Button>
+                                )}
                                 {["scheduled", "confirmed", "rescheduled"].includes(row.status) &&
                                   row.patient_id && (
                                     <Button size="sm" onClick={() => onStart(row)}>

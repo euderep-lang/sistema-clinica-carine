@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { todayISO } from "@/lib/locale";
-import { Eye, PlayCircle } from "lucide-react";
+import { Eye, Pencil, PlayCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +29,7 @@ import {
   APPOINTMENT_STATUS_LABEL,
   APPOINTMENT_TYPE_LABEL,
   isBlockAppointment,
+  isAppointmentEditable,
   PROFESSIONAL_AGENDA_STATUS_ITEM,
   PROFESSIONAL_AGENDA_STATUS_OPTIONS,
   PROFESSIONAL_AGENDA_STATUS_TRIGGER,
@@ -67,6 +68,7 @@ export function ProfessionalAgendaDayView({
   loading,
   onStatusChange,
   onStart,
+  onEdit,
   onRemoveBlock,
 }: {
   date: string;
@@ -74,6 +76,7 @@ export function ProfessionalAgendaDayView({
   loading: boolean;
   onStatusChange: (id: string, status: string) => Promise<boolean>;
   onStart: (appointment: ProfessionalAgendaAppointment) => void;
+  onEdit?: (appointment: ProfessionalAgendaAppointment) => void;
   onRemoveBlock?: (id: string) => void;
 }) {
   const navigate = useNavigate();
@@ -252,6 +255,17 @@ export function ProfessionalAgendaDayView({
                     </Select>
                   </div>
                   <div className="mt-1.5 flex flex-wrap gap-1">
+                    {onEdit && isAppointmentEditable(row) && row.patient_id && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => onEdit(row)}
+                      >
+                        <Pencil className="mr-1 size-3" />
+                        Editar
+                      </Button>
+                    )}
                     {["scheduled", "confirmed", "rescheduled"].includes(row.status) && row.patient_id && (
                       <Button size="sm" className="h-6 px-2 text-xs" onClick={() => onStart(row)}>
                         <PlayCircle className="mr-1 size-3" />
