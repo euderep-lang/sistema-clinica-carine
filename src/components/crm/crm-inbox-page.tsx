@@ -125,7 +125,6 @@ import {
   getWhatsAppStatus,
   listScheduledWaMessages,
   markWaConversationRead,
-  markWaConversationUnread,
   scheduleWaMessage,
   sendWaContact,
   sendWaClinicLocation,
@@ -303,7 +302,6 @@ export function CrmInboxPage() {
   const sendClinicLocationFn = useServerFn(sendWaClinicLocation);
   const transferFn = useServerFn(transferWaConversation);
   const readFn = useServerFn(markWaConversationRead);
-  const unreadFn = useServerFn(markWaConversationUnread);
   const syncChatsFn = useServerFn(syncWaChatsFromZApi);
   const mediaUrlFn = useServerFn(fetchWaMediaUrl);
   const deleteMessageFn = useServerFn(deleteWaMessage);
@@ -1340,20 +1338,38 @@ export function CrmInboxPage() {
   };
 
   const markUnread = async () => {
-    if (!selectedId) return;
+    if (!selectedId || !tenant?.id) return;
+    const convId = selectedId;
+    const current = conversations.find((c) => c.id === convId)?.unread_count ?? 0;
+    const nextUnread = current > 0 ? current : 1;
+
     try {
-      await unreadFn({ data: { conversationId: selectedId } });
+      const { data: updated, error } = await supabase
+        .from("wa_conversations" as never)
+        .update({ unread_count: nextUnread, updated_at: new Date().toISOString() } as never)
+        .eq("id", convId)
+        .eq("tenant_id", tenant.id)
+        .select("id")
+        .maybeSingle();
+
+      if (error) throw new Error(error.message);
+      if (!updated) {
+        throw new Error("Sem permissão para marcar esta conversa como não lida.");
+      }
+
       setConversations((prev) =>
-        prev.map((c) =>
-          c.id === selectedId ? { ...c, unread_count: c.unread_count > 0 ? c.unread_count : 1 } : c,
-        ),
+        prev.map((c) => (c.id === convId ? { ...c, unread_count: nextUnread } : c)),
       );
       toast.success("Marcada como não lida");
       setSelectedId(null);
       setMobileView("list");
-      await loadConversations({ silent: true });
     } catch (e) {
-      toast.error((e as Error).message);
+      const msg = (e as Error).message;
+      toast.error(
+        isTransientNetworkError(msg)
+          ? "Falha de conexão ao marcar como não lida. Tente novamente."
+          : msg || "Falha ao marcar como não lida",
+      );
     }
   };
 

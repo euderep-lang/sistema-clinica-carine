@@ -692,21 +692,33 @@ export const markWaConversationUnread = createServerFn({ method: "POST" })
   .validator((d: { conversationId: string }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    await requireCrmAccess(supabase, userId);
+    const profile = await requireCrmAccess(supabase, userId);
 
-    const { data: conv } = await supabase
+    const { data: conv, error: readErr } = await supabase
       .from("wa_conversations" as never)
-      .select("unread_count")
+      .select("id, unread_count")
       .eq("id", data.conversationId)
+      .eq("tenant_id", profile.tenant_id)
       .maybeSingle();
-    const current = (conv as { unread_count?: number } | null)?.unread_count ?? 0;
+    if (readErr) throw new Error(readErr.message);
+    if (!conv) throw new Error("Conversa não encontrada");
 
-    await supabase
+    const current = (conv as { unread_count?: number }).unread_count ?? 0;
+    const nextUnread = current > 0 ? current : 1;
+
+    const { data: updated, error: updateErr } = await supabase
       .from("wa_conversations" as never)
-      .update({ unread_count: current > 0 ? current : 1 } as never)
-      .eq("id", data.conversationId);
+      .update({ unread_count: nextUnread, updated_at: new Date().toISOString() } as never)
+      .eq("id", data.conversationId)
+      .eq("tenant_id", profile.tenant_id)
+      .select("id")
+      .maybeSingle();
+    if (updateErr) throw new Error(updateErr.message);
+    if (!updated) {
+      throw new Error("Sem permissão para marcar esta conversa como não lida.");
+    }
 
-    return { ok: true };
+    return { ok: true, unreadCount: nextUnread };
   });
 
 export const deleteWaMessage = createServerFn({ method: "POST" })
