@@ -147,8 +147,7 @@ export function FinishConsultationDialog({
     setUnitPrices({});
     setTotalPrices({});
     setSaleInventory({});
-    setInventoryQueue([]);
-    setInventoryTarget(null);
+    setInventoryOpen(false);
     setRoomId("geral");
     setPriceTable("particular");
 

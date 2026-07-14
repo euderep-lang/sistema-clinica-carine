@@ -1,5 +1,5 @@
 import { processDueFollowUps } from "@/lib/wa-follow-up.server";
-import { isBrazilMobileE164, isWhatsAppLid, normalizeBrazilPhone } from "@/lib/wa-phone";
+import { isWhatsAppLid, normalizeWaPhone } from "@/lib/wa-phone";
 import { verifyZApiWebhookAuth } from "@/lib/zapi-webhook-auth.server";
 import {
   insertWaMessage,
@@ -75,7 +75,7 @@ function resolveZApiContact(payload: ZApiReceivedPayload): {
   // Mensagem enviada pelo app: o destinatário vem em participantPhone
   if (payload.fromMe && payload.participantPhone?.trim()) {
     phone = payload.participantPhone.trim();
-  } else if (!isBrazilMobileE164(normalizeBrazilPhone(phone)) && payload.participantPhone?.trim()) {
+  } else if (!normalizeWaPhone(phone) && payload.participantPhone?.trim()) {
     phone = payload.participantPhone.trim();
   }
 

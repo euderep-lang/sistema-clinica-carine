@@ -2336,6 +2336,20 @@ export function CrmInboxPage() {
                     </div>
                   ) : (
                     <div className="space-y-1 pb-1.5">
+                      {messages.length <= 2 &&
+                        messages.every((m) => {
+                          const b = (m.body ?? "").trim();
+                          return !b || b === "." || b === ",";
+                        }) && (
+                          <div className="mx-auto mb-3 max-w-md rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-amber-950">
+                            <p className="font-medium">Histórico antigo não disponível</p>
+                            <p className="mt-1 text-amber-900/90">
+                              Esta conversa no celular não chegou ao CRM (telefone internacional era
+                              bloqueado). O contato já está ligado — envie ou peça uma mensagem nova
+                              para o histórico começar a aparecer aqui.
+                            </p>
+                          </div>
+                        )}
                       {loadingOlder ? (
                         <div className="flex justify-center py-3">
                           <Loader2 className="size-4 animate-spin text-muted-foreground" />
