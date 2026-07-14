@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { convertAudioBase64ToWhatsAppOgg } from "@/lib/wa-audio-convert.server";
-import { findConversationByPhone, normalizeBrazilPhone } from "@/lib/wa-phone";
+import { findConversationByPhone, normalizeBrazilPhone, normalizeWaPhone } from "@/lib/wa-phone";
 import { onOutboundMessageForFollowUp } from "@/lib/wa-follow-up.server";
 import {
   getWhatsAppProvider,
@@ -239,7 +239,8 @@ export const sendWaText = createServerFn({ method: "POST" })
       const result = await sendMetaSocialText(recipientId, patientText, channel);
       messageId = result.messageId;
     } else {
-      const phone = normalizeBrazilPhone(convRow.contact_phone);
+      const phone = normalizeWaPhone(convRow.contact_phone);
+      if (!phone) throw new Error("Telefone da conversa inválido");
       const result = await providerSendText(phone, patientText, {
         replyToWaMessageId: replyToWaId,
       });
@@ -315,7 +316,8 @@ export const sendWaMedia = createServerFn({ method: "POST" })
       .maybeSingle();
     if (error || !conv) throw new Error("Conversa não encontrada");
 
-    const phone = normalizeBrazilPhone((conv as { contact_phone: string }).contact_phone);
+    const phone = normalizeWaPhone((conv as { contact_phone: string }).contact_phone);
+    if (!phone) throw new Error("Telefone da conversa inválido");
 
     let base64 = data.base64;
     let mimeType = data.mimeType;
@@ -435,7 +437,8 @@ export const sendWaContact = createServerFn({ method: "POST" })
       throw new Error("Compartilhar contato só funciona no WhatsApp");
     }
 
-    const phone = normalizeBrazilPhone(convRow.contact_phone);
+    const phone = normalizeWaPhone(convRow.contact_phone);
+    if (!phone) throw new Error("Telefone da conversa inválido");
     const { messageId } = await providerSendContact(phone, contactName, contactPhone);
 
     const now = new Date().toISOString();
@@ -501,7 +504,8 @@ export const sendWaClinicLocation = createServerFn({ method: "POST" })
     const coords = await geocodeAddressLine(address);
     if (!coords) throw new Error("Não foi possível localizar o endereço da clínica no mapa");
 
-    const phone = normalizeBrazilPhone(convRow.contact_phone);
+    const phone = normalizeWaPhone(convRow.contact_phone);
+    if (!phone) throw new Error("Telefone da conversa inválido");
     const { messageId } = await providerSendLocation(phone, title, address, coords.lat, coords.lng);
 
     const now = new Date().toISOString();
@@ -764,7 +768,8 @@ export const deleteWaMessage = createServerFn({ method: "POST" })
         throw new Error("Apagar para todos só funciona no WhatsApp");
       }
 
-      const phone = normalizeBrazilPhone(convRow.contact_phone);
+      const phone = normalizeWaPhone(convRow.contact_phone);
+      if (!phone) throw new Error("Telefone da conversa inválido");
       try {
         await providerDeleteMessage(phone, message.wa_message_id, message.direction === "outbound");
       } catch (e) {
@@ -964,17 +969,22 @@ export const startWaConversation = createServerFn({ method: "POST" })
     const profile = await requireCrmAccess(supabase, userId);
     if (!isWhatsAppConfigured()) throw new Error(configError());
 
+    let phoneDdi: string | null = null;
     if (data.patientId) {
       const { data: patient } = await supabase
         .from("patients")
-        .select("id")
+        .select("id, phone, phone_ddi")
         .eq("id", data.patientId)
         .eq("tenant_id", profile.tenant_id)
         .maybeSingle();
       if (!patient) throw new Error("Paciente não encontrado");
+      phoneDdi = patient.phone_ddi ?? null;
     }
 
-    const phone = normalizeBrazilPhone(data.phone);
+    const phone =
+      normalizeWaPhone(data.phone, phoneDdi) ||
+      (phoneDdi ? "" : normalizeBrazilPhone(data.phone));
+    if (!phone) throw new Error("Telefone inválido para WhatsApp");
     const now = new Date().toISOString();
     const displayName = data.name ?? phone;
     const draft = normalizeOutboundMessageBody(data.text);
@@ -1100,13 +1110,13 @@ export const sendPrescriptionViaCrm = createServerFn({ method: "POST" })
 
     const { data: patient, error: patErr } = await supabase
       .from("patients")
-      .select("id, full_name, phone")
+      .select("id, full_name, phone, phone_ddi")
       .eq("id", rxRow.patient_id)
       .maybeSingle();
     if (patErr || !patient) throw new Error("Paciente não encontrado");
     if (!patient.phone) throw new Error("Paciente sem telefone cadastrado");
 
-    const phone = normalizeBrazilPhone(patient.phone);
+    const phone = normalizeWaPhone(patient.phone, patient.phone_ddi);
     if (!phone) throw new Error("Telefone do paciente inválido");
 
     const { data: pdfBlob, error: dlErr } = await supabaseAdmin.storage

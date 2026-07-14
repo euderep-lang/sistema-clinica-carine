@@ -5,8 +5,10 @@ import {
   isBrazilMobileE164,
   isLikelyWaLidKey,
   normalizeBrazilPhone,
+  normalizeWaPhone,
   phoneTail11,
   phonesMatch,
+  resolvePatientPhoneE164,
 } from "@/lib/wa-phone";
 import {
   DEFAULT_AFTER_HOURS_MESSAGE,
@@ -40,13 +42,18 @@ export async function findPatientByPhone(tenantId: string, phoneDigits: string) 
 export async function findPatientsByPhone(tenantId: string, phoneDigits: string) {
   const { data: patients } = await supabaseAdmin
     .from("patients")
-    .select("id, full_name, phone")
+    .select("id, full_name, phone, phone_ddi")
     .eq("tenant_id", tenantId)
     .eq("active", true);
 
   if (!patients?.length) return [];
-  const normalized = normalizeBrazilPhone(phoneDigits);
-  return patients.filter((p) => phonesMatch(p.phone ?? "", normalized));
+  const normalized = normalizeWaPhone(phoneDigits);
+  return patients.filter((p) =>
+    phonesMatch(
+      resolvePatientPhoneE164(p.phone ?? "", p.phone_ddi) || (p.phone ?? ""),
+      normalized || phoneDigits,
+    ),
+  );
 }
 
 type ConversationRow = {

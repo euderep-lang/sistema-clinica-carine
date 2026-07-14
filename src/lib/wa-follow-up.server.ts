@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { fmtDateFromDate, fmtTimeFromDate, zonedDateFromWallClock } from "@/lib/locale";
 import { renderTemplate } from "@/lib/settings-helpers";
-import { normalizeBrazilPhone, phonesMatch } from "@/lib/wa-phone";
+import { normalizeWaPhone, phonesMatch, resolvePatientPhoneE164 } from "@/lib/wa-phone";
 import { getDefaultReceptionAssignee } from "@/lib/wa-crm-assign.server";
 import { getFollowUpSequencesServer } from "@/lib/wa-tenant-settings.server";
 import {
@@ -156,13 +156,7 @@ async function applyTagToConversation(conversationId: string, tagId: string) {
   );
 }
 
-export function resolvePatientPhoneE164(phone: string, phoneDdi?: string | null): string {
-  const ddi = (phoneDdi ?? "55").replace(/\D/g, "") || "55";
-  const local = phone.replace(/\D/g, "");
-  if (!local) return "";
-  const combined = local.startsWith(ddi) ? local : `${ddi}${local}`;
-  return normalizeBrazilPhone(combined);
-}
+export { resolvePatientPhoneE164 };
 
 export async function findConversationForPatient(
   tenantId: string,
@@ -893,7 +887,8 @@ async function sendAutomatedMessage(
 
   const humanizedText = await humanizeForConversation(tenantId, text, { conversationId });
 
-  const phone = normalizeBrazilPhone(convRow.contact_phone);
+  const phone = normalizeWaPhone(convRow.contact_phone);
+  if (!phone) return null;
   const result = await providerSendText(phone, humanizedText);
   const now = new Date();
 

@@ -1,4 +1,4 @@
-/** Normalização e comparação de telefones BR para o CRM WhatsApp. */
+/** Normalização e comparação de telefones para o CRM WhatsApp. */
 
 const BR_MOBILE_E164 = /^55[1-9]\d9\d{8}$/;
 
@@ -73,12 +73,62 @@ export function normalizeBrazilPhone(input: string): string {
   return isBrazilMobileE164(d) ? d : "";
 }
 
+/**
+ * Monta E.164 a partir do telefone local do paciente + DDI.
+ * Brasil passa pela normalização de celular; demais países mantêm dígitos com DDI.
+ */
+export function resolvePatientPhoneE164(phone: string, phoneDdi?: string | null): string {
+  const ddi = (phoneDdi ?? "55").replace(/\D/g, "") || "55";
+  const local = digitsOnly(phone);
+  if (!local) return "";
+
+  const combined = local.startsWith(ddi) ? local : `${ddi}${local}`;
+  if (ddi === "55") return normalizeBrazilPhone(combined);
+
+  // E.164 internacional: 8–15 dígitos, sem zero à esquerda
+  if (combined.length < 8 || combined.length > 15 || combined.startsWith("0")) return "";
+  return combined;
+}
+
+/**
+ * Normaliza telefone para envio no WhatsApp (BR ou internacional já com DDI).
+ */
+export function normalizeWaPhone(input: string, phoneDdi?: string | null): string {
+  if (!input?.trim() || isWhatsAppLid(input)) return "";
+
+  if (phoneDdi != null && phoneDdi !== "") {
+    const resolved = resolvePatientPhoneE164(input, phoneDdi);
+    if (resolved) return resolved;
+  }
+
+  const br = normalizeBrazilPhone(input);
+  if (br) return br;
+
+  const d = digitsOnly(input);
+  if (d.length >= 10 && d.length <= 15 && !d.startsWith("0") && !d.startsWith("55")) {
+    return d;
+  }
+  return "";
+}
+
 export function phonesMatch(a: string, b: string): boolean {
   const na = normalizeBrazilPhone(a);
   const nb = normalizeBrazilPhone(b);
-  if (!na || !nb) return false;
-  if (na === nb) return true;
-  return phoneTail11(na) === phoneTail11(nb);
+  if (na && nb) {
+    if (na === nb) return true;
+    return phoneTail11(na) === phoneTail11(nb);
+  }
+
+  const da = normalizeWaPhone(a) || digitsOnly(a);
+  const db = normalizeWaPhone(b) || digitsOnly(b);
+  if (!da || !db) return false;
+  if (da === db) return true;
+  if (da.endsWith(db) || db.endsWith(da)) {
+    const longer = da.length >= db.length ? da : db;
+    const shorter = da.length < db.length ? da : db;
+    return longer.length - shorter.length <= 4;
+  }
+  return false;
 }
 
 export type WaConversationPhoneRow = {
@@ -99,8 +149,8 @@ export function findConversationByPhone<T extends WaConversationPhoneRow>(
   phone: string,
 ): T | null {
   if (!rows?.length) return null;
-  const canonical = normalizeBrazilPhone(phone);
-  const tail = phoneTail11(canonical);
+  const canonical = normalizeWaPhone(phone);
+  if (!canonical) return null;
 
   const matches = rows.filter((r) => phonesMatch(r.contact_phone, canonical));
   if (!matches.length) return null;

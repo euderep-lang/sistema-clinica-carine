@@ -1,5 +1,5 @@
 /** Parâmetros de busca do inbox CRM (`/crm/inbox`). */
-import { normalizeBrazilPhone } from "@/lib/wa-phone";
+import { normalizeWaPhone } from "@/lib/wa-phone";
 
 export interface CrmInboxSearch {
   conversation?: string;
@@ -8,15 +8,16 @@ export interface CrmInboxSearch {
   draft?: string;
 }
 
-export function normalizeCrmPhone(phone: string | null | undefined): string | null {
+export function normalizeCrmPhone(phone: string | null | undefined, phoneDdi?: string | null): string | null {
   if (!phone) return null;
-  const d = normalizeBrazilPhone(phone);
-  return d.length >= 12 ? d : null;
+  const d = normalizeWaPhone(phone, phoneDdi);
+  return d.length >= 10 ? d : null;
 }
 
 export function buildCrmInboxSearch(options: {
   patientId?: string | null;
   phone?: string | null;
+  phoneDdi?: string | null;
   conversationId?: string | null;
   draft?: string | null;
 }): CrmInboxSearch {
@@ -27,7 +28,7 @@ export function buildCrmInboxSearch(options: {
   } else if (options.patientId) {
     search.patient = options.patientId;
   } else {
-    const phone = normalizeCrmPhone(options.phone);
+    const phone = normalizeCrmPhone(options.phone, options.phoneDdi);
     if (phone) search.phone = phone;
   }
 

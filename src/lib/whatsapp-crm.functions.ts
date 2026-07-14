@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { syncZApiChatsToCrm } from "@/lib/whatsapp-crm-storage.server";
 import { assignOpenConversationsToReception } from "@/lib/wa-crm-assign.server";
-import { phonesMatch } from "@/lib/wa-phone";
+import { phonesMatch, normalizeWaPhone } from "@/lib/wa-phone";
 import { getZApiChats, getZApiConfig } from "@/lib/whatsapp-zapi.server";
 import { normalizeBrazilPhone } from "@/lib/whatsapp-meta.server";
 import { logWaAudit } from "@/lib/wa-audit.server";
@@ -564,7 +564,8 @@ export const sendWaAfterHoursTest = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!conv) throw new Error("Conversa não encontrada");
 
-    const phone = normalizeBrazilPhone((conv as { contact_phone: string }).contact_phone);
+    const phone = normalizeWaPhone((conv as { contact_phone: string }).contact_phone);
+    if (!phone) throw new Error("Telefone da conversa inválido");
     await providerSendText(phone, data.text);
 
     await logWaAudit({
@@ -1231,7 +1232,11 @@ export const sendWaBroadcast = createServerFn({ method: "POST" })
       .eq("channel", "whatsapp");
 
     for (const conv of (convs ?? []) as { id: string; contact_phone: string }[]) {
-      const phone = normalizeBrazilPhone(conv.contact_phone);
+      const phone = normalizeWaPhone(conv.contact_phone);
+      if (!phone) {
+        failed += 1;
+        continue;
+      }
       const { data: recipient } = await context.supabase
         .from("wa_broadcast_recipients" as never)
         .insert({

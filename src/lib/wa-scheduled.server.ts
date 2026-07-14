@@ -3,7 +3,7 @@
  * (/api/cron/wa-follow-ups), por isso funciona com o app fechado.
  */
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { normalizeBrazilPhone } from "@/lib/wa-phone";
+import { normalizeWaPhone } from "@/lib/wa-phone";
 import { normalizeOutboundMessageBody } from "@/lib/wa-automation-quick-replies.server";
 import { humanizeForConversation } from "@/lib/wa-quick-reply-ai.server";
 import {
@@ -61,7 +61,8 @@ async function deliverScheduled(row: ScheduledRow): Promise<void> {
     const result = await sendMetaSocialText(recipientId, patientText, channel);
     messageId = result.messageId;
   } else {
-    const phone = normalizeBrazilPhone(convRow.contact_phone);
+    const phone = normalizeWaPhone(convRow.contact_phone);
+    if (!phone) throw new Error("Telefone da conversa inválido");
     const result = await providerSendText(phone, patientText);
     messageId = result.messageId;
   }

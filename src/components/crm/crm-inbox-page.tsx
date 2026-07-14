@@ -74,7 +74,7 @@ import {
   prepareDocumentFileForWhatsApp,
   prepareImageFileForWhatsApp,
 } from "@/lib/wa-media-prepare";
-import { dedupeConversationsByPhone, phonesMatch, phoneTail11, normalizeBrazilPhone } from "@/lib/wa-phone";
+import { dedupeConversationsByPhone, phonesMatch, phoneTail11, normalizeBrazilPhone, resolvePatientPhoneE164 } from "@/lib/wa-phone";
 import { getCachedWaMediaUrl, setCachedWaMediaUrl } from "@/lib/wa-media-url-cache";
 import {
   conversationAssigneeName,
@@ -500,7 +500,7 @@ export function CrmInboxPage() {
     void (async () => {
       const { data: patient } = await supabase
         .from("patients")
-        .select("phone, full_name")
+        .select("phone, phone_ddi, full_name")
         .eq("id", patientFromUrl)
         .maybeSingle();
       if (cancelled || !patient?.phone) {
@@ -510,7 +510,8 @@ export function CrmInboxPage() {
         return;
       }
 
-      const patientPhone = patient.phone;
+      const patientPhone =
+        resolvePatientPhoneE164(patient.phone, patient.phone_ddi) || patient.phone;
       const byPhone = conversations.find((c) => phonesMatch(c.contact_phone, patientPhone));
 
       if (byPhone) {
@@ -526,7 +527,7 @@ export function CrmInboxPage() {
       }
 
       setComposeTarget({
-        phone: patient.phone,
+        phone: patientPhone,
         name: patient.full_name ?? patient.phone,
         patientId: patientFromUrl,
       });
