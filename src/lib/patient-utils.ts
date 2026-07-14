@@ -29,6 +29,113 @@ export const PHONE_DDI_OPTIONS = [
   { value: "44", label: "+44 Reino Unido" },
 ] as const;
 
+type PhoneMaskConfig = {
+  maxDigits: number;
+  placeholder: string;
+  format: (digits: string) => string;
+};
+
+function digitsOnly(v: string, max: number) {
+  return v.replace(/\D/g, "").slice(0, max);
+}
+
+function joinGroups(digits: string, sizes: number[], sep = " ") {
+  const parts: string[] = [];
+  let i = 0;
+  for (const size of sizes) {
+    if (i >= digits.length) break;
+    parts.push(digits.slice(i, i + size));
+    i += size;
+  }
+  return parts.join(sep);
+}
+
+function maskUsCa(digits: string) {
+  const d = digits.slice(0, 10);
+  if (d.length === 0) return "";
+  if (d.length <= 3) return `(${d}`;
+  if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`;
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+}
+
+const PHONE_MASK_BY_DDI: Record<string, PhoneMaskConfig> = {
+  "55": {
+    maxDigits: 11,
+    placeholder: "(00) 00000-0000",
+    format: (d) => maskPhone(d),
+  },
+  "1": {
+    maxDigits: 10,
+    placeholder: "(000) 000-0000",
+    format: maskUsCa,
+  },
+  "351": {
+    maxDigits: 9,
+    placeholder: "000 000 000",
+    format: (d) => joinGroups(d, [3, 3, 3]),
+  },
+  "54": {
+    maxDigits: 10,
+    placeholder: "00 0000-0000",
+    format: (d) => {
+      if (d.length <= 2) return d;
+      if (d.length <= 6) return `${d.slice(0, 2)} ${d.slice(2)}`;
+      return `${d.slice(0, 2)} ${d.slice(2, 6)}-${d.slice(6)}`;
+    },
+  },
+  "598": {
+    maxDigits: 8,
+    placeholder: "00 000 000",
+    format: (d) => joinGroups(d, [2, 3, 3]),
+  },
+  "595": {
+    maxDigits: 9,
+    placeholder: "000 000 000",
+    format: (d) => joinGroups(d, [3, 3, 3]),
+  },
+  "56": {
+    maxDigits: 9,
+    placeholder: "0 0000 0000",
+    format: (d) => joinGroups(d, [1, 4, 4]),
+  },
+  "34": {
+    maxDigits: 9,
+    placeholder: "000 000 000",
+    format: (d) => joinGroups(d, [3, 3, 3]),
+  },
+  "39": {
+    maxDigits: 10,
+    placeholder: "000 000 0000",
+    format: (d) => joinGroups(d, [3, 3, 4]),
+  },
+  "44": {
+    maxDigits: 10,
+    placeholder: "0000 000 000",
+    format: (d) => joinGroups(d, [4, 3, 3]),
+  },
+};
+
+const FALLBACK_PHONE_MASK: PhoneMaskConfig = {
+  maxDigits: 15,
+  placeholder: "000000000",
+  format: (d) => d,
+};
+
+export function phoneMaskConfig(ddi?: string | null): PhoneMaskConfig {
+  const code = sanitizeDdi(ddi || DEFAULT_PHONE_DDI) || DEFAULT_PHONE_DDI;
+  return PHONE_MASK_BY_DDI[code] ?? FALLBACK_PHONE_MASK;
+}
+
+/** Máscara de telefone conforme o DDI selecionado. */
+export function maskPhoneByDdi(value: string, ddi?: string | null) {
+  const config = phoneMaskConfig(ddi);
+  return config.format(digitsOnly(value, config.maxDigits));
+}
+
+export function phonePlaceholderByDdi(ddi?: string | null) {
+  return phoneMaskConfig(ddi).placeholder;
+}
+
 export function sanitizeDdi(value: string): string {
   return value.replace(/\D/g, "").slice(0, 4);
 }
@@ -36,7 +143,7 @@ export function sanitizeDdi(value: string): string {
 export function formatPhoneWithDdi(phone: string | null | undefined, ddi?: string | null) {
   if (!phone) return null;
   const code = sanitizeDdi(ddi || DEFAULT_PHONE_DDI) || DEFAULT_PHONE_DDI;
-  return `+${code} ${maskPhone(phone)}`;
+  return `+${code} ${maskPhoneByDdi(phone, code)}`;
 }
 
 export function buildPatientInternationalPhone(

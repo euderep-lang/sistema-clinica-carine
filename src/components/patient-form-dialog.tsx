@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
-import { maskCPF, maskPhone, maskCEP, isValidCPF, ageFromBirthDate, fetchCEP, DEFAULT_PHONE_DDI, PHONE_DDI_OPTIONS, sanitizeDdi } from "@/lib/patient-utils";
+import { maskCPF, maskPhoneByDdi, phonePlaceholderByDdi, maskCEP, isValidCPF, ageFromBirthDate, fetchCEP, DEFAULT_PHONE_DDI, PHONE_DDI_OPTIONS, sanitizeDdi } from "@/lib/patient-utils";
 
 export interface PatientFormData {
   id?: string;
@@ -73,12 +73,33 @@ export function PatientFormDialog({
       base.phone_ddi = sanitizeDdi(base.phone_ddi || DEFAULT_PHONE_DDI) || DEFAULT_PHONE_DDI;
       base.emergency_contact_phone_ddi =
         sanitizeDdi(base.emergency_contact_phone_ddi || DEFAULT_PHONE_DDI) || DEFAULT_PHONE_DDI;
+      base.phone = maskPhoneByDdi(base.phone, base.phone_ddi);
+      base.emergency_contact_phone = maskPhoneByDdi(
+        base.emergency_contact_phone,
+        base.emergency_contact_phone_ddi,
+      );
       setForm(base);
       setErrors({});
     }
   }, [open, initial]);
 
   const set = (k: keyof PatientFormData, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  const setPhoneDdi = (ddi: string) => {
+    setForm((f) => ({
+      ...f,
+      phone_ddi: ddi,
+      phone: maskPhoneByDdi(f.phone, ddi),
+    }));
+  };
+
+  const setEmergencyPhoneDdi = (ddi: string) => {
+    setForm((f) => ({
+      ...f,
+      emergency_contact_phone_ddi: ddi,
+      emergency_contact_phone: maskPhoneByDdi(f.emergency_contact_phone, ddi),
+    }));
+  };
   const age = ageFromBirthDate(form.birth_date);
 
   const onCepBlur = async () => {
@@ -202,7 +223,7 @@ export function PatientFormDialog({
               <div className="md:col-span-2 flex flex-col gap-3 sm:flex-row sm:items-end">
                 <div className="w-full sm:w-40">
                   <Label>DDI</Label>
-                  <Select value={form.phone_ddi} onValueChange={(v) => set("phone_ddi", v)}>
+                  <Select value={form.phone_ddi} onValueChange={setPhoneDdi}>
                     <SelectTrigger>
                       <SelectValue placeholder="+55" />
                     </SelectTrigger>
@@ -219,8 +240,8 @@ export function PatientFormDialog({
                   <Label>Telefone / WhatsApp</Label>
                   <Input
                     value={form.phone}
-                    onChange={(e) => set("phone", maskPhone(e.target.value))}
-                    placeholder="(00) 00000-0000"
+                    onChange={(e) => set("phone", maskPhoneByDdi(e.target.value, form.phone_ddi))}
+                    placeholder={phonePlaceholderByDdi(form.phone_ddi)}
                   />
                 </div>
               </div>
@@ -307,7 +328,7 @@ export function PatientFormDialog({
                   <Label>DDI</Label>
                   <Select
                     value={form.emergency_contact_phone_ddi}
-                    onValueChange={(v) => set("emergency_contact_phone_ddi", v)}
+                    onValueChange={setEmergencyPhoneDdi}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="+55" />
@@ -325,8 +346,13 @@ export function PatientFormDialog({
                   <Label>Telefone</Label>
                   <Input
                     value={form.emergency_contact_phone}
-                    onChange={(e) => set("emergency_contact_phone", maskPhone(e.target.value))}
-                    placeholder="(00) 00000-0000"
+                    onChange={(e) =>
+                      set(
+                        "emergency_contact_phone",
+                        maskPhoneByDdi(e.target.value, form.emergency_contact_phone_ddi),
+                      )
+                    }
+                    placeholder={phonePlaceholderByDdi(form.emergency_contact_phone_ddi)}
                   />
                 </div>
               </div>
