@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
-import { APPOINTMENT_STATUS_LABEL } from "@/lib/appointment-types";
+import { APPOINTMENT_STATUS_LABEL, showsOnAgendaGrid } from "@/lib/appointment-types";
 import { openCrmInbox } from "@/lib/crm-navigation";
 import {
   fmtDateLong,
@@ -132,8 +132,16 @@ function ReceptionDashboard() {
       fetchWaUnreadBadgeCount(tenant.id, profile.id, profile.role),
     ]);
 
-    setTodayAppts((apptRes.data ?? []) as unknown as TodayAppt[]);
-    setTomorrowAppts((tomorrowRes.data ?? []) as unknown as TomorrowAppt[]);
+    setTodayAppts(
+      ((apptRes.data ?? []) as unknown as TodayAppt[]).filter((a) =>
+        showsOnAgendaGrid(a, { showCancelled: true }),
+      ),
+    );
+    setTomorrowAppts(
+      ((tomorrowRes.data ?? []) as unknown as TomorrowAppt[]).filter((a) =>
+        showsOnAgendaGrid(a),
+      ),
+    );
     setOpenConvCount(openRes.count ?? 0);
     setWaUnreadTotal(badgeCount);
     setSentToday(msgsRes.count ?? 0);
@@ -175,7 +183,7 @@ function ReceptionDashboard() {
   const stats = useMemo(() => {
     const list = todayAppts;
     return {
-      total: list.filter((a) => a.status !== "cancelled" && a.status !== "blocked").length,
+      total: list.filter((a) => a.status !== "cancelled" && a.status !== "no_show").length,
       confirmed: list.filter((a) => a.status === "confirmed").length,
       scheduled: list.filter((a) => a.status === "scheduled").length,
       inProgress: list.filter((a) => a.status === "in_progress").length,
@@ -186,12 +194,8 @@ function ReceptionDashboard() {
   }, [todayAppts]);
 
   const { upcoming, inProgressOrDone, cancelledOrNoShow, nextAppt } = useMemo(() => {
-    const done = new Set(["completed", "no_show"]);
-    const upcomingList = todayAppts.filter(
-      (a) =>
-        !done.has(a.status ?? "") &&
-        a.status !== "cancelled" &&
-        a.status !== "in_progress",
+    const upcomingList = todayAppts.filter((a) =>
+      ["scheduled", "confirmed"].includes(a.status ?? ""),
     );
     const inProg = todayAppts.filter(
       (a) => a.status === "in_progress" || a.status === "completed",

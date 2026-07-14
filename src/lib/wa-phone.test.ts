@@ -3,6 +3,7 @@ import {
   extractBrazilMobileFromLong,
   isBrazilMobileE164,
   isWhatsAppLid,
+  nationalPhoneKey,
   normalizeBrazilPhone,
   normalizeWaPhone,
   phonesMatch,
@@ -54,5 +55,11 @@ describe("resolvePatientPhoneE164 / normalizeWaPhone", () => {
 
   it("Portugal", () => {
     expect(resolvePatientPhoneE164("912 345 678", "351")).toBe("351912345678");
+  });
+
+  it("casa número BR com DDI 55 e o mesmo local com DDI 1", () => {
+    expect(phonesMatch("557742041500", "17742041500")).toBe(true);
+    expect(nationalPhoneKey("557742041500")).toBe("7742041500");
+    expect(nationalPhoneKey("17742041500")).toBe("7742041500");
   });
 });

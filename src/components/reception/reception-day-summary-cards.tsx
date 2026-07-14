@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { APPOINTMENT_STATUS_LABEL } from "@/lib/appointment-types";
+import { APPOINTMENT_STATUS_LABEL, showsOnAgendaGrid } from "@/lib/appointment-types";
 
 export type ReceptionDayAppt = {
   id: string;
@@ -45,17 +45,18 @@ const CARD_META: Record<
 };
 
 function rowsForKey(rows: ReceptionDayAppt[], key: SummaryKey): ReceptionDayAppt[] {
+  const active = rows.filter((r) => showsOnAgendaGrid(r));
   switch (key) {
     case "today":
-      return rows.filter((r) => r.status !== "cancelled" && r.status !== "blocked");
+      return active;
     case "confirmed":
-      return rows.filter((r) => r.status === "confirmed");
+      return active.filter((r) => r.status === "confirmed");
     case "scheduled":
-      return rows.filter((r) => r.status === "scheduled");
+      return active.filter((r) => r.status === "scheduled");
     case "inProgress":
-      return rows.filter((r) => r.status === "in_progress");
+      return active.filter((r) => r.status === "in_progress");
     case "completed":
-      return rows.filter((r) => r.status === "completed");
+      return active.filter((r) => r.status === "completed");
     case "cancelledNoShow":
       return rows.filter((r) => r.status === "cancelled" || r.status === "no_show");
   }

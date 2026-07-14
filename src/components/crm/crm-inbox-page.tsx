@@ -74,7 +74,7 @@ import {
   prepareDocumentFileForWhatsApp,
   prepareImageFileForWhatsApp,
 } from "@/lib/wa-media-prepare";
-import { dedupeConversationsByPhone, phonesMatch, phoneTail11, normalizeBrazilPhone, resolvePatientPhoneE164 } from "@/lib/wa-phone";
+import { dedupeConversationsByPhone, phonesMatch, phoneTail11, normalizeBrazilPhone, normalizeWaPhone, nationalPhoneKey, resolvePatientPhoneE164 } from "@/lib/wa-phone";
 import { getCachedWaMediaUrl, setCachedWaMediaUrl } from "@/lib/wa-media-url-cache";
 import {
   conversationAssigneeName,
@@ -613,43 +613,71 @@ export function CrmInboxPage() {
 
     const { data: convRow } = await supabase
       .from("wa_conversations" as never)
-      .select("id, contact_phone")
+      .select("id, contact_phone, patient_id")
       .eq("id", conversationId)
       .maybeSingle();
 
-    const phone = (convRow as { contact_phone?: string } | null)?.contact_phone;
+    const convMeta = convRow as { contact_phone?: string; patient_id?: string | null } | null;
+    const phone = convMeta?.contact_phone;
+    const patientId = convMeta?.patient_id ?? null;
     let relatedIds = [conversationId];
 
-    if (phone && tenant) {
-      const tail = phoneTail11(phone);
-      const normalized = normalizeBrazilPhone(phone);
-      let related: { id: string; contact_phone: string }[] = [];
+    if (tenant) {
+      const relatedMap = new Map<string, string>();
+      relatedMap.set(conversationId, phone ?? "");
 
-      if (tail) {
+      if (phone) {
+        const tail = phoneTail11(phone);
+        const normalized = normalizeBrazilPhone(phone) || normalizeWaPhone(phone);
+        const national = nationalPhoneKey(phone);
+
+        if (tail) {
+          const { data } = await supabase
+            .from("wa_conversations" as never)
+            .select("id, contact_phone")
+            .eq("tenant_id", tenant.id)
+            .eq("phone_tail", tail);
+          for (const c of (data ?? []) as { id: string; contact_phone: string }[]) {
+            relatedMap.set(c.id, c.contact_phone);
+          }
+        }
+
+        if (normalized) {
+          const { data } = await supabase
+            .from("wa_conversations" as never)
+            .select("id, contact_phone")
+            .eq("tenant_id", tenant.id)
+            .eq("contact_phone", normalized);
+          for (const c of (data ?? []) as { id: string; contact_phone: string }[]) {
+            relatedMap.set(c.id, c.contact_phone);
+          }
+        }
+
+        // Mesmo número local com DDI diferente (ex.: 55… vs 1…)
+        if (national.length >= 8) {
+          const { data } = await supabase
+            .from("wa_conversations" as never)
+            .select("id, contact_phone")
+            .eq("tenant_id", tenant.id)
+            .ilike("contact_phone", `%${national}`);
+          for (const c of (data ?? []) as { id: string; contact_phone: string }[]) {
+            if (phonesMatch(c.contact_phone, phone)) relatedMap.set(c.id, c.contact_phone);
+          }
+        }
+      }
+
+      if (patientId) {
         const { data } = await supabase
           .from("wa_conversations" as never)
           .select("id, contact_phone")
           .eq("tenant_id", tenant.id)
-          .eq("phone_tail", tail);
-        related = (data ?? []) as { id: string; contact_phone: string }[];
+          .eq("patient_id", patientId);
+        for (const c of (data ?? []) as { id: string; contact_phone: string }[]) {
+          relatedMap.set(c.id, c.contact_phone);
+        }
       }
 
-      if (!related.length && normalized) {
-        const { data } = await supabase
-          .from("wa_conversations" as never)
-          .select("id, contact_phone")
-          .eq("tenant_id", tenant.id)
-          .eq("contact_phone", normalized);
-        related = (data ?? []) as { id: string; contact_phone: string }[];
-      }
-
-      if (!related.length) {
-        related = [{ id: conversationId, contact_phone: phone }];
-      }
-
-      relatedIds = related
-        .filter((c) => phonesMatch(c.contact_phone, phone))
-        .map((c) => c.id);
+      relatedIds = [...relatedMap.keys()];
       if (!relatedIds.includes(conversationId)) relatedIds.push(conversationId);
       if (!relatedIds.length) relatedIds = [conversationId];
     }

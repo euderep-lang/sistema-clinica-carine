@@ -981,12 +981,12 @@ export const startWaConversation = createServerFn({ method: "POST" })
       phoneDdi = patient.phone_ddi ?? null;
     }
 
-    const phone =
+    const resolvedPhone =
       normalizeWaPhone(data.phone, phoneDdi) ||
       (phoneDdi ? "" : normalizeBrazilPhone(data.phone));
-    if (!phone) throw new Error("Telefone inválido para WhatsApp");
+    if (!resolvedPhone) throw new Error("Telefone inválido para WhatsApp");
     const now = new Date().toISOString();
-    const displayName = data.name ?? phone;
+    const displayName = data.name ?? resolvedPhone;
     const draft = normalizeOutboundMessageBody(data.text);
     if (!draft) throw new Error("Mensagem vazia");
 
@@ -997,17 +997,27 @@ export const startWaConversation = createServerFn({ method: "POST" })
       .select("id, contact_phone, contact_name, patient_id, last_message_at, created_at")
       .eq("tenant_id", profile.tenant_id);
 
-    const existing = findConversationByPhone(
-      (tenantConvs ?? []) as {
-        id: string;
-        contact_phone: string;
-        contact_name: string | null;
-        patient_id: string | null;
-        last_message_at: string | null;
-        created_at: string;
-      }[],
-      phone,
-    );
+    const allConvs = (tenantConvs ?? []) as {
+      id: string;
+      contact_phone: string;
+      contact_name: string | null;
+      patient_id: string | null;
+      last_message_at: string | null;
+      created_at: string;
+    }[];
+
+    // Prioriza conversa já vinculada ao paciente (evita thread vazia com DDI errado).
+    let existing =
+      (data.patientId
+        ? allConvs
+            .filter((c) => c.patient_id === data.patientId)
+            .sort((a, b) => (b.last_message_at ?? "").localeCompare(a.last_message_at ?? ""))[0] ??
+          null
+        : null) ?? findConversationByPhone(allConvs, resolvedPhone);
+
+    // Número canônico para envio: o da conversa antiga (histórico Z-API), se existir.
+    const phone =
+      (existing ? normalizeWaPhone(existing.contact_phone) : "") || resolvedPhone;
 
     let conversationId: string;
 
@@ -1016,7 +1026,8 @@ export const startWaConversation = createServerFn({ method: "POST" })
       const { error: updateErr } = await supabaseAdmin
         .from("wa_conversations" as never)
         .update({
-          contact_phone: phone,
+          // Mantém o telefone que já funciona no WhatsApp; só corrige se estava vazio.
+          contact_phone: existing.contact_phone || phone,
           patient_id: data.patientId ?? existing.patient_id ?? null,
           contact_name: data.patientId ? displayName : existing.contact_name ?? displayName,
           assigned_to: userId,
@@ -1041,6 +1052,14 @@ export const startWaConversation = createServerFn({ method: "POST" })
         .single();
       if (insertErr || !conv) throw new Error(insertErr?.message ?? "Falha ao criar conversa");
       conversationId = (conv as { id: string }).id;
+    }
+
+    // Se ainda existir duplicata (mesmo número local / DDI diferente), junta o histórico.
+    try {
+      const { mergeDuplicateConversations } = await import("@/lib/whatsapp-crm-storage.server");
+      await mergeDuplicateConversations(profile.tenant_id, conversationId, phone);
+    } catch {
+      // best-effort
     }
 
     const text = await normalizeManualOutboundMessage(profile.tenant_id, draft, {

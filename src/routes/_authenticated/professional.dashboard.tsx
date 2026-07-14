@@ -28,7 +28,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
-import { APPOINTMENT_STATUS_LABEL } from "@/lib/appointment-types";
+import { APPOINTMENT_STATUS_LABEL, showsOnAgendaGrid } from "@/lib/appointment-types";
 import {
   listOpenEvolutionDrafts,
   type OpenEvolutionDraft,
@@ -88,15 +88,16 @@ function ProfessionalDashboard() {
       .eq("professional_id", profile.id)
       .eq("date", todayStr)
       .order("start_time");
-    const list = (ap ?? []) as unknown as TodayAppt[];
+    const list = ((ap ?? []) as unknown as TodayAppt[]).filter((a) =>
+      showsOnAgendaGrid(a, { showCancelled: true }),
+    );
     setToday(list);
 
     const now = new Date().toTimeString().slice(0, 5);
     const upcoming = list.find(
       (a) =>
         (a.start_time ?? "") >= now &&
-        a.status !== "completed" &&
-        a.status !== "cancelled",
+        ["scheduled", "confirmed", "in_progress"].includes(a.status ?? ""),
     );
     setNextAppt(upcoming ?? null);
 
@@ -132,15 +133,14 @@ function ProfessionalDashboard() {
   }, [profile]);
 
   const { upcoming, attended, cancelled } = useMemo(() => {
-    const done = new Set(["completed", "no_show"]);
     return {
-      upcoming: today.filter((a) => !done.has(a.status ?? "") && a.status !== "cancelled"),
+      upcoming: today.filter((a) => ["scheduled", "confirmed", "in_progress"].includes(a.status ?? "")),
       attended: today.filter((a) => a.status === "completed"),
-      cancelled: today.filter((a) => a.status === "cancelled"),
+      cancelled: today.filter((a) => a.status === "cancelled" || a.status === "no_show"),
     };
   }, [today]);
 
-  const activeTodayCount = today.filter((a) => a.status !== "cancelled").length;
+  const activeTodayCount = today.filter((a) => showsOnAgendaGrid(a)).length;
 
   const todayCountSub = useMemo(() => {
     if (cancelled.length === 0) return undefined;

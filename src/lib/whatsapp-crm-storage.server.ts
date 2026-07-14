@@ -2,7 +2,6 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   digitsOnly,
   findConversationByPhone,
-  isBrazilMobileE164,
   isLikelyWaLidKey,
   normalizeBrazilPhone,
   normalizeWaPhone,
@@ -391,7 +390,7 @@ export async function upsertConversation(
         contact_photo_fetched_at: timestamp.toISOString(),
       }
     : {};
-  let phone = normalizeBrazilPhone(fromPhone);
+  let phone = normalizeWaPhone(fromPhone);
 
   let existing = phone ? await findConversationByPhoneTail(tenantId, phone) : null;
 
@@ -408,15 +407,32 @@ export async function upsertConversation(
     existing = await findConversationByContactName(tenantId, contactName);
   }
 
+  // Conversa vinculada a paciente sem telefone (ex.: criada pelo CRM com DDI internacional).
+  if (!existing && contactName) {
+    const { data: orphan } = await supabaseAdmin
+      .from("wa_conversations" as never)
+      .select(
+        "id, contact_phone, unread_count, contact_name, status, last_after_hours_reply_at, patient_id, last_message_at, created_at",
+      )
+      .eq("tenant_id", tenantId)
+      .eq("channel", "whatsapp")
+      .eq("contact_name", contactName)
+      .or("contact_phone.is.null,contact_phone.eq.")
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+    if (orphan) existing = orphan as ConversationRow;
+  }
+
   if (existing && !phone) {
-    phone = normalizeBrazilPhone(existing.contact_phone) || existing.contact_phone;
+    phone = normalizeWaPhone(existing.contact_phone) || existing.contact_phone;
   }
 
   if (!phone && isLikelyWaLidKey(fromPhone) && existing) {
-    phone = normalizeBrazilPhone(existing.contact_phone) || existing.contact_phone;
+    phone = normalizeWaPhone(existing.contact_phone) || existing.contact_phone;
   }
 
-  if (!phone || !isBrazilMobileE164(phone)) {
+  if (!phone || phone.length < 10) {
     throw new Error(`Telefone inválido para conversa WhatsApp: ${fromPhone || "(vazio)"}`);
   }
 
@@ -542,7 +558,8 @@ export async function maybeSendAfterHoursAutoReply(
   const message = customMessage?.trim() || DEFAULT_AFTER_HOURS_MESSAGE;
   try {
     const humanized = await humanizeForConversation(tenantId, message, { conversationId });
-    const normalized = normalizeBrazilPhone(phone);
+    const normalized = normalizeWaPhone(phone);
+    if (!normalized) return;
     const { messageId } = await providerSendText(normalized, humanized);
     const ts = now.toISOString();
 
@@ -772,7 +789,7 @@ export async function syncZApiChatsToCrm(tenantId: string, chats: {
     if (chat.isGroup) continue;
     if (!chat.phone?.trim()) continue;
 
-    const phone = normalizeBrazilPhone(chat.phone);
+    const phone = normalizeWaPhone(chat.phone);
     if (!phone) continue;
 
     const tsRaw = chat.lastMessageTime;

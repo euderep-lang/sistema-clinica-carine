@@ -111,6 +111,23 @@ export function normalizeWaPhone(input: string, phoneDdi?: string | null): strin
   return "";
 }
 
+/**
+ * Número nacional (sem DDI) para casar conversas quando o DDI do cadastro
+ * diverge do número já sincronizado (ex.: 55 vs 1 no mesmo local 7742041500).
+ */
+export function nationalPhoneKey(phone: string | null | undefined): string {
+  const d = digitsOnly(phone ?? "");
+  if (!d) return "";
+
+  const br = normalizeBrazilPhone(d);
+  if (br) return br.slice(-11);
+
+  if (d.startsWith("55") && d.length >= 12) return d.slice(-10);
+  if (d.startsWith("1") && d.length === 11) return d.slice(1);
+  if (d.length >= 10) return d.slice(-10);
+  return d;
+}
+
 export function phonesMatch(a: string, b: string): boolean {
   const na = normalizeBrazilPhone(a);
   const nb = normalizeBrazilPhone(b);
@@ -118,6 +135,10 @@ export function phonesMatch(a: string, b: string): boolean {
     if (na === nb) return true;
     return phoneTail11(na) === phoneTail11(nb);
   }
+
+  const ka = nationalPhoneKey(a);
+  const kb = nationalPhoneKey(b);
+  if (ka && kb && ka === kb) return true;
 
   const da = normalizeWaPhone(a) || digitsOnly(a);
   const db = normalizeWaPhone(b) || digitsOnly(b);
