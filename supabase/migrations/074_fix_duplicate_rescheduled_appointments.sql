@@ -31,8 +31,7 @@ duplicate_groups AS (
 )
 UPDATE public.appointments a
 SET
-  status = 'rescheduled',
-  updated_at = NOW()
+  status = 'rescheduled'
 FROM duplicate_groups d
 JOIN keepers k
   ON k.patient_id = d.patient_id

@@ -10,6 +10,7 @@ import { addOneHour, formatTimeInterval, timeToMinutes } from "@/lib/agenda-util
 import { checkAppointmentConflicts } from "@/lib/appointment-conflicts";
 import { moveAppointmentToNewSlot } from "@/lib/appointment-reschedule";
 import { APPOINTMENT_TYPE_LABEL } from "@/lib/appointment-types";
+import { useAuth } from "@/lib/mock-auth";
 import type { AgendaRow } from "@/components/agenda/agenda-timeline-view";
 
 const STATUS_LABEL: Record<string, string> = {
