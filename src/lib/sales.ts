@@ -463,3 +463,43 @@ export async function loadBillSessionPackages(billId: string): Promise<BillSessi
     unit_price: Number(row.unit_price ?? 0),
   }));
 }
+
+export async function updateSessionPackageInsumo(
+  packageId: string,
+  inventoryItemId: string,
+  quantity = 1,
+): Promise<void> {
+  const table = "session_package_inventory_items" as never;
+  const { error: delError } = await supabase.from(table).delete().eq("package_id" as never, packageId);
+  if (delError) throw new Error(delError.message);
+
+  const { error: insError } = await supabase.from(table).insert({
+    package_id: packageId,
+    inventory_item_id: inventoryItemId,
+    quantity,
+  } as never);
+  if (insError) throw new Error(insError.message);
+}
+
+type RawPackageInventoryRow = {
+  id: string;
+  inventory_item_id: string;
+  quantity: number | string;
+  inventory_items: { name: string } | { name: string }[] | null;
+};
+
+/** Primeiro insumo do pacote (vendas de Injetáveis IM usam 1). */
+export function parsePackageLinkedInsumo(
+  rows: RawPackageInventoryRow[] | null | undefined,
+): { linkId: string; inventoryItemId: string; name: string; quantity: number } | null {
+  const row = rows?.[0];
+  if (!row) return null;
+  const inv = row.inventory_items;
+  const name = Array.isArray(inv) ? inv[0]?.name : inv?.name;
+  return {
+    linkId: row.id,
+    inventoryItemId: row.inventory_item_id,
+    name: name ?? "Insumo",
+    quantity: Number(row.quantity) || 1,
+  };
+}

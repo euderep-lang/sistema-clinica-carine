@@ -207,3 +207,15 @@ export function expandSaleItemsWithPerUnitInventory<T extends SaleItemForInvento
 
   return result;
 }
+
+/** Procedimentos vendidos com escolha de insumo na venda (ex.: Injetáveis IM). */
+export function packageAllowsInsumoSwap(serviceName: string): boolean {
+  return inventoryScopeForProcedure(serviceName) !== "all";
+}
+
+export interface SessionPackageLinkedInsumo {
+  linkId: string;
+  inventoryItemId: string;
+  name: string;
+  quantity: number;
+}

@@ -4,6 +4,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { CalendarCheck } from "lucide-react";
 import {
   PatientSessionsDialog,
+  mapPackageRow,
   type PatientPackageRow,
   type PatientSessionGroup,
 } from "@/components/professional/patient-sessions-dialog";
@@ -69,7 +70,7 @@ function ProfessionalSessionsPage() {
     let query = supabase
       .from("patient_session_packages")
       .select(
-        "id,patient_id,total_sessions,used_sessions,status,purchased_at,unit_price,services(name),patients(full_name)",
+        "id,patient_id,total_sessions,used_sessions,status,purchased_at,unit_price,services(name),patients(full_name),session_package_inventory_items(id,inventory_item_id,quantity,inventory_items(name))",
       )
       .eq("tenant_id", profile.tenant_id)
       .order("purchased_at", { ascending: false });
@@ -78,19 +79,18 @@ function ProfessionalSessionsPage() {
 
     const { data, error } = await query;
     if (error) console.error(error);
-    const mapped = (data ?? []).map((row) => {
-      const svc = row.services as { name: string } | { name: string }[] | null;
-      const pat = row.patients as { full_name: string } | { full_name: string }[] | null;
+    const mapped = ((data ?? []) as unknown as Array<
+      Parameters<typeof mapPackageRow>[0] & {
+        patient_id: string;
+        patients: { full_name: string } | { full_name: string }[] | null;
+      }
+    >).map((row) => {
+      const pat = row.patients;
+      const pkg = mapPackageRow(row);
       return {
-        id: row.id,
+        ...pkg,
         patient_id: row.patient_id,
         patient_name: (Array.isArray(pat) ? pat[0]?.full_name : pat?.full_name) ?? "—",
-        service_name: (Array.isArray(svc) ? svc[0]?.name : svc?.name) ?? "Procedimento",
-        total_sessions: row.total_sessions,
-        used_sessions: row.used_sessions,
-        status: row.status,
-        purchased_at: row.purchased_at,
-        unit_price: Number(row.unit_price),
       };
     });
     setRows(mapped);
@@ -304,6 +304,17 @@ function ProfessionalSessionsPage() {
         onHistory={(pkg) => {
           if (!selectedGroup) return;
           openHistory(pkg, selectedGroup.patient_name);
+        }}
+        onPackageUpdate={(pkg) => {
+          setRows((prev) => prev.map((r) => (r.id === pkg.id ? { ...r, ...pkg } : r)));
+          setSelectedGroup((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  packages: prev.packages.map((p) => (p.id === pkg.id ? { ...p, ...pkg } : p)),
+                }
+              : prev,
+          );
         }}
       />
 

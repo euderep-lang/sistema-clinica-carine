@@ -5,7 +5,15 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   SessionCheckoffDialog,
   type SessionCheckoffTarget,
@@ -14,18 +22,17 @@ import {
   SessionHistoryDialog,
   type SessionHistoryTarget,
 } from "@/components/professional/session-history-dialog";
+import { mapPackageRow, type PatientPackageRow } from "@/components/professional/patient-sessions-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { fmt } from "@/lib/currency";
-
-interface SessionRow {
-  id: string;
-  service_name: string;
-  total_sessions: number;
-  used_sessions: number;
-  status: string;
-  purchased_at: string;
-  unit_price: number;
-}
+import {
+  filterInventoryOptionsForProcedure,
+  inventoryScopeForProcedure,
+  inventoryScopeLabel,
+  packageAllowsInsumoSwap,
+  type ProcedureInventoryOption,
+} from "@/lib/procedures";
+import { updateSessionPackageInsumo } from "@/lib/sales";
 
 const STATUS_LABEL: Record<string, string> = {
   active: "Em andamento",
@@ -44,37 +51,29 @@ export function PatientSessionsContent({
   patientName,
   active = true,
 }: PatientSessionsContentProps) {
-  const [rows, setRows] = useState<SessionRow[]>([]);
+  const [rows, setRows] = useState<PatientPackageRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [checkoffOpen, setCheckoffOpen] = useState(false);
   const [checkoffTarget, setCheckoffTarget] = useState<SessionCheckoffTarget | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyTarget, setHistoryTarget] = useState<SessionHistoryTarget | null>(null);
+  const [inventoryOptions, setInventoryOptions] = useState<ProcedureInventoryOption[]>([]);
+  const [savingId, setSavingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("patient_session_packages")
-      .select("id,total_sessions,used_sessions,status,purchased_at,unit_price,services(name)")
+      .select(
+        "id,total_sessions,used_sessions,status,purchased_at,unit_price,services(name),session_package_inventory_items(id,inventory_item_id,quantity,inventory_items(name))",
+      )
       .eq("patient_id", patientId)
       .order("purchased_at", { ascending: false });
 
     if (error) toast.error(error.message);
     else {
       setRows(
-        (data ?? []).map((row) => {
-          const svc = row.services as { name: string } | { name: string }[] | null;
-          const name = Array.isArray(svc) ? svc[0]?.name : svc?.name;
-          return {
-            id: row.id,
-            service_name: name ?? "Procedimento",
-            total_sessions: row.total_sessions,
-            used_sessions: row.used_sessions,
-            status: row.status,
-            purchased_at: row.purchased_at,
-            unit_price: Number(row.unit_price),
-          };
-        }),
+        ((data ?? []) as unknown as Parameters<typeof mapPackageRow>[0][]).map(mapPackageRow),
       );
     }
     setLoading(false);
@@ -89,13 +88,55 @@ export function PatientSessionsContent({
     void load();
   }, [active, load]);
 
-  const toTarget = (row: SessionRow) => ({
+  useEffect(() => {
+    if (!active || !rows.some((r) => packageAllowsInsumoSwap(r.service_name))) return;
+    void (async () => {
+      const { data } = await supabase
+        .from("inventory_items")
+        .select("id,name,unit,cost_price,inventory_categories(name)")
+        .eq("active", true)
+        .order("name");
+      setInventoryOptions(
+        (data ?? []).map((item) => ({
+          id: item.id,
+          name: item.name,
+          unit: item.unit,
+          cost_price: Number(item.cost_price ?? 0),
+          categoryName:
+            (item.inventory_categories as { name: string } | null | undefined)?.name ?? null,
+        })),
+      );
+    })();
+  }, [active, rows]);
+
+  const toTarget = (row: PatientPackageRow) => ({
     packageId: row.id,
     patientName: patientName ?? "Paciente",
     serviceName: row.service_name,
     usedSessions: row.used_sessions,
     totalSessions: row.total_sessions,
   });
+
+  const handleInsumoChange = async (pkg: PatientPackageRow, inventoryItemId: string) => {
+    if (inventoryItemId === pkg.inventory_item_id) return;
+    setSavingId(pkg.id);
+    try {
+      await updateSessionPackageInsumo(pkg.id, inventoryItemId, 1);
+      const name = inventoryOptions.find((o) => o.id === inventoryItemId)?.name ?? "Insumo";
+      setRows((prev) =>
+        prev.map((p) =>
+          p.id === pkg.id
+            ? { ...p, inventory_item_id: inventoryItemId, inventory_item_name: name }
+            : p,
+        ),
+      );
+      toast.success("Insumo atualizado");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Não foi possível trocar o insumo");
+    } finally {
+      setSavingId(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -120,11 +161,34 @@ export function PatientSessionsContent({
         {rows.map((row) => {
           const pct = Math.round((row.used_sessions / row.total_sessions) * 100);
           const remaining = row.total_sessions - row.used_sessions;
+          const canCheckoff =
+            row.status === "active" && row.used_sessions < row.total_sessions;
+          const showInsumo = packageAllowsInsumoSwap(row.service_name);
+          const filtered = showInsumo
+            ? filterInventoryOptionsForProcedure(inventoryOptions, row.service_name)
+            : [];
+          const options =
+            row.inventory_item_id && !filtered.some((o) => o.id === row.inventory_item_id)
+              ? [
+                  {
+                    id: row.inventory_item_id,
+                    name: row.inventory_item_name ?? "Insumo atual",
+                    unit: "",
+                    cost_price: 0,
+                    categoryName: null,
+                  },
+                  ...filtered,
+                ]
+              : filtered;
+          const scopeHint = showInsumo
+            ? inventoryScopeLabel(inventoryScopeForProcedure(row.service_name))
+            : null;
+
           return (
             <li key={row.id}>
               <Card>
-                <CardContent className="p-4">
-                  <div className="mb-2 flex items-start justify-between gap-2">
+                <CardContent className="space-y-3 p-4">
+                  <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="font-medium">{row.service_name}</p>
                       <p className="text-xs text-muted-foreground">
@@ -136,8 +200,41 @@ export function PatientSessionsContent({
                       {STATUS_LABEL[row.status] ?? row.status}
                     </Badge>
                   </div>
+
+                  {showInsumo && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Insumo</Label>
+                      <Select
+                        value={row.inventory_item_id ?? undefined}
+                        onValueChange={(value) => void handleInsumoChange(row, value)}
+                        disabled={!canCheckoff || savingId === row.id || options.length === 0}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue
+                            placeholder={
+                              row.inventory_item_name ??
+                              (options.length === 0
+                                ? "Nenhum insumo cadastrado"
+                                : "Selecione o insumo")
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {options.map((opt) => (
+                            <SelectItem key={opt.id} value={opt.id}>
+                              {opt.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {scopeHint && (
+                        <p className="text-[11px] text-muted-foreground">{scopeHint}</p>
+                      )}
+                    </div>
+                  )}
+
                   <Progress value={pct} className="h-2" />
-                  <div className="mt-2 flex items-center justify-between gap-2">
+                  <div className="flex items-center justify-between gap-2">
                     <p className="text-xs text-muted-foreground">
                       {row.used_sessions} de {row.total_sessions} realizadas
                       {row.status === "active" && ` · ${remaining} restantes`}
@@ -155,7 +252,7 @@ export function PatientSessionsContent({
                           Histórico
                         </Button>
                       )}
-                      {row.status === "active" && row.used_sessions < row.total_sessions && (
+                      {canCheckoff && (
                         <Button
                           size="sm"
                           variant="outline"
