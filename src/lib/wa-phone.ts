@@ -2,8 +2,8 @@
 
 const BR_MOBILE_E164 = /^55[1-9]\d9\d{8}$/;
 
-export function digitsOnly(phone: string): string {
-  return phone.replace(/@.+$/i, "").replace(/\D/g, "");
+export function digitsOnly(phone: string | null | undefined): string {
+  return (phone ?? "").replace(/@.+$/i, "").replace(/\D/g, "");
 }
 
 export function isWhatsAppLid(input: string): boolean {

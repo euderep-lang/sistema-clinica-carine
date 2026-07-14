@@ -1,13 +1,13 @@
-export function maskCPF(v: string) {
-  const d = v.replace(/\D/g, "").slice(0, 11);
+export function maskCPF(v: string | null | undefined) {
+  const d = (v ?? "").replace(/\D/g, "").slice(0, 11);
   return d
     .replace(/(\d{3})(\d)/, "$1.$2")
     .replace(/(\d{3})(\d)/, "$1.$2")
     .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
 }
 
-export function maskPhone(v: string) {
-  const d = v.replace(/\D/g, "").slice(0, 11);
+export function maskPhone(v: string | null | undefined) {
+  const d = (v ?? "").replace(/\D/g, "").slice(0, 11);
   if (d.length <= 10) {
     return d.replace(/(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3").replace(/-$/, "");
   }
@@ -35,8 +35,8 @@ type PhoneMaskConfig = {
   format: (digits: string) => string;
 };
 
-function digitsOnly(v: string, max: number) {
-  return v.replace(/\D/g, "").slice(0, max);
+function digitsOnly(v: string | null | undefined, max: number) {
+  return (v ?? "").replace(/\D/g, "").slice(0, max);
 }
 
 function joinGroups(digits: string, sizes: number[], sep = " ") {
@@ -127,7 +127,7 @@ export function phoneMaskConfig(ddi?: string | null): PhoneMaskConfig {
 }
 
 /** Máscara de telefone conforme o DDI selecionado. */
-export function maskPhoneByDdi(value: string, ddi?: string | null) {
+export function maskPhoneByDdi(value: string | null | undefined, ddi?: string | null) {
   const config = phoneMaskConfig(ddi);
   return config.format(digitsOnly(value, config.maxDigits));
 }
@@ -136,12 +136,12 @@ export function phonePlaceholderByDdi(ddi?: string | null) {
   return phoneMaskConfig(ddi).placeholder;
 }
 
-export function sanitizeDdi(value: string): string {
-  return value.replace(/\D/g, "").slice(0, 4);
+export function sanitizeDdi(value: string | null | undefined): string {
+  return (value ?? "").replace(/\D/g, "").slice(0, 4);
 }
 
 export function formatPhoneWithDdi(phone: string | null | undefined, ddi?: string | null) {
-  if (!phone) return null;
+  if (!phone?.trim()) return null;
   const code = sanitizeDdi(ddi || DEFAULT_PHONE_DDI) || DEFAULT_PHONE_DDI;
   return `+${code} ${maskPhoneByDdi(phone, code)}`;
 }
@@ -157,12 +157,12 @@ export function buildPatientInternationalPhone(
   return `${code}${local}`;
 }
 
-export function maskCEP(v: string) {
-  return v.replace(/\D/g, "").slice(0, 8).replace(/(\d{5})(\d)/, "$1-$2");
+export function maskCEP(v: string | null | undefined) {
+  return (v ?? "").replace(/\D/g, "").slice(0, 8).replace(/(\d{5})(\d)/, "$1-$2");
 }
 
-export function isValidCPF(cpf: string) {
-  const d = cpf.replace(/\D/g, "");
+export function isValidCPF(cpf: string | null | undefined) {
+  const d = (cpf ?? "").replace(/\D/g, "");
   if (d.length !== 11 || /^(\d)\1+$/.test(d)) return false;
   let sum = 0;
   for (let i = 0; i < 9; i++) sum += parseInt(d[i]) * (10 - i);
@@ -177,14 +177,14 @@ export function isValidCPF(cpf: string) {
 }
 
 /** Nome curto para cabeçalhos: primeiros dois nomes (ex.: "Euder Flavio"). */
-export function shortDisplayName(fullName: string) {
-  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+export function shortDisplayName(fullName: string | null | undefined) {
+  const parts = (fullName ?? "").trim().split(/\s+/).filter(Boolean);
   if (parts.length <= 2) return parts.join(" ");
   return parts.slice(0, 2).join(" ");
 }
 
-export function initials(name: string) {
-  return name
+export function initials(name: string | null | undefined) {
+  return (name ?? "")
     .trim()
     .split(/\s+/)
     .slice(0, 2)
@@ -206,9 +206,10 @@ const AVATAR_COLORS = [
   "bg-pink-500",
 ];
 
-export function avatarColor(name: string) {
+export function avatarColor(name: string | null | undefined) {
+  const s = name ?? "";
   let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
@@ -239,8 +240,8 @@ export function ageFromBirthDate(birth?: string | null) {
   return age;
 }
 
-export async function fetchCEP(cep: string) {
-  const d = cep.replace(/\D/g, "");
+export async function fetchCEP(cep: string | null | undefined) {
+  const d = (cep ?? "").replace(/\D/g, "");
   if (d.length !== 8) return null;
   try {
     const r = await fetch(`https://viacep.com.br/ws/${d}/json/`);

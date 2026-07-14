@@ -316,7 +316,7 @@ function PatientProfile() {
                       <Card key={d.name} className="p-3 flex items-start gap-3">
                         <FileText className="h-8 w-8 text-muted-foreground shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium truncate">{d.name.replace(/^\d+_/, "")}</div>
+                          <div className="text-sm font-medium truncate">{(d.name ?? "").replace(/^\d+_/, "")}</div>
                           <div className="text-xs text-muted-foreground">
                             {(d.size / 1024).toFixed(1)} KB
                             {d.created_at && ` · ${fmtDateFromDate(new Date(d.created_at))}`}

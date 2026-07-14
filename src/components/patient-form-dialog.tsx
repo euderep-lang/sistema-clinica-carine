@@ -70,6 +70,12 @@ export function PatientFormDialog({
   useEffect(() => {
     if (open) {
       const base = { ...empty, ...(initial ?? {}) } as PatientFormData;
+      // Campos null do banco não podem sobrescrever strings do formulário
+      for (const key of Object.keys(empty) as (keyof PatientFormData)[]) {
+        if (base[key] == null && typeof empty[key] === "string") {
+          (base as Record<string, unknown>)[key] = empty[key];
+        }
+      }
       base.phone_ddi = sanitizeDdi(base.phone_ddi || DEFAULT_PHONE_DDI) || DEFAULT_PHONE_DDI;
       base.emergency_contact_phone_ddi =
         sanitizeDdi(base.emergency_contact_phone_ddi || DEFAULT_PHONE_DDI) || DEFAULT_PHONE_DDI;
@@ -103,7 +109,7 @@ export function PatientFormDialog({
   const age = ageFromBirthDate(form.birth_date);
 
   const onCepBlur = async () => {
-    if (form.address_zip.replace(/\D/g, "").length !== 8) return;
+    if ((form.address_zip ?? "").replace(/\D/g, "").length !== 8) return;
     setCepLoading(true);
     const r = await fetchCEP(form.address_zip);
     setCepLoading(false);
@@ -123,16 +129,32 @@ export function PatientFormDialog({
     if (!validate() || !profile) return;
     setSaving(true);
     const payload = {
-      ...form,
-      tenant_id: profile.tenant_id,
-      birth_date: form.birth_date || null,
+      full_name: form.full_name.trim(),
       cpf: form.cpf || null,
-      email: form.email || null,
-      phone: form.phone || null,
+      rg: form.rg || null,
+      birth_date: form.birth_date || null,
+      gender: form.gender || null,
+      how_did_you_find_us: form.how_did_you_find_us || null,
       phone_ddi: sanitizeDdi(form.phone_ddi) || DEFAULT_PHONE_DDI,
+      phone: form.phone || null,
+      email: form.email || null,
+      address_zip: form.address_zip || null,
+      address_street: form.address_street || null,
+      address_number: form.address_number || null,
+      address_complement: form.address_complement || null,
+      address_neighborhood: form.address_neighborhood || null,
+      address_city: form.address_city || null,
+      address_state: form.address_state || null,
+      blood_type: form.blood_type || null,
+      health_insurance: form.health_insurance || null,
+      health_insurance_number: form.health_insurance_number || null,
+      allergies: form.allergies || null,
+      notes: form.notes || null,
+      emergency_contact_name: form.emergency_contact_name || null,
       emergency_contact_phone_ddi: sanitizeDdi(form.emergency_contact_phone_ddi) || DEFAULT_PHONE_DDI,
+      emergency_contact_phone: form.emergency_contact_phone || null,
+      tenant_id: profile.tenant_id,
     };
-    delete (payload as { id?: string }).id;
     let res;
     if (initial?.id) {
       res = await supabase.from("patients").update(payload).eq("id", initial.id).select("id").single();
