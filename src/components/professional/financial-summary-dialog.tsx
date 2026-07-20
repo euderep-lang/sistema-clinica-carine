@@ -95,6 +95,25 @@ export function FinancialSummaryDialog({
       return bills.reduce((sum, bill) => sum + billOpenAmount(bill.amount, bill.paid_amount), 0);
     }
     return bills.reduce((sum, bill) => sum + Number(bill.amount), 0);
+  }, [bills, kind, receivedPayments, usePaymentRows]);
+
+  const productionStatusSummary = useMemo(() => {
+    if (kind !== "production") return null;
+    let paid = 0;
+    let overdue = 0;
+    let pending = 0;
+    for (const bill of bills) {
+      if (bill.status === "budget" || bill.status === "cancelled") continue;
+      const amount = Number(bill.amount);
+      if (bill.status === "paid") {
+        paid += amount;
+      } else if (isOverdue(bill.due_date, bill.status)) {
+        overdue += amount;
+      } else {
+        pending += amount;
+      }
+    }
+    return { paid, overdue, pending };
   }, [bills, kind]);
 
   const totalLabel =
@@ -148,7 +167,7 @@ export function FinancialSummaryDialog({
         </DialogHeader>
         <div
           className={`min-w-0 overflow-x-auto overflow-y-auto overscroll-x-contain overscroll-contain ${
-            kind === "received" && paymentSummary.length > 0
+            (kind === "received" && paymentSummary.length > 0) || productionStatusSummary
               ? "max-h-[calc(85vh-14rem)]"
               : "max-h-[calc(85vh-9rem)]"
           }`}
@@ -285,6 +304,33 @@ export function FinancialSummaryDialog({
                   <span className="font-semibold tabular-nums text-foreground">{fmt(row.amount)}</span>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+        {productionStatusSummary && (
+          <div className="shrink-0 border-t bg-muted/30 px-6 py-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Resumo por situação
+            </p>
+            <div className="flex flex-wrap gap-x-6 gap-y-2">
+              <div className="flex items-baseline gap-2 text-sm">
+                <span className="text-muted-foreground">Total pago</span>
+                <span className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+                  {fmt(productionStatusSummary.paid)}
+                </span>
+              </div>
+              <div className="flex items-baseline gap-2 text-sm">
+                <span className="text-muted-foreground">Total vencido</span>
+                <span className="font-semibold tabular-nums text-red-700 dark:text-red-400">
+                  {fmt(productionStatusSummary.overdue)}
+                </span>
+              </div>
+              <div className="flex items-baseline gap-2 text-sm">
+                <span className="text-muted-foreground">Total pendente</span>
+                <span className="font-semibold tabular-nums text-amber-700 dark:text-amber-400">
+                  {fmt(productionStatusSummary.pending)}
+                </span>
+              </div>
             </div>
           </div>
         )}

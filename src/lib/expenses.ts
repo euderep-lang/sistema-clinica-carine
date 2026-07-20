@@ -215,3 +215,23 @@ export async function cancelExpense(id: string) {
     .eq("id", id);
   if (error) throw new Error(error.message);
 }
+
+export const CARD_FEE_CATEGORY = "Taxas de cartão";
+
+export function isCardFeeExpense(row: Pick<ExpenseRow, "category">): boolean {
+  return (row.category ?? "").trim().toLocaleLowerCase("pt-BR") === CARD_FEE_CATEGORY.toLocaleLowerCase("pt-BR");
+}
+
+/** Resolve a cobrança (venda) que gerou a despesa automática de taxa de cartão. */
+export async function findBillReceivableIdForFeeExpense(
+  expenseId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("bill_payments" as never)
+    .select("bill_receivable_id")
+    .eq("fee_expense_id" as never, expenseId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const billId = (data as { bill_receivable_id?: string } | null)?.bill_receivable_id;
+  return billId ?? null;
+}

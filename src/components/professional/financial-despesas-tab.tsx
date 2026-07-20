@@ -3,6 +3,7 @@ import { Check, MoreHorizontal, Pencil, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { PageSection } from "@/components/layout/page-section";
 import { StatCard } from "@/components/layout/stat-card";
+import { BillDetailDialog } from "@/components/professional/bill-detail-dialog";
 import { ExpenseDialog } from "@/components/professional/expense-dialog";
 import { DateRangeFilter, firstDayOfMonth, todayISO } from "@/components/professional/date-range-filter";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
 import {
   BILL_STATUS_CLASS,
@@ -43,6 +45,8 @@ import { loadExpenseCategories } from "@/lib/expense-categories";
 import {
   cancelExpense,
   deleteProfessionalExpense,
+  findBillReceivableIdForFeeExpense,
+  isCardFeeExpense,
   loadProfessionalExpenses,
   loadTenantExpenses,
   markExpensePaid,
@@ -50,7 +54,9 @@ import {
   type ExpenseRow,
 } from "@/lib/expenses";
 import { FinancialProfessionalFilter } from "@/components/professional/financial-professional-filter";
-import type { FinancialTabScopeProps } from "@/lib/financial-scope";
+import { RECEIVABLE_BILL_SELECT, type FinancialTabScopeProps } from "@/lib/financial-scope";
+import type { SaleBillRow } from "@/lib/sales";
+import { cn } from "@/lib/utils";
 
 export function FinancialDespesasTab({
   scope,
@@ -70,6 +76,8 @@ export function FinancialDespesasTab({
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<ExpenseRow | null>(null);
+  const [detailBill, setDetailBill] = useState<SaleBillRow | null>(null);
+  const [openingSale, setOpeningSale] = useState(false);
 
   const load = useCallback(async () => {
     if (!profile) return;
@@ -124,6 +132,36 @@ export function FinancialDespesasTab({
   const openEdit = (row: ExpenseRow) => {
     setEditTarget(row);
     setDialogOpen(true);
+  };
+
+  const openRelatedSale = async (row: ExpenseRow) => {
+    if (!isCardFeeExpense(row)) {
+      openEdit(row);
+      return;
+    }
+    setOpeningSale(true);
+    try {
+      const billId = await findBillReceivableIdForFeeExpense(row.id);
+      if (!billId) {
+        toast.info("Não foi possível localizar a venda desta taxa");
+        return;
+      }
+      const { data, error } = await supabase
+        .from("bills_receivable")
+        .select(RECEIVABLE_BILL_SELECT)
+        .eq("id", billId)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!data) {
+        toast.info("Cobrança da venda não encontrada");
+        return;
+      }
+      setDetailBill(data as unknown as SaleBillRow);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setOpeningSale(false);
+    }
   };
 
   const pay = async (row: ExpenseRow) => {
@@ -286,9 +324,32 @@ export function FinancialDespesasTab({
                 filtered.map((r) => {
                   const eff = isOverdue(r.due_date, r.status) ? "overdue" : r.status;
                   const profName = (r as ExpenseRow & { profiles?: { full_name: string } | null }).profiles?.full_name;
+                  const cardFee = isCardFeeExpense(r);
                   return (
-                    <TableRow key={r.id}>
-                      <TableCell>{r.description}</TableCell>
+                    <TableRow
+                      key={r.id}
+                      className={cn(cardFee && "cursor-pointer hover:bg-muted/50")}
+                      onClick={cardFee && !openingSale ? () => void openRelatedSale(r) : undefined}
+                    >
+                      <TableCell>
+                        <button
+                          type="button"
+                          className={cn(
+                            "text-left font-medium hover:underline",
+                            cardFee && "text-primary",
+                          )}
+                          disabled={openingSale}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void openRelatedSale(r);
+                          }}
+                        >
+                          {r.description}
+                        </button>
+                        {cardFee && r.notes ? (
+                          <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">{r.notes}</p>
+                        ) : null}
+                      </TableCell>
                       {scope === "clinic" && <TableCell>{profName ?? "—"}</TableCell>}
                       <TableCell>{r.category ?? "—"}</TableCell>
                       <TableCell>{r.supplier ?? "—"}</TableCell>
@@ -308,7 +369,7 @@ export function FinancialDespesasTab({
                           {BILL_STATUS_LABEL[eff] ?? r.status}
                         </Badge>
                       </TableCell>
-                      <TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" className="size-8">
@@ -316,6 +377,11 @@ export function FinancialDespesasTab({
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            {cardFee && (
+                              <DropdownMenuItem onClick={() => void openRelatedSale(r)}>
+                                Ver venda
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem onClick={() => openEdit(r)}>
                               <Pencil className="mr-2 size-4" />
                               Editar
@@ -356,6 +422,13 @@ export function FinancialDespesasTab({
         onOpenChange={setDialogOpen}
         expense={editTarget}
         onSaved={() => void load()}
+      />
+
+      <BillDetailDialog
+        open={Boolean(detailBill)}
+        onOpenChange={(open) => !open && setDetailBill(null)}
+        bill={detailBill}
+        onChanged={() => void load()}
       />
     </div>
   );
