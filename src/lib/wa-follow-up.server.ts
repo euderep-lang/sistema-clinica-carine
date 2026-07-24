@@ -3,7 +3,13 @@ import { fmtDateFromDate, fmtTimeFromDate, zonedDateFromWallClock } from "@/lib/
 import { renderTemplate } from "@/lib/settings-helpers";
 import { normalizeWaPhone, phonesMatch, resolvePatientPhoneE164 } from "@/lib/wa-phone";
 import { getDefaultReceptionAssignee } from "@/lib/wa-crm-assign.server";
-import { getFollowUpSequencesServer } from "@/lib/wa-tenant-settings.server";
+import { getFollowUpSequencesServer, getNpsSettingsServer } from "@/lib/wa-tenant-settings.server";
+import {
+  buildNpsTemplateVars,
+  DEFAULT_NPS_EXTERNAL_MESSAGE,
+  DEFAULT_NPS_SYSTEM_MESSAGE,
+  renderNpsMessage,
+} from "@/lib/wa-nps-settings";
 import {
   FOLLOW_UP_SEQUENCE_DEFAULTS,
   type FollowUpMode,
@@ -31,7 +37,7 @@ export type FollowUpTrigger =
   | "professional_request"
   | "nps";
 
-/** Aguarda este tempo após concluir a consulta antes de enviar o NPS por WhatsApp. */
+/** Aguarda este tempo após concluir a consulta antes de enviar o NPS por WhatsApp (padrão; sobrescrito em wa_nps_settings). */
 export const NPS_SEND_DELAY_MINUTES = 5;
 const NPS_STEP_KEY = "nps_post_consultation";
 
@@ -158,19 +164,39 @@ async function applyTagToConversation(conversationId: string, tagId: string) {
 
 export { resolvePatientPhoneE164 };
 
+type OutboundConversation = {
+  id: string;
+  contact_phone: string;
+  contact_name: string | null;
+  status?: string | null;
+  channel?: string | null;
+};
+
+function isWhatsAppChannel(channel: string | null | undefined): boolean {
+  return (channel ?? "whatsapp") === "whatsapp";
+}
+
+function pickPreferredConversation(rows: OutboundConversation[]): OutboundConversation | null {
+  if (!rows.length) return null;
+  const wa = rows.filter((c) => isWhatsAppChannel(c.channel));
+  const pool = wa.length ? wa : rows;
+  const open = pool.find((c) => c.status !== "closed");
+  return open ?? pool[0] ?? null;
+}
+
 export async function findConversationForPatient(
   tenantId: string,
   patientId: string,
-): Promise<{ id: string; contact_phone: string; contact_name: string | null } | null> {
+): Promise<OutboundConversation | null> {
   const { data: byLink } = await supabaseAdmin
     .from("wa_conversations" as never)
-    .select("id, contact_phone, contact_name")
+    .select("id, contact_phone, contact_name, status, channel")
     .eq("tenant_id", tenantId)
     .eq("patient_id", patientId)
     .order("last_message_at", { ascending: false, nullsFirst: false })
-    .limit(1)
-    .maybeSingle();
-  if (byLink) return byLink as { id: string; contact_phone: string; contact_name: string | null };
+    .limit(20);
+  const linked = pickPreferredConversation((byLink ?? []) as OutboundConversation[]);
+  if (linked) return linked;
 
   const { data: patient } = await supabaseAdmin
     .from("patients")
@@ -181,13 +207,14 @@ export async function findConversationForPatient(
 
   const { data: convs } = await supabaseAdmin
     .from("wa_conversations" as never)
-    .select("id, contact_phone, contact_name")
+    .select("id, contact_phone, contact_name, status, channel")
     .eq("tenant_id", tenantId);
 
   const patientPhone = resolvePatientPhoneE164(patient.phone, patient.phone_ddi);
-  const match = ((convs ?? []) as { id: string; contact_phone: string; contact_name: string | null }[]).find((c) =>
+  const matches = ((convs ?? []) as OutboundConversation[]).filter((c) =>
     phonesMatch(c.contact_phone, patientPhone || patient.phone),
   );
+  const match = pickPreferredConversation(matches);
   if (match) {
     await supabaseAdmin
       .from("wa_conversations" as never)
@@ -198,13 +225,33 @@ export async function findConversationForPatient(
   return null;
 }
 
+async function reopenConversationForOutbound(conversationId: string): Promise<void> {
+  const now = new Date().toISOString();
+  await supabaseAdmin
+    .from("wa_conversations" as never)
+    .update({
+      status: "open",
+      close_reason: null,
+      closed_at: null,
+      closed_by: null,
+      updated_at: now,
+    } as never)
+    .eq("id", conversationId);
+}
+
 /** Garante conversa WA para envio outbound (cria pelo telefone do paciente se necessário). */
 export async function ensureOutboundConversationForPatient(
   tenantId: string,
   patientId: string,
-): Promise<{ id: string; contact_phone: string; contact_name: string | null } | null> {
+): Promise<OutboundConversation | null> {
   const existing = await findConversationForPatient(tenantId, patientId);
-  if (existing) return existing;
+  if (existing && isWhatsAppChannel(existing.channel)) {
+    if (existing.status === "closed") {
+      await reopenConversationForOutbound(existing.id);
+      return { ...existing, status: "open" };
+    }
+    return existing;
+  }
 
   const { data: patient } = await supabaseAdmin
     .from("patients")
@@ -228,20 +275,26 @@ export async function ensureOutboundConversationForPatient(
       contact_phone: phone,
       contact_name: patient.full_name?.trim() || phone,
       contact_wa_id: phone,
+      channel: "whatsapp",
       assigned_to: receptionistId,
       status: "open",
       unread_count: 0,
       last_message_at: now,
       updated_at: now,
     } as never)
-    .select("id, contact_phone, contact_name")
+    .select("id, contact_phone, contact_name, status, channel")
     .single();
 
   if (error) {
-    return findConversationForPatient(tenantId, patientId);
+    const fallback = await findConversationForPatient(tenantId, patientId);
+    if (fallback?.status === "closed" && isWhatsAppChannel(fallback.channel)) {
+      await reopenConversationForOutbound(fallback.id);
+      return { ...fallback, status: "open" };
+    }
+    return fallback;
   }
 
-  return created as { id: string; contact_phone: string; contact_name: string | null };
+  return created as OutboundConversation;
 }
 
 type WaMessageRow = {
@@ -374,6 +427,11 @@ export function shouldStartLeadPriceSent(
   return { ok: true };
 }
 
+/** Confirmação de agendamento é obrigatória — não cancela por chat fechado/resposta do paciente. */
+function isMandatoryAppointmentConfirm(triggerType: string): boolean {
+  return triggerType === "appointment_booked";
+}
+
 async function shouldSendFollowUpStep(input: {
   tenantId: string;
   conversationId: string;
@@ -386,13 +444,19 @@ async function shouldSendFollowUpStep(input: {
   if (!analysis) return { ok: false, reason: "conversa_nao_encontrada", cancelRun: true };
 
   const runStarted = new Date(input.runStartedAt);
+  const mandatoryConfirm = isMandatoryAppointmentConfirm(input.triggerType);
 
-  if (analysis.status === "closed") {
+  if (!mandatoryConfirm && analysis.status === "closed") {
     return { ok: false, reason: "conversa_encerrada", cancelRun: true };
   }
 
-  if (patientRepliedSince(analysis, runStarted)) {
+  if (!mandatoryConfirm && patientRepliedSince(analysis, runStarted)) {
     return { ok: false, reason: "paciente_respondeu", cancelRun: true };
+  }
+
+  // Confirmação: reabre conversa fechada antes de enviar
+  if (mandatoryConfirm && analysis.status === "closed") {
+    await reopenConversationForOutbound(input.conversationId);
   }
 
   switch (input.triggerType) {
@@ -453,7 +517,8 @@ async function shouldSendFollowUpStep(input: {
         .eq("appointment_id", input.appointmentId)
         .maybeSingle();
       const surveyStatus = (survey as { status?: string } | null)?.status;
-      if (surveyStatus === "answered") {
+      // Só cancela por “já respondido” no NPS interno do sistema.
+      if (survey && surveyStatus === "answered") {
         return { ok: false, reason: "nps_ja_respondido", cancelRun: true };
       }
       const { data: appt } = await supabaseAdmin
@@ -515,6 +580,8 @@ export async function cancelFollowUpsOnConversationClose(tenantId: string, conve
   await cancelActiveFollowUpRuns({
     tenantId,
     conversationId,
+    // Confirmação de agendamento continua mesmo se o chat for encerrado.
+    excludeTriggerTypes: ["appointment_booked"],
     reason: "conversa_encerrada",
   });
 }
@@ -525,11 +592,12 @@ export async function cancelActiveFollowUpRuns(input: {
   patientId?: string;
   appointmentId?: string;
   triggerTypes?: string[];
+  excludeTriggerTypes?: string[];
   reason: string;
 }) {
   let q = supabaseAdmin
     .from("wa_follow_up_runs" as never)
-    .select("id")
+    .select("id, trigger_type")
     .eq("tenant_id", input.tenantId)
     .eq("status", "active");
 
@@ -539,7 +607,10 @@ export async function cancelActiveFollowUpRuns(input: {
   if (input.triggerTypes?.length) q = q.in("trigger_type", input.triggerTypes);
 
   const { data: runs } = await q;
-  const runIds = ((runs ?? []) as { id: string }[]).map((r) => r.id);
+  const exclude = new Set(input.excludeTriggerTypes ?? []);
+  const runIds = ((runs ?? []) as { id: string; trigger_type?: string }[])
+    .filter((r) => !exclude.has(r.trigger_type ?? ""))
+    .map((r) => r.id);
   if (!runIds.length) return;
 
   const now = new Date().toISOString();
@@ -796,36 +867,62 @@ export async function scheduleFollowUpRun(input: {
   return runId;
 }
 
-function buildNpsMessageText(patientName: string | null | undefined, npsToken: string): string {
-  const first = patientName?.trim().split(/\s+/)[0];
-  const npsLink = `${getPublicAppUrl()}/nps/${npsToken}`;
-  return `Olá${first ? `, ${first}` : ""}! Em uma escala de 0 a 10, o quanto você recomendaria nossa clínica? Responda aqui: ${npsLink}`;
-}
-
-/** Agenda envio do NPS por WhatsApp alguns minutos após a conclusão da consulta. */
+/** Agenda envio do pedido de avaliação (NPS do sistema ou link externo) após a consulta. */
 async function scheduleNpsWhatsApp(input: {
   tenantId: string;
   appointmentId: string;
   patientId: string;
   conversationId: string | null;
-  npsToken: string;
+  npsToken?: string | null;
   patientName?: string | null;
 }) {
   if (!input.conversationId) return;
 
-  const npsText = buildNpsMessageText(input.patientName, input.npsToken);
-  const publicUrl = getPublicAppUrl();
+  const settings = await getNpsSettingsServer(input.tenantId);
+  const clinicName = await getTenantName(input.tenantId);
 
-  const { data: priorNpsMsg } = await supabaseAdmin
-    .from("wa_messages" as never)
-    .select("id, body")
-    .eq("conversation_id", input.conversationId)
-    .eq("direction", "outbound")
-    .ilike("body", `%/nps/${input.npsToken}%`)
-    .limit(1)
-    .maybeSingle();
-  const priorBody = (priorNpsMsg as { body?: string } | null)?.body ?? "";
-  if (priorNpsMsg && priorBody.includes(publicUrl)) return;
+  if (settings.mode === "external") {
+    if (!settings.externalUrl) {
+      console.warn("[CRM] NPS externo sem URL configurada — envio ignorado");
+      return;
+    }
+  } else if (!input.npsToken) {
+    return;
+  }
+
+  const systemNpsUrl = input.npsToken ? `${getPublicAppUrl()}/nps/${input.npsToken}` : "";
+  const template =
+    settings.message.trim() ||
+    (settings.mode === "external" ? DEFAULT_NPS_EXTERNAL_MESSAGE : DEFAULT_NPS_SYSTEM_MESSAGE);
+  const npsText = renderNpsMessage(
+    template,
+    buildNpsTemplateVars({
+      patientName: input.patientName,
+      clinicName,
+      systemNpsUrl,
+      externalUrl: settings.externalUrl,
+    }),
+  );
+  if (!npsText) return;
+
+  const dedupeNeedle =
+    settings.mode === "external"
+      ? settings.externalUrl
+      : input.npsToken
+        ? `/nps/${input.npsToken}`
+        : "";
+
+  if (dedupeNeedle) {
+    const { data: priorNpsMsg } = await supabaseAdmin
+      .from("wa_messages" as never)
+      .select("id, body")
+      .eq("conversation_id", input.conversationId)
+      .eq("direction", "outbound")
+      .ilike("body", `%${dedupeNeedle}%`)
+      .limit(1)
+      .maybeSingle();
+    if (priorNpsMsg) return;
+  }
 
   await cancelActiveFollowUpRuns({
     tenantId: input.tenantId,
@@ -834,7 +931,8 @@ async function scheduleNpsWhatsApp(input: {
     reason: "nps_reagendado",
   });
 
-  const scheduledAt = new Date(Date.now() + NPS_SEND_DELAY_MINUTES * 60_000);
+  const delayMinutes = settings.delayMinutes ?? NPS_SEND_DELAY_MINUTES;
+  const scheduledAt = new Date(Date.now() + delayMinutes * 60_000);
 
   const { data: run, error: runErr } = await supabaseAdmin
     .from("wa_follow_up_runs" as never)
@@ -844,7 +942,11 @@ async function scheduleNpsWhatsApp(input: {
       patient_id: input.patientId,
       conversation_id: input.conversationId,
       appointment_id: input.appointmentId,
-      metadata: { nps_token: input.npsToken },
+      metadata: {
+        nps_token: input.npsToken ?? null,
+        nps_mode: settings.mode,
+        external_url: settings.mode === "external" ? settings.externalUrl : null,
+      },
     } as never)
     .select("id")
     .single();
@@ -1185,6 +1287,8 @@ export async function onInboundMessageForFollowUp(input: {
   await cancelActiveFollowUpRuns({
     tenantId: input.tenantId,
     conversationId: input.conversationId,
+    // Confirmação de agendamento é obrigatória e não cancela se o paciente escrever.
+    excludeTriggerTypes: ["appointment_booked"],
     reason: "patient_replied",
   });
 
@@ -1399,31 +1503,44 @@ export async function onAppointmentStatusChange(input: {
     }
 
     let npsToken = (existingNps as { token?: string } | null)?.token;
-    if (!npsToken) {
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 14);
-      const { data: npsRow } = await supabaseAdmin
-        .from("nps_surveys" as never)
-        .insert({
-          tenant_id: input.tenantId,
-          patient_id: input.patientId,
-          appointment_id: input.appointmentId,
-          professional_id: input.professionalId,
-          expires_at: expiresAt.toISOString(),
-          status: "pending",
-        } as never)
-        .select("token")
-        .single();
-      npsToken = (npsRow as { token?: string } | null)?.token;
-    }
+    const npsSettings = await getNpsSettingsServer(input.tenantId);
 
-    if (npsToken && conv?.id) {
+    if (npsSettings.mode === "system") {
+      if (!npsToken) {
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 14);
+        const { data: npsRow } = await supabaseAdmin
+          .from("nps_surveys" as never)
+          .insert({
+            tenant_id: input.tenantId,
+            patient_id: input.patientId,
+            appointment_id: input.appointmentId,
+            professional_id: input.professionalId,
+            expires_at: expiresAt.toISOString(),
+            status: "pending",
+          } as never)
+          .select("token")
+          .single();
+        npsToken = (npsRow as { token?: string } | null)?.token;
+      }
+
+      if (npsToken && conv?.id) {
+        await scheduleNpsWhatsApp({
+          tenantId: input.tenantId,
+          appointmentId: input.appointmentId,
+          patientId: input.patientId,
+          conversationId: conv.id,
+          npsToken,
+          patientName: patient?.full_name ?? conv?.contact_name,
+        }).catch((e) => console.error("[CRM] NPS schedule error:", e));
+      }
+    } else if (conv?.id) {
       await scheduleNpsWhatsApp({
         tenantId: input.tenantId,
         appointmentId: input.appointmentId,
         patientId: input.patientId,
         conversationId: conv.id,
-        npsToken,
+        npsToken: null,
         patientName: patient?.full_name ?? conv?.contact_name,
       }).catch((e) => console.error("[CRM] NPS schedule error:", e));
     }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -38,7 +39,10 @@ import {
   usesRescheduleCopyModel,
   type AppointmentSlotFields,
 } from "@/lib/appointment-reschedule";
+import { runAppointmentFollowUpInBackground } from "@/lib/appointment-follow-up-client";
+import { triggerAppointmentFollowUp } from "@/lib/whatsapp-crm.functions";
 import { useAuth } from "@/lib/mock-auth";
+import { zonedDateFromWallClock } from "@/lib/locale";
 import { normalizeSearch } from "@/lib/search";
 import { PatientSearchField } from "@/components/patient-search-field";
 import type { AgendaRow } from "@/components/agenda/agenda-timeline-view";
@@ -78,6 +82,7 @@ export function EditAppointmentDialog({
   lockProfessional?: boolean;
 }) {
   const { profile } = useAuth();
+  const followUpFn = useServerFn(triggerAppointmentFollowUp);
   const durationsRef = useRef<Record<string, number>>({ ...DEFAULT_APPOINTMENT_DURATIONS });
   const endFor = (start: string, type: string) =>
     addMinutes(start, durationsRef.current[type] ?? durationsRef.current.consultation ?? 60);
@@ -255,6 +260,14 @@ export function EditAppointmentDialog({
             notes: form.notes || null,
           },
         });
+        if (form.patient_id && nextSlot.professional_id) {
+          runAppointmentFollowUpInBackground(followUpFn, {
+            appointmentId: moved.id,
+            patientId: form.patient_id,
+            professionalId: nextSlot.professional_id,
+            startsAt: zonedDateFromWallClock(moved.date, nextSlot.start_time).toISOString(),
+          });
+        }
         setSaving(false);
         toast.success("Consulta remarcada");
         onOpenChange(false);

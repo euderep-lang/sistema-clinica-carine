@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,9 +9,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { addOneHour, formatTimeInterval, timeToMinutes } from "@/lib/agenda-utils";
 import { checkAppointmentConflicts } from "@/lib/appointment-conflicts";
+import { runAppointmentFollowUpInBackground } from "@/lib/appointment-follow-up-client";
 import { moveAppointmentToNewSlot } from "@/lib/appointment-reschedule";
 import { APPOINTMENT_TYPE_LABEL } from "@/lib/appointment-types";
+import { zonedDateFromWallClock } from "@/lib/locale";
 import { useAuth } from "@/lib/mock-auth";
+import { triggerAppointmentFollowUp } from "@/lib/whatsapp-crm.functions";
 import type { AgendaRow } from "@/components/agenda/agenda-timeline-view";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -37,6 +41,7 @@ export function AgendaRescheduleDialog({
   onSaved: (newDate: string) => void;
 }) {
   const { profile } = useAuth();
+  const followUpFn = useServerFn(triggerAppointmentFollowUp);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     date: "",
@@ -116,6 +121,14 @@ export function AgendaRescheduleDialog({
           room_id: form.room_id === "none" ? null : form.room_id,
         },
       });
+      if (appointment.patient_id && appointment.professional_id) {
+        runAppointmentFollowUpInBackground(followUpFn, {
+          appointmentId: moved.id,
+          patientId: appointment.patient_id,
+          professionalId: appointment.professional_id,
+          startsAt: zonedDateFromWallClock(moved.date, form.start_time).toISOString(),
+        });
+      }
       setSaving(false);
       toast.success("Agendamento reagendado");
       onOpenChange(false);
