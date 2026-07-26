@@ -462,6 +462,7 @@ function RecordPage() {
         patient={patient}
         onCompleted={(updated) => {
           setPatient((prev) => (prev ? { ...prev, ...updated } : (updated as Patient)));
+          // Fecha o popup; o prontuário (já montado atrás) fica pronto para iniciar.
           setRegistrationOpen(false);
         }}
       />
