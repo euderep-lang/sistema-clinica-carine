@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { zonedDateFromWallClock } from "@/lib/locale";
 import {
+  clampToMessagingWindow,
+  ensureScheduledInMessagingWindow,
+  isWithinMessagingWindow,
   resolveAppointmentRelativeSchedule,
+  sameDayReminderOffsetMinutes,
   shouldScheduleAppointmentReminder24h,
 } from "@/lib/wa-appointment-reminders";
 
 describe("wa-appointment-reminders", () => {
-  const bookedMorning = zonedDateFromWallClock("2026-07-10", "10:00");
+  const bookedMorning = zonedDateFromWallClock("2026-07-10", "10:00"); // sexta
   const aptTomorrow20 = zonedDateFromWallClock("2026-07-11", "20:00");
   const aptDayAfter20 = zonedDateFromWallClock("2026-07-12", "20:00");
 
@@ -18,7 +22,21 @@ describe("wa-appointment-reminders", () => {
     expect(shouldScheduleAppointmentReminder24h(aptDayAfter20, bookedMorning)).toBe(true);
   });
 
-  it("amanhã: confirmação + 3h, sem lembrete 24h", () => {
+  it("permite D-1 no domingo para consulta na segunda", () => {
+    const bookedSat = zonedDateFromWallClock("2026-07-11", "15:00"); // sábado
+    const aptMon = zonedDateFromWallClock("2026-07-13", "10:00"); // segunda
+    expect(shouldScheduleAppointmentReminder24h(aptMon, bookedSat)).toBe(true);
+    const d1 = resolveAppointmentRelativeSchedule(
+      "appointment_reminder_24h",
+      -1440,
+      aptMon,
+      bookedSat,
+      bookedSat,
+    );
+    expect(d1?.toISOString()).toBe(zonedDateFromWallClock("2026-07-12", "10:00").toISOString());
+  });
+
+  it("amanhã: sem D-1; 3h antes se consulta >= 10h", () => {
     const now = bookedMorning;
     const d1 = resolveAppointmentRelativeSchedule(
       "appointment_reminder_24h",
@@ -38,6 +56,32 @@ describe("wa-appointment-reminders", () => {
     expect(h3?.toISOString()).toBe(zonedDateFromWallClock("2026-07-11", "17:00").toISOString());
   });
 
+  it("consulta às 8h: lembrete no dia 20min antes (não 3h)", () => {
+    const apt8 = zonedDateFromWallClock("2026-07-12", "08:00");
+    expect(sameDayReminderOffsetMinutes(apt8)).toBe(20);
+    const rem = resolveAppointmentRelativeSchedule(
+      "appointment_reminder_3h",
+      -180,
+      apt8,
+      bookedMorning,
+      bookedMorning,
+    );
+    expect(rem?.toISOString()).toBe(zonedDateFromWallClock("2026-07-12", "07:40").toISOString());
+  });
+
+  it("consulta às 10h: lembrete 3h antes", () => {
+    const apt10 = zonedDateFromWallClock("2026-07-12", "10:00");
+    expect(sameDayReminderOffsetMinutes(apt10)).toBe(180);
+    const rem = resolveAppointmentRelativeSchedule(
+      "appointment_reminder_3h",
+      -180,
+      apt10,
+      bookedMorning,
+      bookedMorning,
+    );
+    expect(rem?.toISOString()).toBe(zonedDateFromWallClock("2026-07-12", "07:00").toISOString());
+  });
+
   it("depois de amanhã: agenda D-1 na véspera", () => {
     const now = bookedMorning;
     const d1 = resolveAppointmentRelativeSchedule(
@@ -50,15 +94,24 @@ describe("wa-appointment-reminders", () => {
     expect(d1?.toISOString()).toBe(zonedDateFromWallClock("2026-07-11", "20:00").toISOString());
   });
 
-  it("não agenda lembrete cujo horário já passou", () => {
-    const bookedLate = zonedDateFromWallClock("2026-07-10", "21:00");
-    const d1 = resolveAppointmentRelativeSchedule(
-      "appointment_reminder_24h",
-      -1440,
-      aptTomorrow20,
-      bookedLate,
-      bookedLate,
+  it("janela 7h–20h: após 20h vai para 7h do dia seguinte", () => {
+    const late = zonedDateFromWallClock("2026-07-10", "21:30");
+    expect(isWithinMessagingWindow(late)).toBe(false);
+    expect(clampToMessagingWindow(late).toISOString()).toBe(
+      zonedDateFromWallClock("2026-07-11", "07:00").toISOString(),
     );
-    expect(d1).toBeNull();
+  });
+
+  it("janela 7h–20h: antes das 7h sobe para 7h", () => {
+    const early = zonedDateFromWallClock("2026-07-10", "05:00");
+    expect(clampToMessagingWindow(early).toISOString()).toBe(
+      zonedDateFromWallClock("2026-07-10", "07:00").toISOString(),
+    );
+  });
+
+  it("agendamento à noite: ensure empurra envio imediato para 7h do dia seguinte", () => {
+    const night = zonedDateFromWallClock("2026-07-10", "22:00");
+    const scheduled = ensureScheduledInMessagingWindow(night, night);
+    expect(scheduled.toISOString()).toBe(zonedDateFromWallClock("2026-07-11", "07:00").toISOString());
   });
 });

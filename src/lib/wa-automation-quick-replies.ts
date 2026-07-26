@@ -2,6 +2,7 @@ import {
   FOLLOW_UP_SEQUENCE_META,
   FOLLOW_UP_SEQUENCE_ORDER,
   formatFollowUpStepDelay,
+  primaryTemplate,
   type FollowUpStepDef,
 } from "@/lib/wa-follow-up-templates";
 
@@ -73,7 +74,27 @@ export function automationShortcut(stepKey: string): string {
 
 /** Normaliza quebras de linha sem remover linhas vazias no meio do texto. */
 export function normalizeMessageLineBreaks(content: string): string {
-  return content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  const unified = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  return unified
+    .split("\n")
+    .map((line) => line.replace(/[ \t\u00a0]+/g, " ").replace(/ +$/g, ""))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/^\n+/, "")
+    .replace(/\n+$/, "");
+}
+
+/** Conta quebras de linha (para validar se a IA manteve a estrutura). */
+export function countLineBreaks(content: string): number {
+  return (content.match(/\n/g) ?? []).length;
+}
+
+/** True se o texto reescrito manteve o suficiente das quebras da mensagem original. */
+export function preservesLineBreakStructure(original: string, rewritten: string): boolean {
+  const orig = countLineBreaks(original);
+  if (orig === 0) return true;
+  const next = countLineBreaks(rewritten);
+  return next >= Math.max(1, Math.ceil(orig * 0.5));
 }
 
 export function buildAutomationQuickReplyRows(
@@ -93,7 +114,7 @@ export function buildAutomationQuickReplyRows(
       rows.push({
         shortcut: automationShortcut(step.key),
         name: `${seqLabel} · ${formatFollowUpStepDelay(step.delayMinutes)}`,
-        content: normalizeMessageLineBreaks(step.template),
+        content: normalizeMessageLineBreaks(primaryTemplate(step)),
         category,
         sort_order: sortOrder++,
       });

@@ -480,7 +480,6 @@ function AgendaPage() {
       onShowCancelledChange={setShowCancelled}
       professionals={professionals}
       rooms={rooms}
-      onNewAppointment={openNew}
       onPrint={handlePrint}
     />
   );
@@ -488,13 +487,21 @@ function AgendaPage() {
   return (
     <DashboardShell title="Agenda">
       <div className="space-y-4 print:space-y-2">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between print:hidden">
-          <div>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between print:hidden">
+          <div className="min-w-0">
             <h1 className="text-2xl font-bold">Agenda</h1>
-            <p className="text-sm text-muted-foreground">Visualize em grade ou lista, com filtros por data, horário, profissional e consultório.</p>
+            <p className="text-sm text-muted-foreground">
+              Visualize em grade ou lista, com filtros por data, horário, profissional e consultório.
+            </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Tabs value={viewMode} onValueChange={(v) => { userPickedView.current = true; setViewMode(v as "week" | "timeline" | "rooms" | "list"); }}>
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <Tabs
+              value={viewMode}
+              onValueChange={(v) => {
+                userPickedView.current = true;
+                setViewMode(v as "week" | "timeline" | "rooms" | "list");
+              }}
+            >
               <TabsList>
                 <TabsTrigger value="week" className="gap-1.5">
                   <CalendarDays className="size-4" /> Semana
@@ -510,12 +517,21 @@ function AgendaPage() {
                 </TabsTrigger>
               </TabsList>
             </Tabs>
-            <Button variant="outline" onClick={() => setBlockOpen(true)} className="print:hidden">
-              <Lock className="mr-2 size-4" />Bloquear horário
-            </Button>
-            <Button onClick={openNew} className="print:hidden">
-              <Plus className="mr-2 size-4" />Novo agendamento
-            </Button>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setBlockOpen(true)}
+                className="h-9 whitespace-nowrap print:hidden"
+              >
+                <Lock className="mr-1.5 size-4" />
+                Bloquear horário
+              </Button>
+              <Button size="sm" onClick={openNew} className="h-9 whitespace-nowrap print:hidden">
+                <Plus className="mr-1.5 size-4" />
+                Novo agendamento
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -523,10 +539,10 @@ function AgendaPage() {
           <AgendaSummaryCards rows={statsRows.filter((r) => !isBlockAppointment(r))} />
         </div>
 
-        <div className="flex flex-col gap-4 lg:flex-row-reverse">
+        <div className="space-y-3">
           <div className="print:hidden">{filtersPanel}</div>
 
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0">
             {viewMode === "week" ? (
               <AgendaWeekView
                 weekStart={weekStart}

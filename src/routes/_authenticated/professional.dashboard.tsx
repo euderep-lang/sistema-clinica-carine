@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { todayISO } from "@/lib/locale";
+import { todayISO, fmtDate } from "@/lib/locale";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   AlertCircle,
@@ -49,15 +49,32 @@ interface TodayAppt {
   rooms: { name: string } | null;
 }
 
+interface ListedAppt {
+  id: string;
+  date: string;
+  start_time: string;
+  patient_id: string | null;
+  patients: { full_name: string } | null;
+}
+
+type SummaryKey = "today" | "next" | "month" | "pending";
+
+const SUMMARY_TITLE: Record<SummaryKey, string> = {
+  today: "Consultas de hoje",
+  next: "Próximas consultas de hoje",
+  month: "Atendidos este mês",
+  pending: "Prontuários pendentes",
+};
+
 function ProfessionalDashboard() {
   const { profile } = useAuth();
   const navigate = useNavigate();
   const [today, setToday] = useState<TodayAppt[]>([]);
-  const [monthCount, setMonthCount] = useState(0);
-  const [pendingRecords, setPendingRecords] = useState(0);
+  const [monthRows, setMonthRows] = useState<ListedAppt[]>([]);
+  const [pendingRows, setPendingRows] = useState<ListedAppt[]>([]);
   const [nextAppt, setNextAppt] = useState<TodayAppt | null>(null);
   const [newApptOpen, setNewApptOpen] = useState(false);
-  const [summaryOpen, setSummaryOpen] = useState<"today" | "cancelled" | null>(null);
+  const [summaryOpen, setSummaryOpen] = useState<SummaryKey | null>(null);
   const [openDrafts, setOpenDrafts] = useState<OpenEvolutionDraft[]>([]);
 
   useEffect(() => {
@@ -101,30 +118,37 @@ function ProfessionalDashboard() {
     );
     setNextAppt(upcoming ?? null);
 
-    const { count: mc } = await supabase
+    const { data: monthData } = await supabase
       .from("appointments")
-      .select("*", { count: "exact", head: true })
+      .select("id, date, start_time, patient_id, patients(full_name)")
       .eq("professional_id", profile.id)
       .eq("status", "completed")
-      .gte("date", firstOfMonth);
-    setMonthCount(mc ?? 0);
+      .gte("date", firstOfMonth)
+      .lte("date", todayStr)
+      .order("date", { ascending: false })
+      .order("start_time", { ascending: false });
+    setMonthRows((monthData ?? []) as unknown as ListedAppt[]);
 
     const { data: completed } = await supabase
       .from("appointments")
-      .select("id")
+      .select("id, date, start_time, patient_id, patients(full_name)")
       .eq("professional_id", profile.id)
-      .eq("status", "completed");
-    const ids = (completed ?? []).map((c) => c.id);
-    if (ids.length === 0) {
-      setPendingRecords(0);
+      .eq("status", "completed")
+      .order("date", { ascending: false })
+      .order("start_time", { ascending: false })
+      .limit(200);
+    const completedList = (completed ?? []) as unknown as ListedAppt[];
+    if (completedList.length === 0) {
+      setPendingRows([]);
       return;
     }
+    const ids = completedList.map((c) => c.id);
     const { data: linked } = await supabase
       .from("medical_records")
       .select("appointment_id")
       .in("appointment_id", ids);
     const linkedSet = new Set((linked ?? []).map((l) => l.appointment_id));
-    setPendingRecords(ids.filter((i) => !linkedSet.has(i)).length);
+    setPendingRows(completedList.filter((c) => !linkedSet.has(c.id)));
   };
 
   useEffect(() => {
@@ -140,6 +164,15 @@ function ProfessionalDashboard() {
     };
   }, [today]);
 
+  const nextList = useMemo(() => {
+    const now = new Date().toTimeString().slice(0, 5);
+    return today.filter(
+      (a) =>
+        (a.start_time ?? "") >= now &&
+        ["scheduled", "confirmed", "in_progress"].includes(a.status ?? ""),
+    );
+  }, [today]);
+
   const activeTodayCount = today.filter((a) => showsOnAgendaGrid(a)).length;
 
   const todayCountSub = useMemo(() => {
@@ -149,6 +182,15 @@ function ProfessionalDashboard() {
   }, [activeTodayCount, cancelled.length]);
 
   const firstName = profile?.full_name?.split(" ")[0] ?? "Profissional";
+
+  const openPatientRecord = (patientId: string | null) => {
+    if (!patientId) return;
+    setSummaryOpen(null);
+    navigate({
+      to: "/professional/patients/$id/record",
+      params: { id: patientId },
+    });
+  };
 
   return (
     <DashboardShell title="Painel do Profissional">
@@ -224,13 +266,20 @@ function ProfessionalDashboard() {
                 : "Sem agendamentos"
             }
             icon={UsersIcon}
+            onClick={() => setSummaryOpen("next")}
           />
-          <StatCard label="Atendidos este mês" value={monthCount} icon={UsersIcon} />
+          <StatCard
+            label="Atendidos este mês"
+            value={monthRows.length}
+            icon={UsersIcon}
+            onClick={() => setSummaryOpen("month")}
+          />
           <StatCard
             label="Prontuários pendentes"
-            value={pendingRecords}
+            value={pendingRows.length}
             icon={AlertCircle}
-            tone={pendingRecords > 0 ? "danger" : "default"}
+            tone={pendingRows.length > 0 ? "danger" : "default"}
+            onClick={() => setSummaryOpen("pending")}
           />
         </div>
       </PageSection>
@@ -279,27 +328,64 @@ function ProfessionalDashboard() {
       </PageSection>
 
       <Dialog open={summaryOpen !== null} onOpenChange={(v) => !v && setSummaryOpen(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {summaryOpen === "cancelled" ? "Consultas canceladas hoje" : "Consultas de hoje"}
-            </DialogTitle>
+        <DialogContent className="max-h-[85vh] max-w-md overflow-hidden p-0">
+          <DialogHeader className="border-b px-6 py-4">
+            <DialogTitle>{summaryOpen ? SUMMARY_TITLE[summaryOpen] : "Lista"}</DialogTitle>
           </DialogHeader>
-          <ul className="space-y-2 text-sm">
-            {(summaryOpen === "cancelled" ? cancelled : today).map((a) => (
-              <li key={a.id} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
-                <span>
-                  {a.start_time.slice(0, 5)} — {a.patients?.full_name ?? "Paciente"}
-                </span>
-                <Badge
-                  variant="outline"
-                  className={a.status === "cancelled" ? "border-destructive/40 text-destructive" : undefined}
-                >
-                  {APPOINTMENT_STATUS_LABEL[a.status ?? ""] ?? a.status}
-                </Badge>
-              </li>
-            ))}
-          </ul>
+          <div className="max-h-[60vh] overflow-y-auto px-6 py-4">
+            {summaryOpen === "today" && (
+              <IndicatorList
+                empty="Nenhuma consulta hoje."
+                rows={today.map((a) => ({
+                  id: a.id,
+                  primary: a.patients?.full_name ?? "Paciente",
+                  secondary: `${a.start_time.slice(0, 5)}${a.rooms?.name ? ` · ${a.rooms.name}` : ""}`,
+                  badge: APPOINTMENT_STATUS_LABEL[a.status ?? ""] ?? a.status,
+                  badgeDanger: a.status === "cancelled" || a.status === "no_show",
+                  patientId: a.patient_id,
+                }))}
+                onOpen={openPatientRecord}
+              />
+            )}
+            {summaryOpen === "next" && (
+              <IndicatorList
+                empty="Nenhuma consulta restante hoje."
+                rows={nextList.map((a) => ({
+                  id: a.id,
+                  primary: a.patients?.full_name ?? "Paciente",
+                  secondary: `${a.start_time.slice(0, 5)}${a.rooms?.name ? ` · ${a.rooms.name}` : ""}`,
+                  badge: APPOINTMENT_STATUS_LABEL[a.status ?? ""] ?? a.status,
+                  patientId: a.patient_id,
+                }))}
+                onOpen={openPatientRecord}
+              />
+            )}
+            {summaryOpen === "month" && (
+              <IndicatorList
+                empty="Nenhum atendimento concluído neste mês."
+                rows={monthRows.map((a) => ({
+                  id: a.id,
+                  primary: a.patients?.full_name ?? "Paciente",
+                  secondary: `${fmtDate(a.date)} · ${a.start_time.slice(0, 5)}`,
+                  patientId: a.patient_id,
+                }))}
+                onOpen={openPatientRecord}
+              />
+            )}
+            {summaryOpen === "pending" && (
+              <IndicatorList
+                empty="Nenhum prontuário pendente."
+                actionLabel="Abrir prontuário"
+                rows={pendingRows.map((a) => ({
+                  id: a.id,
+                  primary: a.patients?.full_name ?? "Paciente",
+                  secondary: `${fmtDate(a.date)} · ${a.start_time.slice(0, 5)}`,
+                  patientId: a.patient_id,
+                }))}
+                onOpen={openPatientRecord}
+              />
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -311,6 +397,66 @@ function ProfessionalDashboard() {
         onSaved={() => void load()}
       />
     </DashboardShell>
+  );
+}
+
+function IndicatorList({
+  rows,
+  empty,
+  actionLabel = "Prontuário",
+  onOpen,
+}: {
+  rows: Array<{
+    id: string;
+    primary: string;
+    secondary: string;
+    badge?: string | null;
+    badgeDanger?: boolean;
+    patientId: string | null;
+  }>;
+  empty: string;
+  actionLabel?: string;
+  onOpen: (patientId: string | null) => void;
+}) {
+  if (rows.length === 0) {
+    return <p className="py-6 text-center text-sm text-muted-foreground">{empty}</p>;
+  }
+
+  return (
+    <ul className="space-y-2 text-sm">
+      {rows.map((row) => (
+        <li
+          key={row.id}
+          className="flex items-center justify-between gap-2 rounded-md border px-3 py-2"
+        >
+          <div className="min-w-0">
+            <p className="truncate font-medium">{row.primary}</p>
+            <p className="text-xs text-muted-foreground">{row.secondary}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {row.badge ? (
+              <Badge
+                variant="outline"
+                className={row.badgeDanger ? "border-destructive/40 text-destructive" : undefined}
+              >
+                {row.badge}
+              </Badge>
+            ) : null}
+            {row.patientId ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 px-2"
+                onClick={() => onOpen(row.patientId)}
+              >
+                <Eye className="mr-1 size-3.5" />
+                {actionLabel}
+              </Button>
+            ) : null}
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }
 

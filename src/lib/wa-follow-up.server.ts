@@ -1,28 +1,45 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { fmtDateFromDate, fmtTimeFromDate, zonedDateFromWallClock } from "@/lib/locale";
+import { fmtDateFromDate, fmtTimeFromDate, todayISO, zonedDateFromWallClock } from "@/lib/locale";
 import { renderTemplate } from "@/lib/settings-helpers";
 import { normalizeWaPhone, phonesMatch, resolvePatientPhoneE164 } from "@/lib/wa-phone";
 import { getDefaultReceptionAssignee } from "@/lib/wa-crm-assign.server";
 import { getFollowUpSequencesServer, getNpsSettingsServer } from "@/lib/wa-tenant-settings.server";
 import {
   buildNpsTemplateVars,
-  DEFAULT_NPS_EXTERNAL_MESSAGE,
-  DEFAULT_NPS_SYSTEM_MESSAGE,
+  pickNpsMessageTemplate,
   renderNpsMessage,
 } from "@/lib/wa-nps-settings";
 import {
   FOLLOW_UP_SEQUENCE_DEFAULTS,
+  primaryTemplate,
   type FollowUpMode,
   type FollowUpStepDef,
 } from "@/lib/wa-follow-up-templates";
+import { pickAndAdvanceMessageVariant } from "@/lib/wa-follow-up-variant.server";
 import { insertWaMessage } from "@/lib/whatsapp-crm-storage.server";
 import { logAuditSafe } from "@/lib/audit.server";
 import { isWhatsAppConfigured, providerSendText } from "@/lib/whatsapp-provider.server";
 import { buildGenderTemplateVars } from "@/lib/wa-template-gender";
 import { normalizeOutboundMessageBody } from "@/lib/wa-automation-quick-replies.server";
-import { humanizeForConversation } from "@/lib/wa-quick-reply-ai.server";
+import { normalizeManualOutboundMessage } from "@/lib/wa-quick-reply-ai.server";
 import { getPublicAppUrl } from "@/lib/app-url";
-import { resolveAppointmentRelativeSchedule } from "@/lib/wa-appointment-reminders";
+import {
+  ensureScheduledInMessagingWindow,
+  isWithinMessagingWindow,
+  nextMessagingWindowStart,
+  resolveAppointmentRelativeSchedule,
+} from "@/lib/wa-appointment-reminders";
+import {
+  appointmentOccursAfter,
+  POST_CONSULTATION_ATTENDED_STATUSES,
+  POST_CONSULTATION_BOOKED_STATUSES,
+  POST_CONSULTATION_NO_INTERVENING_STEPS,
+} from "@/lib/wa-follow-up-guards";
+import { startOfWeekMonday, shiftDate } from "@/lib/agenda-utils";
+import {
+  evaluateLeadNoResponseConversation,
+  heuristicLeadNoResponseGate,
+} from "@/lib/wa-lead-conversation-gate.server";
 
 export type { FollowUpMode, FollowUpStepDef };
 
@@ -71,8 +88,22 @@ const PRICE_KEYWORDS = [
 ];
 
 export function firstName(fullName: string | null | undefined): string {
-  if (!fullName?.trim()) return "tudo bem";
-  return fullName.trim().split(/\s+/)[0] ?? fullName;
+  if (!fullName?.trim()) return "";
+  return fullName.trim().split(/\s+/)[0] ?? "";
+}
+
+/**
+ * Quando não há nome, remove buracos deixados por {{primeiro_nome}} vazio
+ * ("Oi, , tudo bem?" → "Oi, tudo bem?" / ", passando" → "Passando").
+ */
+export function tidyMissingFirstName(text: string): string {
+  let out = text;
+  out = out.replace(/,\s*,+/g, ",");
+  out = out.replace(/,\s*([!?.…])/g, "$1");
+  out = out.replace(/^\s*,\s*/u, "");
+  out = out.replace(/[ \t]{2,}/g, " ");
+  out = out.replace(/^([a-záàâãéêíóôõúç])/iu, (ch) => ch.toLocaleUpperCase("pt-BR"));
+  return out.trim();
 }
 
 export function detectPriceInMessage(text: string): boolean {
@@ -109,7 +140,9 @@ export function buildFollowUpVars(ctx: TemplateContext): Record<string, string> 
 }
 
 export function renderFollowUpMessage(template: string, ctx: TemplateContext): string {
-  return normalizeOutboundMessageBody(renderTemplate(template, buildFollowUpVars(ctx)));
+  const rendered = renderTemplate(template, buildFollowUpVars(ctx));
+  const cleaned = firstName(ctx.patientName) ? rendered : tidyMissingFirstName(rendered);
+  return normalizeOutboundMessageBody(cleaned);
 }
 
 export async function logCrmEvent(input: {
@@ -315,6 +348,10 @@ export type ConversationAnalysis = {
   outboundStaffCount: number;
   lastInboundAt: string | null;
   lastOutboundStaffAt: string | null;
+  /** Primeira mensagem humana da equipe. */
+  firstOutboundStaffAt: string | null;
+  /** Paciente escreveu de novo depois que a equipe começou a atender. */
+  inboundAfterStaffCount: number;
   lastMessage: WaMessageRow | null;
   recentMessages: WaMessageRow[];
 };
@@ -349,12 +386,18 @@ export async function analyzeConversation(conversationId: string): Promise<Conve
   let outboundStaffCount = 0;
   let lastInboundAt: string | null = null;
   let lastOutboundStaffAt: string | null = null;
+  let firstOutboundStaffAt: string | null = null;
+  let inboundAfterStaffCount = 0;
 
   for (const m of rows) {
     if (m.direction === "inbound") {
       inboundCount++;
       lastInboundAt = m.created_at;
+      if (firstOutboundStaffAt && m.created_at > firstOutboundStaffAt) {
+        inboundAfterStaffCount++;
+      }
     } else if (m.sent_by) {
+      if (!firstOutboundStaffAt) firstOutboundStaffAt = m.created_at;
       outboundStaffCount++;
       lastOutboundStaffAt = m.created_at;
     }
@@ -371,8 +414,10 @@ export async function analyzeConversation(conversationId: string): Promise<Conve
     outboundStaffCount,
     lastInboundAt,
     lastOutboundStaffAt,
+    firstOutboundStaffAt,
+    inboundAfterStaffCount,
     lastMessage: rows.at(-1) ?? null,
-    recentMessages: rows.slice(-12),
+    recentMessages: rows.slice(-30),
   };
 }
 
@@ -404,12 +449,13 @@ function hasRecentBackAndForth(analysis: ConversationAnalysis): boolean {
   return hasIn && hasStaffOut;
 }
 
+/**
+ * Lead sem resposta: só lead novo (sem vai-e-volta) e sem “aguarde / já retorno” da equipe.
+ * A análise completa (heurística + IA) roda em evaluateLeadNoResponseConversation no agendar/enviar.
+ */
 export function shouldStartLeadNoResponse(analysis: ConversationAnalysis): FollowUpDecision {
-  if (analysis.status === "closed") return { ok: false, reason: "conversa_encerrada" };
-  if (analysis.firstResponseAt) return { ok: false, reason: "equipe_ja_respondeu" };
-  if (analysis.outboundStaffCount > 0) return { ok: false, reason: "equipe_ja_respondeu" };
-  if (analysis.inboundCount !== 1) return { ok: false, reason: "nao_e_primeiro_contato" };
-  if (analysis.lastMessage?.direction !== "inbound") return { ok: false, reason: "ultima_mensagem_nao_e_do_paciente" };
+  const gate = heuristicLeadNoResponseGate(analysis);
+  if (!gate.eligible) return { ok: false, reason: gate.reason };
   return { ok: true };
 }
 
@@ -427,9 +473,131 @@ export function shouldStartLeadPriceSent(
   return { ok: true };
 }
 
-/** Confirmação de agendamento é obrigatória — não cancela por chat fechado/resposta do paciente. */
-function isMandatoryAppointmentConfirm(triggerType: string): boolean {
-  return triggerType === "appointment_booked";
+/**
+ * True se o paciente teve consulta (agendada/confirmada/concluída/em andamento)
+ * depois da consulta de origem da reativação.
+ */
+async function patientHadConsultationSinceSource(input: {
+  tenantId: string;
+  patientId?: string | null;
+  sourceAppointmentId: string;
+}): Promise<boolean> {
+  const { data: source } = await supabaseAdmin
+    .from("appointments")
+    .select("date, start_time, patient_id")
+    .eq("id", input.sourceAppointmentId)
+    .maybeSingle();
+  if (!source) return false;
+
+  const src = source as { date: string; start_time: string | null; patient_id: string };
+  const patientId = input.patientId || src.patient_id;
+  if (!patientId) return false;
+
+  const { data: rows } = await supabaseAdmin
+    .from("appointments")
+    .select("id, date, start_time, status")
+    .eq("tenant_id", input.tenantId)
+    .eq("patient_id", patientId)
+    .neq("id", input.sourceAppointmentId)
+    .in("status", ["scheduled", "confirmed", "completed", "in_progress"])
+    .gte("date", src.date)
+    .limit(50);
+
+  return ((rows ?? []) as { id: string; date: string; start_time: string | null }[]).some((row) =>
+    appointmentOccursAfter(row, src),
+  );
+}
+
+/**
+ * Interação que bloqueia reativação: paciente respondeu no CRM ou equipe humana escreveu.
+ * Mensagens automáticas (ex.: aniversário, follow-ups) têm sent_by null e não contam.
+ */
+function hadReactivationBlockingChatActivity(
+  analysis: ConversationAnalysis,
+  since: Date,
+): { blocked: boolean; reason?: string } {
+  if (patientRepliedSince(analysis, since)) {
+    return { blocked: true, reason: "paciente_respondeu" };
+  }
+  if (staffRepliedSince(analysis, since)) {
+    return { blocked: true, reason: "equipe_ja_acompanhou" };
+  }
+  return { blocked: false };
+}
+
+/**
+ * True se deve pular o passo 7d/15d/30d:
+ * - houve consulta concluída/em andamento depois da original; ou
+ * - há consulta agendada/confirmada na semana vigente (seg–dom) do envio.
+ */
+async function shouldSkipPostConsultationIntervalStep(input: {
+  tenantId: string;
+  patientId?: string | null;
+  sourceAppointmentId: string;
+}): Promise<{ skip: boolean; reason?: string }> {
+  const { data: source } = await supabaseAdmin
+    .from("appointments")
+    .select("date, start_time, patient_id")
+    .eq("id", input.sourceAppointmentId)
+    .maybeSingle();
+  if (!source) return { skip: false };
+
+  const src = source as { date: string; start_time: string | null; patient_id: string };
+  const patientId = input.patientId || src.patient_id;
+  if (!patientId) return { skip: false };
+
+  const { data: attendedRows } = await supabaseAdmin
+    .from("appointments")
+    .select("id, date, start_time, status")
+    .eq("tenant_id", input.tenantId)
+    .eq("patient_id", patientId)
+    .neq("id", input.sourceAppointmentId)
+    .in("status", [...POST_CONSULTATION_ATTENDED_STATUSES])
+    .gte("date", src.date)
+    .limit(50);
+
+  const hadAttended = (
+    (attendedRows ?? []) as { id: string; date: string; start_time: string | null }[]
+  ).some((row) => appointmentOccursAfter(row, src));
+  if (hadAttended) {
+    return { skip: true, reason: "nova_consulta_no_periodo" };
+  }
+
+  const weekStart = startOfWeekMonday(todayISO());
+  const weekEnd = shiftDate(weekStart, 6);
+  const { data: bookedRows } = await supabaseAdmin
+    .from("appointments")
+    .select("id")
+    .eq("tenant_id", input.tenantId)
+    .eq("patient_id", patientId)
+    .neq("id", input.sourceAppointmentId)
+    .in("status", [...POST_CONSULTATION_BOOKED_STATUSES])
+    .gte("date", weekStart)
+    .lte("date", weekEnd)
+    .limit(1);
+
+  if ((bookedRows ?? []).length > 0) {
+    return { skip: true, reason: "consulta_agendada_na_semana" };
+  }
+
+  return { skip: false };
+}
+
+/** Triggers que NÃO cancelam por resposta do paciente / chat fechado (enviam no horário). */
+const INTERACTION_IMMUNE_TRIGGERS = new Set(["appointment_booked", "nps", "no_show"]);
+
+/** Pós-consulta 1 dia: sempre envia, independente de interação no WhatsApp. */
+const POST_CONSULTATION_ALWAYS_SEND_STEP = "post_consultation_24h";
+
+function isInteractionImmuneTrigger(triggerType: string): boolean {
+  return INTERACTION_IMMUNE_TRIGGERS.has(triggerType);
+}
+
+function isAlwaysSendFollowUpStep(triggerType: string, stepKey: string): boolean {
+  return (
+    isInteractionImmuneTrigger(triggerType) ||
+    (triggerType === "post_consultation" && stepKey === POST_CONSULTATION_ALWAYS_SEND_STEP)
+  );
 }
 
 async function shouldSendFollowUpStep(input: {
@@ -438,49 +606,64 @@ async function shouldSendFollowUpStep(input: {
   triggerType: string;
   runStartedAt: string;
   appointmentId?: string | null;
+  patientId?: string | null;
   stepKey: string;
 }): Promise<FollowUpDecision> {
   const analysis = await analyzeConversation(input.conversationId);
   if (!analysis) return { ok: false, reason: "conversa_nao_encontrada", cancelRun: true };
 
   const runStarted = new Date(input.runStartedAt);
-  const mandatoryConfirm = isMandatoryAppointmentConfirm(input.triggerType);
+  const alwaysSend = isAlwaysSendFollowUpStep(input.triggerType, input.stepKey);
 
-  if (!mandatoryConfirm && analysis.status === "closed") {
+  if (!alwaysSend && analysis.status === "closed") {
     return { ok: false, reason: "conversa_encerrada", cancelRun: true };
   }
 
-  if (!mandatoryConfirm && patientRepliedSince(analysis, runStarted)) {
+  // Reativação: resposta do paciente ou da equipe cancela o ciclo (tratado no case).
+  // Automáticas (aniversário etc.) não contam — sent_by null.
+  // NPS, confirmação/lembretes e pós 1 dia: enviam mesmo com interação.
+  // Falta 2h: sempre; D+1 trata resposta no case no_show.
+  const skipGlobalPatientReplyGate =
+    alwaysSend ||
+    (input.triggerType === "no_show" && input.stepKey === "no_show_2h") ||
+    input.triggerType === "reactivation";
+
+  if (
+    !skipGlobalPatientReplyGate &&
+    patientRepliedSince(analysis, runStarted)
+  ) {
     return { ok: false, reason: "paciente_respondeu", cancelRun: true };
   }
 
-  // Confirmação: reabre conversa fechada antes de enviar
-  if (mandatoryConfirm && analysis.status === "closed") {
+  // Confirmação / NPS / falta / pós 1 dia: reabre conversa fechada antes de enviar
+  if (alwaysSend && analysis.status === "closed") {
     await reopenConversationForOutbound(input.conversationId);
   }
 
   switch (input.triggerType) {
     case "lead_no_response": {
-      if (analysis.firstResponseAt) {
-        return { ok: false, reason: "equipe_ja_respondeu", cancelRun: true };
-      }
+      // Paciente respondeu → cancela (já coberto no gate global).
+      // Equipe mandou outra mensagem → cancela este ciclo (um novo pode ter sido reagendado).
       if (staffRepliedSince(analysis, runStarted)) {
-        return { ok: false, reason: "equipe_respondeu", cancelRun: true };
+        return { ok: false, reason: "equipe_respondeu_de_novo", cancelRun: true };
       }
-      if (analysis.inboundCount !== 1) {
-        return { ok: false, reason: "lead_ja_interagiu", cancelRun: true };
+      if (
+        analysis.lastInboundAt &&
+        analysis.lastOutboundStaffAt &&
+        new Date(analysis.lastInboundAt) >= new Date(analysis.lastOutboundStaffAt)
+      ) {
+        return { ok: false, reason: "paciente_respondeu", cancelRun: true };
+      }
+      // Só novas CVs: analisa se ainda é lead sumido (não “aguarde / já retorno”).
+      const leadGate = await evaluateLeadNoResponseConversation({ analysis });
+      if (!leadGate.eligible) {
+        return { ok: false, reason: leadGate.reason, cancelRun: true };
       }
       break;
     }
     case "lead_price_sent": {
-      if (!analysis.priceSentAt) return { ok: false, reason: "valor_nao_registrado", cancelRun: true };
-      if (patientRepliedSince(analysis, new Date(analysis.priceSentAt))) {
-        return { ok: false, reason: "paciente_respondeu_apos_valor", cancelRun: true };
-      }
-      if (isConversationHandled(analysis)) {
-        return { ok: false, reason: "conversa_ja_tratada", cancelRun: true };
-      }
-      break;
+      // Automação desativada — cancela ciclos antigos ainda pendentes.
+      return { ok: false, reason: "lead_price_sent_desativado", cancelRun: true };
     }
     case "appointment_booked": {
       if (!input.appointmentId) break;
@@ -499,13 +682,45 @@ async function shouldSendFollowUpStep(input: {
       }
       break;
     }
-    case "post_consultation":
-    case "reactivation": {
+    case "post_consultation": {
+      // 1 dia: sempre envia (já passou pelos gates alwaysSend).
+      if (input.stepKey === POST_CONSULTATION_ALWAYS_SEND_STEP) {
+        break;
+      }
       if (staffRepliedSince(analysis, runStarted)) {
         return { ok: false, reason: "equipe_ja_acompanhou", cancelRun: true };
       }
       if (hasRecentBackAndForth(analysis)) {
         return { ok: false, reason: "conversa_ativa", cancelRun: true };
+      }
+      // 7d / 15d / 30d: só se não houve outra consulta desde a original
+      // e se não há consulta agendada/confirmada na semana vigente (seg–dom).
+      if (POST_CONSULTATION_NO_INTERVENING_STEPS.has(input.stepKey) && input.appointmentId) {
+        const gate = await shouldSkipPostConsultationIntervalStep({
+          tenantId: input.tenantId,
+          patientId: input.patientId,
+          sourceAppointmentId: input.appointmentId,
+        });
+        if (gate.skip) {
+          return { ok: false, reason: gate.reason ?? "nova_consulta_no_periodo", cancelRun: false };
+        }
+      }
+      break;
+    }
+    case "reactivation": {
+      const chatGate = hadReactivationBlockingChatActivity(analysis, runStarted);
+      if (chatGate.blocked) {
+        return { ok: false, reason: chatGate.reason ?? "interacao_no_periodo", cancelRun: true };
+      }
+      if (input.appointmentId) {
+        const hadConsult = await patientHadConsultationSinceSource({
+          tenantId: input.tenantId,
+          patientId: input.patientId,
+          sourceAppointmentId: input.appointmentId,
+        });
+        if (hadConsult) {
+          return { ok: false, reason: "consulta_no_periodo", cancelRun: true };
+        }
       }
       break;
     }
@@ -540,6 +755,13 @@ async function shouldSendFollowUpStep(input: {
         .maybeSingle();
       if ((appt as { status?: string } | null)?.status !== "no_show") {
         return { ok: false, reason: "falta_nao_confirmada", cancelRun: true };
+      }
+      // D+1 só se o paciente não respondeu no WhatsApp após marcar Faltou / após o aviso de 2h.
+      if (
+        input.stepKey === "no_show_next_day" &&
+        patientRepliedSince(analysis, runStarted)
+      ) {
+        return { ok: false, reason: "paciente_respondeu", cancelRun: true };
       }
       break;
     }
@@ -580,8 +802,9 @@ export async function cancelFollowUpsOnConversationClose(tenantId: string, conve
   await cancelActiveFollowUpRuns({
     tenantId,
     conversationId,
-    // Confirmação de agendamento continua mesmo se o chat for encerrado.
-    excludeTriggerTypes: ["appointment_booked"],
+    // Confirmação/lembretes, NPS, falta e pós-consulta (1 dia precisa sobreviver;
+    // 7/15/30 ainda respeitam interação no momento do envio).
+    excludeTriggerTypes: ["appointment_booked", "nps", "no_show", "post_consultation"],
     reason: "conversa_encerrada",
   });
 }
@@ -842,7 +1065,24 @@ export async function scheduleFollowUpRun(input: {
       scheduledAt = new Date(base.getTime() + step.delayMinutes * 60_000);
     }
 
-    const rendered = renderFollowUpMessage(step.template, ctx);
+    scheduledAt = ensureScheduledInMessagingWindow(scheduledAt, base);
+    // Lembrete relativo não pode cair no/após o horário da consulta após o clamp.
+    if (
+      step.delayMinutes < 0 &&
+      ctx.appointmentAt &&
+      scheduledAt.getTime() >= ctx.appointmentAt.getTime()
+    ) {
+      continue;
+    }
+
+    const { template: chosenTemplate } = await pickAndAdvanceMessageVariant({
+      tenantId: input.tenantId,
+      stepKey: step.key,
+      patientId: input.patientId,
+      conversationId: input.conversationId,
+      templates: step.templates,
+    });
+    const rendered = renderFollowUpMessage(chosenTemplate, ctx);
     rows.push({
       tenant_id: input.tenantId,
       run_id: runId,
@@ -850,7 +1090,7 @@ export async function scheduleFollowUpRun(input: {
       sequence_order: idx,
       mode: step.mode,
       scheduled_at: scheduledAt.toISOString(),
-      message_template: step.template,
+      message_template: chosenTemplate,
       rendered_message: rendered,
       conversation_id: input.conversationId ?? null,
       patient_id: input.patientId ?? null,
@@ -868,6 +1108,18 @@ export async function scheduleFollowUpRun(input: {
 }
 
 /** Agenda envio do pedido de avaliação (NPS do sistema ou link externo) após a consulta. */
+async function patientHasPriorNpsResponse(tenantId: string, patientId: string): Promise<boolean> {
+  const { data } = await supabaseAdmin
+    .from("nps_surveys" as never)
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("patient_id", patientId)
+    .eq("status", "answered")
+    .limit(1)
+    .maybeSingle();
+  return Boolean(data);
+}
+
 async function scheduleNpsWhatsApp(input: {
   tenantId: string;
   appointmentId: string;
@@ -876,7 +1128,22 @@ async function scheduleNpsWhatsApp(input: {
   npsToken?: string | null;
   patientName?: string | null;
 }) {
-  if (!input.conversationId) return;
+  let conversationId = input.conversationId;
+  let patientName = input.patientName ?? null;
+
+  // Sem conversa WhatsApp: cria pelo telefone do paciente e envia o NPS nessa CV nova.
+  if (!conversationId) {
+    const conv = await ensureOutboundConversationForPatient(input.tenantId, input.patientId);
+    if (!conv?.id) {
+      console.warn(
+        "[CRM] NPS: paciente sem telefone/WhatsApp — não foi possível abrir conversa",
+        input.patientId,
+      );
+      return;
+    }
+    conversationId = conv.id;
+    patientName = patientName ?? conv.contact_name;
+  }
 
   const settings = await getNpsSettingsServer(input.tenantId);
   const clinicName = await getTenantName(input.tenantId);
@@ -890,14 +1157,13 @@ async function scheduleNpsWhatsApp(input: {
     return;
   }
 
+  const hasEvaluatedBefore = await patientHasPriorNpsResponse(input.tenantId, input.patientId);
   const systemNpsUrl = input.npsToken ? `${getPublicAppUrl()}/nps/${input.npsToken}` : "";
-  const template =
-    settings.message.trim() ||
-    (settings.mode === "external" ? DEFAULT_NPS_EXTERNAL_MESSAGE : DEFAULT_NPS_SYSTEM_MESSAGE);
+  const template = pickNpsMessageTemplate(settings, hasEvaluatedBefore);
   const npsText = renderNpsMessage(
     template,
     buildNpsTemplateVars({
-      patientName: input.patientName,
+      patientName,
       clinicName,
       systemNpsUrl,
       externalUrl: settings.externalUrl,
@@ -916,7 +1182,7 @@ async function scheduleNpsWhatsApp(input: {
     const { data: priorNpsMsg } = await supabaseAdmin
       .from("wa_messages" as never)
       .select("id, body")
-      .eq("conversation_id", input.conversationId)
+      .eq("conversation_id", conversationId)
       .eq("direction", "outbound")
       .ilike("body", `%${dedupeNeedle}%`)
       .limit(1)
@@ -932,7 +1198,9 @@ async function scheduleNpsWhatsApp(input: {
   });
 
   const delayMinutes = settings.delayMinutes ?? NPS_SEND_DELAY_MINUTES;
-  const scheduledAt = new Date(Date.now() + delayMinutes * 60_000);
+  const scheduledAt = ensureScheduledInMessagingWindow(
+    new Date(Date.now() + delayMinutes * 60_000),
+  );
 
   const { data: run, error: runErr } = await supabaseAdmin
     .from("wa_follow_up_runs" as never)
@@ -940,11 +1208,12 @@ async function scheduleNpsWhatsApp(input: {
       tenant_id: input.tenantId,
       trigger_type: "nps",
       patient_id: input.patientId,
-      conversation_id: input.conversationId,
+      conversation_id: conversationId,
       appointment_id: input.appointmentId,
       metadata: {
         nps_token: input.npsToken ?? null,
         nps_mode: settings.mode,
+        nps_variant: hasEvaluatedBefore ? "returning" : "first",
         external_url: settings.mode === "external" ? settings.externalUrl : null,
       },
     } as never)
@@ -962,7 +1231,7 @@ async function scheduleNpsWhatsApp(input: {
     scheduled_at: scheduledAt.toISOString(),
     message_template: npsText,
     rendered_message: npsText,
-    conversation_id: input.conversationId,
+    conversation_id: conversationId,
     patient_id: input.patientId,
     appointment_id: input.appointmentId,
   } as never);
@@ -987,11 +1256,15 @@ async function sendAutomatedMessage(
   const convRow = conv as { contact_phone: string; channel?: string };
   if ((convRow.channel ?? "whatsapp") !== "whatsapp") return null;
 
-  const humanizedText = await humanizeForConversation(tenantId, text, { conversationId });
+  const outboundText = await normalizeManualOutboundMessage(
+    tenantId,
+    normalizeOutboundMessageBody(text),
+    { conversationId },
+  );
 
   const phone = normalizeWaPhone(convRow.contact_phone);
   if (!phone) return null;
-  const result = await providerSendText(phone, humanizedText);
+  const result = await providerSendText(phone, outboundText);
   const now = new Date();
 
   await insertWaMessage({
@@ -1000,7 +1273,7 @@ async function sendAutomatedMessage(
     waMessageId: result.messageId,
     direction: "outbound",
     messageType: "text",
-    body: humanizedText,
+    body: outboundText,
     status: "sent",
     sentBy: null,
     sentAt: now,
@@ -1017,7 +1290,7 @@ async function sendAutomatedMessage(
     .from("wa_conversations" as never)
     .update({
       last_message_at: now.toISOString(),
-      last_message_preview: humanizedText.slice(0, 120),
+      last_message_preview: outboundText.slice(0, 120),
       updated_at: now.toISOString(),
     } as never)
     .eq("id", conversationId);
@@ -1026,7 +1299,7 @@ async function sendAutomatedMessage(
     tenantId,
     category: "whatsapp",
     action: "whatsapp.message_auto_sent",
-    summary: `Mensagem automática enviada (Z-API): ${humanizedText.slice(0, 100)}`,
+    summary: `Mensagem automática enviada (Z-API): ${outboundText.slice(0, 100)}`,
     entityType: "conversation",
     entityId: conversationId,
     conversationId,
@@ -1035,7 +1308,7 @@ async function sendAutomatedMessage(
       step_key: meta?.stepKey,
       run_id: meta?.runId,
       trigger_type: meta?.triggerType,
-      preview: humanizedText.slice(0, 200),
+      preview: outboundText.slice(0, 200),
     },
     source: "automation",
   });
@@ -1115,6 +1388,18 @@ export async function processDueFollowUps(
     wa_follow_up_runs: { trigger_type: string; started_at: string; status: string };
   }[]) {
     try {
+      const nowDate = new Date();
+      if (!isWithinMessagingWindow(nowDate)) {
+        const nextAt = nextMessagingWindowStart(nowDate);
+        await supabaseAdmin
+          .from("wa_follow_up_schedules" as never)
+          .update({ scheduled_at: nextAt.toISOString() } as never)
+          .eq("id", row.id)
+          .eq("status", "pending");
+        skipped++;
+        continue;
+      }
+
       const run = row.wa_follow_up_runs;
 
       if (row.conversation_id) {
@@ -1124,6 +1409,7 @@ export async function processDueFollowUps(
           triggerType: run.trigger_type,
           runStartedAt: run.started_at,
           appointmentId: row.appointment_id,
+          patientId: row.patient_id,
           stepKey: row.step_key,
         });
         if (!decision.ok) {
@@ -1284,48 +1570,14 @@ export async function onInboundMessageForFollowUp(input: {
     .update({ last_patient_reply_at: now } as never)
     .eq("id", input.conversationId);
 
+  // Interrompe follow-ups sensíveis a resposta (lead, reativação…).
+  // Confirmação/lembretes, NPS, falta e pós-consulta NÃO cancelam aqui —
+  // pós 1 dia envia sempre; 7/15/30 avaliam interação só na hora do envio.
   await cancelActiveFollowUpRuns({
     tenantId: input.tenantId,
     conversationId: input.conversationId,
-    // Confirmação de agendamento é obrigatória e não cancela se o paciente escrever.
-    excludeTriggerTypes: ["appointment_booked"],
+    excludeTriggerTypes: ["appointment_booked", "nps", "no_show", "post_consultation"],
     reason: "patient_replied",
-  });
-
-  if (!input.isFirstInbound) return;
-
-  const analysis = await analyzeConversation(input.conversationId);
-  if (!analysis) return;
-
-  const leadDecision = shouldStartLeadNoResponse(analysis);
-  if (!leadDecision.ok) return;
-
-  await supabaseAdmin
-    .from("wa_conversations" as never)
-    .update({ lead_first_inbound_at: now } as never)
-    .eq("id", input.conversationId);
-
-  await logCrmEvent({
-    tenantId: input.tenantId,
-    eventType: "lead_received",
-    conversationId: input.conversationId,
-  });
-
-  const { data: conv } = await supabaseAdmin
-    .from("wa_conversations" as never)
-    .select("patient_id, contact_name")
-    .eq("id", input.conversationId)
-    .maybeSingle();
-
-  await scheduleFollowUpRun({
-    tenantId: input.tenantId,
-    triggerType: "lead_no_response",
-    sequenceKey: "lead_no_response",
-    conversationId: input.conversationId,
-    patientId: (conv as { patient_id?: string | null } | null)?.patient_id ?? null,
-    templateContext: {
-      patientName: input.patientName ?? (conv as { contact_name?: string | null } | null)?.contact_name,
-    },
   });
 }
 
@@ -1335,18 +1587,42 @@ export async function onOutboundMessageForFollowUp(input: {
   text: string;
   userId?: string | null;
 }) {
-  await cancelActiveFollowUpRuns({
-    tenantId: input.tenantId,
-    conversationId: input.conversationId,
-    triggerTypes: ["lead_no_response"],
-    reason: "staff_replied",
-  });
-
-  if (!detectPriceInMessage(input.text)) return;
-
   const analysis = await analyzeConversation(input.conversationId);
   if (!analysis) return;
 
+  const { data: conv } = await supabaseAdmin
+    .from("wa_conversations" as never)
+    .select("patient_id, contact_name, price_sent_at")
+    .eq("id", input.conversationId)
+    .maybeSingle();
+
+  // Lead sem resposta: só CV nova; analisa conversa (heurística + IA) antes de agendar.
+  const leadGate = await evaluateLeadNoResponseConversation({ analysis });
+  if (leadGate.eligible) {
+    await scheduleFollowUpRun({
+      tenantId: input.tenantId,
+      triggerType: "lead_no_response",
+      sequenceKey: "lead_no_response",
+      conversationId: input.conversationId,
+      patientId: (conv as { patient_id?: string | null } | null)?.patient_id ?? null,
+      createdBy: input.userId ?? null,
+      baseTime: new Date(),
+      templateContext: {
+        patientName: (conv as { contact_name?: string | null } | null)?.contact_name,
+      },
+    });
+  } else {
+    await cancelActiveFollowUpRuns({
+      tenantId: input.tenantId,
+      conversationId: input.conversationId,
+      triggerTypes: ["lead_no_response"],
+      reason: leadGate.reason || "staff_replied_not_eligible",
+    });
+  }
+
+  if (!detectPriceInMessage(input.text)) return;
+
+  // Ainda registra preço no funil (CRM), mas não agenda follow-up automático.
   const priceDecision = shouldStartLeadPriceSent(analysis, input.text);
   if (!priceDecision.ok) return;
 
@@ -1356,12 +1632,6 @@ export async function onOutboundMessageForFollowUp(input: {
     .update({ price_sent_at: now } as never)
     .eq("id", input.conversationId);
 
-  const { data: conv } = await supabaseAdmin
-    .from("wa_conversations" as never)
-    .select("patient_id, contact_name, price_sent_at")
-    .eq("id", input.conversationId)
-    .maybeSingle();
-
   await logCrmEvent({
     tenantId: input.tenantId,
     eventType: "price_sent",
@@ -1370,17 +1640,11 @@ export async function onOutboundMessageForFollowUp(input: {
     userId: input.userId ?? null,
   });
 
-  await scheduleFollowUpRun({
+  await cancelActiveFollowUpRuns({
     tenantId: input.tenantId,
-    triggerType: "lead_price_sent",
-    sequenceKey: "lead_price_sent",
     conversationId: input.conversationId,
-    patientId: (conv as { patient_id?: string | null } | null)?.patient_id ?? null,
-    createdBy: input.userId ?? null,
-    baseTime: new Date(now),
-    templateContext: {
-      patientName: (conv as { contact_name?: string | null } | null)?.contact_name,
-    },
+    triggerTypes: ["lead_price_sent"],
+    reason: "lead_price_sent_disabled",
   });
 }
 
@@ -1424,7 +1688,7 @@ export async function onAppointmentBooked(input: {
   await cancelActiveFollowUpRuns({
     tenantId: input.tenantId,
     patientId: input.patientId,
-    triggerTypes: ["lead_no_response", "lead_price_sent"],
+    triggerTypes: ["lead_no_response", "lead_price_sent", "reactivation"],
     reason: "appointment_booked",
   });
 
@@ -1502,6 +1766,28 @@ export async function onAppointmentStatusChange(input: {
       });
     }
 
+    // Reativação 30/60/90: a partir desta consulta concluída; reinicia se já havia ciclo ativo.
+    await cancelActiveFollowUpRuns({
+      tenantId: input.tenantId,
+      patientId: input.patientId,
+      triggerTypes: ["reactivation"],
+      reason: "nova_consulta_concluida",
+    });
+    await scheduleFollowUpRun({
+      tenantId: input.tenantId,
+      triggerType: "reactivation",
+      sequenceKey: "reactivation",
+      conversationId: conv?.id ?? null,
+      patientId: input.patientId,
+      appointmentId: input.appointmentId,
+      baseTime: input.startsAt,
+      templateContext: {
+        patientName: patient?.full_name ?? conv?.contact_name,
+        professionalName: professionalDisplayName(professional),
+        appointmentAt: input.startsAt,
+      },
+    });
+
     let npsToken = (existingNps as { token?: string } | null)?.token;
     const npsSettings = await getNpsSettingsServer(input.tenantId);
 
@@ -1524,41 +1810,27 @@ export async function onAppointmentStatusChange(input: {
         npsToken = (npsRow as { token?: string } | null)?.token;
       }
 
-      if (npsToken && conv?.id) {
+      if (npsToken) {
         await scheduleNpsWhatsApp({
           tenantId: input.tenantId,
           appointmentId: input.appointmentId,
           patientId: input.patientId,
-          conversationId: conv.id,
+          conversationId: conv?.id ?? null,
           npsToken,
           patientName: patient?.full_name ?? conv?.contact_name,
         }).catch((e) => console.error("[CRM] NPS schedule error:", e));
       }
-    } else if (conv?.id) {
+    } else {
       await scheduleNpsWhatsApp({
         tenantId: input.tenantId,
         appointmentId: input.appointmentId,
         patientId: input.patientId,
-        conversationId: conv.id,
+        conversationId: conv?.id ?? null,
         npsToken: null,
         patientName: patient?.full_name ?? conv?.contact_name,
       }).catch((e) => console.error("[CRM] NPS schedule error:", e));
     }
 
-    if (!existingNps) {
-      await scheduleFollowUpRun({
-        tenantId: input.tenantId,
-        triggerType: "reactivation",
-        sequenceKey: "reactivation",
-        conversationId: conv?.id ?? null,
-        patientId: input.patientId,
-        baseTime: new Date(),
-        templateContext: {
-          patientName: patient?.full_name ?? conv?.contact_name,
-          professionalName: professionalDisplayName(professional),
-        },
-      });
-    }
     return;
   }
 
@@ -1714,5 +1986,5 @@ export async function markConversationObjection(input: {
 
   const sequences = await getFollowUpSequencesServer(input.tenantId);
   const steps = sequences[sequenceKey];
-  return steps?.[0]?.template ?? "";
+  return steps?.[0] ? primaryTemplate(steps[0]) : "";
 }

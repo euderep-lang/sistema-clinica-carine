@@ -15,6 +15,15 @@ import {
 } from "@/components/agenda/professional-agenda-day-view";
 import { ProfessionalAgendaWeekView } from "@/components/agenda/professional-agenda-week-view";
 import { useAppointmentCancelConfirm } from "@/components/agenda/use-appointment-cancel-confirm";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -35,6 +44,10 @@ import {
   startOfWeekMonday,
   todayISO,
 } from "@/lib/agenda-utils";
+import {
+  buildProfessionalBirthdayAlertMessage,
+  resolveBirthdayInCurrentWeek,
+} from "@/lib/birthday-week-alert";
 import {
   APPOINTMENT_MODALITY_BADGE,
   APPOINTMENT_MODALITY_SHORT,
@@ -79,6 +92,10 @@ function ProfessionalAgendaPage() {
   const [blockOpen, setBlockOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editRow, setEditRow] = useState<ProfessionalAgendaAppointment | null>(null);
+  const [birthdayAlert, setBirthdayAlert] = useState<{
+    message: string;
+    patientId: string;
+  } | null>(null);
 
   const weekStart = useMemo(() => startOfWeekMonday(date), [date]);
   const weekEnd = useMemo(() => shiftDate(weekStart, 6), [weekStart]);
@@ -88,7 +105,9 @@ function ProfessionalAgendaPage() {
     if (!opts?.silent) setLoading(true);
     let q = supabase
       .from("appointments")
-      .select("id,date,start_time,end_time,status,type,modality,notes,patient_id,patients(full_name,phone),rooms(name)")
+      .select(
+        "id,date,start_time,end_time,status,type,modality,notes,patient_id,patients(full_name,phone,birth_date,gender),rooms(name)",
+      )
       .eq("professional_id", profile.id)
       .order("date")
       .order("start_time");
@@ -154,14 +173,35 @@ function ProfessionalAgendaPage() {
     return true;
   };
 
+  const goToPatientRecord = (patientId: string) => {
+    navigate({
+      to: "/professional/patients/$id/record",
+      params: { id: patientId },
+    });
+  };
+
   const startAppointment = async (appointment: ProfessionalAgendaAppointment) => {
     if (!appointment.patient_id) return;
     const ok = await updateStatus(appointment.id, "in_progress");
     if (!ok) return;
-    navigate({
-      to: "/professional/patients/$id/record",
-      params: { id: appointment.patient_id },
-    });
+
+    const alert = resolveBirthdayInCurrentWeek(appointment.patients?.birth_date);
+    if (alert && profile) {
+      const professionalName =
+        profile.display_name?.trim() || profile.full_name?.trim() || "Profissional";
+      setBirthdayAlert({
+        message: buildProfessionalBirthdayAlertMessage({
+          professionalName,
+          patientName: appointment.patients?.full_name ?? "paciente",
+          gender: appointment.patients?.gender,
+          alert,
+        }),
+        patientId: appointment.patient_id,
+      });
+      return;
+    }
+
+    goToPatientRecord(appointment.patient_id);
   };
 
   const handleStatusChange = async (id: string, status: string) => {
@@ -563,6 +603,28 @@ function ProfessionalAgendaPage() {
           void load();
         }}
       />
+
+      <AlertDialog
+        open={birthdayAlert !== null}
+        onOpenChange={(open) => {
+          if (open) return;
+          const patientId = birthdayAlert?.patientId;
+          setBirthdayAlert(null);
+          if (patientId) goToPatientRecord(patientId);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Aniversário na semana</AlertDialogTitle>
+            <AlertDialogDescription className="text-base text-foreground">
+              {birthdayAlert?.message}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction>Continuar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {cancelConfirmDialog}
     </DashboardShell>

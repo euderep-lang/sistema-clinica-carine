@@ -143,6 +143,7 @@ export function resolveAppointmentCancelReason(
 export const PROFESSIONAL_AGENDA_STATUS_OPTIONS = [
   { value: "scheduled", label: "Agendando" },
   { value: "confirmed", label: "Confirmado" },
+  { value: "completed", label: "Concluído" },
   { value: "cancelled", label: "Cancelado" },
 ] as const;
 
@@ -167,6 +168,8 @@ export const PROFESSIONAL_AGENDA_STATUS_ITEM: Record<string, string> = {
     "border-slate-200 bg-slate-50 text-slate-700 data-[highlighted]:bg-slate-200 data-[highlighted]:text-slate-900 focus:bg-slate-200 focus:text-slate-900",
   confirmed:
     "border-emerald-200 bg-emerald-50 text-emerald-800 data-[highlighted]:bg-emerald-100 data-[highlighted]:text-emerald-900 focus:bg-emerald-100 focus:text-emerald-900",
+  completed:
+    "border-emerald-300 bg-emerald-100 text-emerald-900 data-[highlighted]:bg-emerald-200 data-[highlighted]:text-emerald-950 focus:bg-emerald-200 focus:text-emerald-950",
   rescheduled:
     "border-amber-200 bg-amber-50 text-amber-800 data-[highlighted]:bg-amber-100 data-[highlighted]:text-amber-900 focus:bg-amber-100 focus:text-amber-900",
   cancelled:

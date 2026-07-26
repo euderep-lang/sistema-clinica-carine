@@ -2,6 +2,11 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { BusinessHours } from "@/lib/settings-helpers";
 import { mergeFollowUpSequences, WA_FOLLOW_UP_TEMPLATES_KEY, type FollowUpStepDef } from "@/lib/wa-follow-up-templates";
 import { normalizeWaNpsSettings, WA_NPS_SETTINGS_KEY, type WaNpsSettings } from "@/lib/wa-nps-settings";
+import {
+  normalizeWaBirthdaySettings,
+  WA_BIRTHDAY_TEMPLATES_KEY,
+  type WaBirthdaySettings,
+} from "@/lib/wa-birthday-settings";
 
 export async function getTenantSettingServer<T = unknown>(tenantId: string, key: string): Promise<T | null> {
   const { data } = await supabaseAdmin
@@ -37,4 +42,9 @@ export async function getFollowUpSequencesServer(tenantId: string): Promise<Reco
 export async function getNpsSettingsServer(tenantId: string): Promise<WaNpsSettings> {
   const raw = await getTenantSettingServer(tenantId, WA_NPS_SETTINGS_KEY);
   return normalizeWaNpsSettings(raw);
+}
+
+export async function getBirthdaySettingsServer(tenantId: string): Promise<WaBirthdaySettings> {
+  const raw = await getTenantSettingServer(tenantId, WA_BIRTHDAY_TEMPLATES_KEY);
+  return normalizeWaBirthdaySettings(raw);
 }

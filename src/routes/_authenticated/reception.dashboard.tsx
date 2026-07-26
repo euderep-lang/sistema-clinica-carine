@@ -16,6 +16,10 @@ import { PageHeader } from "@/components/layout/page-header";
 import { PageSection } from "@/components/layout/page-section";
 import { StatCard } from "@/components/layout/stat-card";
 import { ReceptionDaySummaryCards } from "@/components/reception/reception-day-summary-cards";
+import {
+  BirthdayTodayDialog,
+  type BirthdayTodayPatient,
+} from "@/components/reception/birthday-today-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -77,6 +81,8 @@ function ReceptionDashboard() {
   const [waTasks, setWaTasks] = useState<WaTaskRow[]>([]);
   const [birthdaysToday, setBirthdaysToday] = useState(0);
   const [birthdayNames, setBirthdayNames] = useState<string[]>([]);
+  const [birthdayPatients, setBirthdayPatients] = useState<BirthdayTodayPatient[]>([]);
+  const [birthdayDialogOpen, setBirthdayDialogOpen] = useState(false);
   const [sentToday, setSentToday] = useState(0);
 
   const load = useCallback(async () => {
@@ -120,7 +126,7 @@ function ReceptionDashboard() {
         .eq("status", "open"),
       supabase
         .from("patients")
-        .select("full_name, birth_date")
+        .select("id, full_name, phone, birth_date")
         .eq("active", true)
         .not("birth_date", "is", null),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -152,8 +158,14 @@ function ReceptionDashboard() {
       const [m, d] = bd.split("-").map(Number);
       return m === month && d === day;
     });
-    setBirthdaysToday(bdayPatients.length);
-    setBirthdayNames(bdayPatients.slice(0, 4).map((p) => p.full_name as string));
+    const birthdayList: BirthdayTodayPatient[] = bdayPatients.map((p) => ({
+      id: p.id as string,
+      full_name: p.full_name as string,
+      phone: (p.phone as string | null) ?? null,
+    }));
+    setBirthdaysToday(birthdayList.length);
+    setBirthdayPatients(birthdayList);
+    setBirthdayNames(birthdayList.slice(0, 4).map((p) => p.full_name));
 
     setLoading(false);
   }, [tenant?.id, profile?.id, profile?.role, loadTasksFn]);
@@ -295,11 +307,13 @@ function ReceptionDashboard() {
                   ? birthdayNames.join(", ") + (birthdaysToday > birthdayNames.length ? "…" : "")
                   : undefined
               }
-              onClick={() => navigate({ to: "/reception/marketing" })}
+              onClick={() => setBirthdayDialogOpen(true)}
               action={
                 birthdaysToday > 0 ? (
-                  <span className="text-xs font-medium text-primary">Ver campanhas →</span>
-                ) : undefined
+                  <span className="text-xs font-medium text-primary">Ver lista →</span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Nenhum hoje</span>
+                )
               }
             />
             <StatCard
@@ -419,6 +433,15 @@ function ReceptionDashboard() {
             )}
           </PageSection>
       </div>
+
+      {tenant?.id ? (
+        <BirthdayTodayDialog
+          open={birthdayDialogOpen}
+          onOpenChange={setBirthdayDialogOpen}
+          tenantId={tenant.id}
+          patients={birthdayPatients}
+        />
+      ) : null}
     </DashboardShell>
   );
 }

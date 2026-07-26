@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Bot, Clock, Loader2, Star } from "lucide-react";
+import { Bot, Cake, Clock, Loader2, Star } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
   Accordion,
   AccordionContent,
@@ -36,26 +37,40 @@ import {
   FOLLOW_UP_SEQUENCE_DEFAULTS,
   FOLLOW_UP_SEQUENCE_META,
   FOLLOW_UP_SEQUENCE_ORDER,
+  FOLLOW_UP_VARIANT_COUNT,
   formatFollowUpStepDelay,
   followUpModeLabel,
   mergedTemplatesForEditing,
+  padTemplatesToFive,
   templatesToOverrides,
   WA_AFTER_HOURS_MESSAGE_KEY,
   WA_FOLLOW_UP_TEMPLATES_KEY,
   type FollowUpTemplateOverrides,
+  type FollowUpTemplatesEditState,
 } from "@/lib/wa-follow-up-templates";
 import {
   buildNpsTemplateVars,
   DEFAULT_NPS_EXTERNAL_MESSAGE,
+  DEFAULT_NPS_EXTERNAL_MESSAGE_RETURNING,
   DEFAULT_NPS_SYSTEM_MESSAGE,
+  DEFAULT_NPS_SYSTEM_MESSAGE_RETURNING,
   DEFAULT_WA_NPS_SETTINGS,
   normalizeWaNpsSettings,
   NPS_TEMPLATE_VARS,
+  pickNpsMessageTemplate,
   renderNpsMessage,
   WA_NPS_SETTINGS_KEY,
   type WaNpsMode,
   type WaNpsSettings,
 } from "@/lib/wa-nps-settings";
+import {
+  BIRTHDAY_TEMPLATE_VARS,
+  DEFAULT_BIRTHDAY_TEMPLATES,
+  DEFAULT_WA_BIRTHDAY_SETTINGS,
+  normalizeWaBirthdaySettings,
+  WA_BIRTHDAY_TEMPLATES_KEY,
+  type WaBirthdaySettings,
+} from "@/lib/wa-birthday-settings";
 
 export function SectionAutomacaoWhatsApp() {
   const { tenant } = useAuth();
@@ -63,10 +78,15 @@ export function SectionAutomacaoWhatsApp() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [afterHoursMessage, setAfterHoursMessage] = useState(DEFAULT_AFTER_HOURS_MESSAGE);
-  const [templates, setTemplates] = useState<FollowUpTemplateOverrides>({});
+  const [templates, setTemplates] = useState<FollowUpTemplatesEditState>({});
   const [npsSettings, setNpsSettings] = useState<WaNpsSettings>(DEFAULT_WA_NPS_SETTINGS);
+  const [birthdaySettings, setBirthdaySettings] = useState<WaBirthdaySettings>(DEFAULT_WA_BIRTHDAY_SETTINGS);
+  const [activeBirthdayVariant, setActiveBirthdayVariant] = useState(0);
+  const [activeNpsMessage, setActiveNpsMessage] = useState<"first" | "returning">("first");
+  const [activeVariant, setActiveVariant] = useState<Record<string, number>>({});
   const taRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const npsTaRef = useRef<HTMLTextAreaElement | null>(null);
+  const birthdayTaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     if (!tenant) return;
@@ -79,14 +99,18 @@ export function SectionAutomacaoWhatsApp() {
         );
         const afterHours = await getTenantSetting<string>(tenant.id, WA_AFTER_HOURS_MESSAGE_KEY);
         const npsRaw = await getTenantSetting(tenant.id, WA_NPS_SETTINGS_KEY);
+        const birthdayRaw = await getTenantSetting(tenant.id, WA_BIRTHDAY_TEMPLATES_KEY);
         setTemplates(mergedTemplatesForEditing(overrides));
         setAfterHoursMessage(afterHours?.trim() || DEFAULT_AFTER_HOURS_MESSAGE);
         setNpsSettings(normalizeWaNpsSettings(npsRaw));
+        setBirthdaySettings(normalizeWaBirthdaySettings(birthdayRaw));
       } finally {
         setLoading(false);
       }
     })();
   }, [tenant]);
+
+  const variantIndex = (stepKey: string) => activeVariant[stepKey] ?? 0;
 
   const insertVar = (stepKey: string, varName: string) => {
     const ta = taRefs.current[stepKey];
@@ -95,23 +119,28 @@ export function SectionAutomacaoWhatsApp() {
       FOLLOW_UP_SEQUENCE_DEFAULTS[sk]?.some((s) => s.key === stepKey),
     );
     if (!seqKey) return;
-    const content = current[seqKey]?.[stepKey] ?? "";
+    const vi = variantIndex(stepKey);
+    const variants = padTemplatesToFive(current[seqKey]?.[stepKey] ?? []);
+    const content = variants[vi] ?? "";
 
-    if (!ta) {
+    const apply = (nextContent: string) => {
+      const nextVariants = [...variants];
+      nextVariants[vi] = nextContent;
       setTemplates((prev) => ({
         ...prev,
-        [seqKey]: { ...prev[seqKey], [stepKey]: content + `{{${varName}}}` },
+        [seqKey]: { ...prev[seqKey], [stepKey]: nextVariants },
       }));
+    };
+
+    if (!ta) {
+      apply(content + `{{${varName}}}`);
       return;
     }
 
     const start = ta.selectionStart ?? content.length;
     const end = ta.selectionEnd ?? content.length;
     const next = content.slice(0, start) + `{{${varName}}}` + content.slice(end);
-    setTemplates((prev) => ({
-      ...prev,
-      [seqKey]: { ...prev[seqKey], [stepKey]: next },
-    }));
+    apply(next);
     setTimeout(() => {
       ta.focus();
       const pos = start + varName.length + 4;
@@ -120,16 +149,17 @@ export function SectionAutomacaoWhatsApp() {
   };
 
   const insertNpsVar = (varName: string) => {
+    const field = activeNpsMessage === "returning" ? "messageReturning" : "message";
     const ta = npsTaRef.current;
-    const content = npsSettings.message;
+    const content = npsSettings[field];
     if (!ta) {
-      setNpsSettings((prev) => ({ ...prev, message: content + `{{${varName}}}` }));
+      setNpsSettings((prev) => ({ ...prev, [field]: content + `{{${varName}}}` }));
       return;
     }
     const start = ta.selectionStart ?? content.length;
     const end = ta.selectionEnd ?? content.length;
     const next = content.slice(0, start) + `{{${varName}}}` + content.slice(end);
-    setNpsSettings((prev) => ({ ...prev, message: next }));
+    setNpsSettings((prev) => ({ ...prev, [field]: next }));
     setTimeout(() => {
       ta.focus();
       const pos = start + varName.length + 4;
@@ -137,33 +167,83 @@ export function SectionAutomacaoWhatsApp() {
     }, 0);
   };
 
-  const setStepTemplate = (sequenceKey: string, stepKey: string, value: string) => {
-    setTemplates((prev) => ({
-      ...prev,
-      [sequenceKey]: { ...prev[sequenceKey], [stepKey]: value },
-    }));
+  const insertBirthdayVar = (varName: string) => {
+    const ta = birthdayTaRef.current;
+    const variants = padTemplatesToFive(birthdaySettings.templates, DEFAULT_BIRTHDAY_TEMPLATES);
+    const content = variants[activeBirthdayVariant] ?? "";
+    const apply = (next: string) => {
+      const nextVariants = [...variants];
+      nextVariants[activeBirthdayVariant] = next;
+      setBirthdaySettings((prev) => ({ ...prev, templates: nextVariants }));
+    };
+    if (!ta) {
+      apply(content + `{{${varName}}}`);
+      return;
+    }
+    const start = ta.selectionStart ?? content.length;
+    const end = ta.selectionEnd ?? content.length;
+    apply(content.slice(0, start) + `{{${varName}}}` + content.slice(end));
+    setTimeout(() => {
+      ta.focus();
+      const pos = start + varName.length + 4;
+      ta.setSelectionRange(pos, pos);
+    }, 0);
+  };
+
+  const setStepVariant = (sequenceKey: string, stepKey: string, index: number, value: string) => {
+    setTemplates((prev) => {
+      const current = padTemplatesToFive(prev[sequenceKey]?.[stepKey] ?? []);
+      const next = [...current];
+      next[index] = value;
+      return {
+        ...prev,
+        [sequenceKey]: { ...prev[sequenceKey], [stepKey]: next },
+      };
+    });
   };
 
   const resetStep = (sequenceKey: string, stepKey: string) => {
     const defaultStep = FOLLOW_UP_SEQUENCE_DEFAULTS[sequenceKey]?.find((s) => s.key === stepKey);
     if (!defaultStep) return;
-    setStepTemplate(sequenceKey, stepKey, defaultStep.template);
+    setTemplates((prev) => ({
+      ...prev,
+      [sequenceKey]: {
+        ...prev[sequenceKey],
+        [stepKey]: [...defaultStep.templates],
+      },
+    }));
+  };
+
+  const isDefaultNpsMessage = (mode: WaNpsMode, text: string, returning: boolean) => {
+    const trimmed = text.trim();
+    if (!trimmed) return true;
+    if (mode === "external") {
+      return returning
+        ? trimmed === DEFAULT_NPS_EXTERNAL_MESSAGE_RETURNING.trim()
+        : trimmed === DEFAULT_NPS_EXTERNAL_MESSAGE.trim();
+    }
+    return returning
+      ? trimmed === DEFAULT_NPS_SYSTEM_MESSAGE_RETURNING.trim()
+      : trimmed === DEFAULT_NPS_SYSTEM_MESSAGE.trim();
   };
 
   const setNpsMode = (mode: WaNpsMode) => {
     setNpsSettings((prev) => {
-      const switchingToDefaultMessage =
-        (prev.mode === "system" && prev.message.trim() === DEFAULT_NPS_SYSTEM_MESSAGE.trim()) ||
-        (prev.mode === "external" && prev.message.trim() === DEFAULT_NPS_EXTERNAL_MESSAGE.trim()) ||
-        !prev.message.trim();
+      const keepFirst = !isDefaultNpsMessage(prev.mode, prev.message, false);
+      const keepReturning = !isDefaultNpsMessage(prev.mode, prev.messageReturning, true);
       return {
         ...prev,
         mode,
-        message: switchingToDefaultMessage
-          ? mode === "external"
+        message: keepFirst
+          ? prev.message
+          : mode === "external"
             ? DEFAULT_NPS_EXTERNAL_MESSAGE
-            : DEFAULT_NPS_SYSTEM_MESSAGE
-          : prev.message,
+            : DEFAULT_NPS_SYSTEM_MESSAGE,
+        messageReturning: keepReturning
+          ? prev.messageReturning
+          : mode === "external"
+            ? DEFAULT_NPS_EXTERNAL_MESSAGE_RETURNING
+            : DEFAULT_NPS_SYSTEM_MESSAGE_RETURNING,
       };
     });
   };
@@ -195,6 +275,15 @@ export function SectionAutomacaoWhatsApp() {
           ...npsSettings,
           externalUrl: npsSettings.externalUrl.trim(),
           message: npsSettings.message.trim(),
+          messageReturning: npsSettings.messageReturning.trim(),
+        }),
+      );
+      await setTenantSetting(
+        tenant.id,
+        WA_BIRTHDAY_TEMPLATES_KEY,
+        normalizeWaBirthdaySettings({
+          enabled: birthdaySettings.enabled,
+          templates: birthdaySettings.templates.map((t) => t.trim()),
         }),
       );
       await syncAutomationFn();
@@ -213,8 +302,7 @@ export function SectionAutomacaoWhatsApp() {
   };
 
   const npsPreview = renderNpsMessage(
-    npsSettings.message ||
-      (npsSettings.mode === "external" ? DEFAULT_NPS_EXTERNAL_MESSAGE : DEFAULT_NPS_SYSTEM_MESSAGE),
+    pickNpsMessageTemplate(npsSettings, activeNpsMessage === "returning"),
     buildNpsTemplateVars({
       patientName: "Maria Silva",
       clinicName: tenant?.name ?? "Sua Clínica",
@@ -222,6 +310,18 @@ export function SectionAutomacaoWhatsApp() {
       externalUrl: npsSettings.externalUrl || "https://g.page/r/exemplo",
     }),
   );
+
+  const npsMessageField = activeNpsMessage === "returning" ? "messageReturning" : "message";
+  const npsMessageValue = npsSettings[npsMessageField];
+
+  const birthdayVariants = padTemplatesToFive(birthdaySettings.templates, DEFAULT_BIRTHDAY_TEMPLATES);
+  const birthdayPreview = renderTemplate(birthdayVariants[activeBirthdayVariant] || DEFAULT_BIRTHDAY_TEMPLATES[0], {
+    ...previewVars,
+    primeiro_nome: "Maria",
+    nome_paciente: "Maria",
+    saudacao: "Olá, Maria",
+    nome_clinica: tenant?.name ?? "Sua Clínica",
+  });
 
   if (loading) {
     return (
@@ -242,7 +342,7 @@ export function SectionAutomacaoWhatsApp() {
           </h2>
           <p className="text-sm text-muted-foreground">
             Edite os textos enviados automaticamente pelo CRM (follow-ups, lembretes, NPS e fora do
-            horário).
+            horário). A mensagem de fora do horário é enviada exatamente como cadastrada (sem IA), no máximo 1 por conversa a cada 12h.
           </p>
         </div>
         <Button onClick={() => void save()} disabled={saving}>
@@ -258,8 +358,10 @@ export function SectionAutomacaoWhatsApp() {
             Avaliação pós-consulta (NPS)
           </CardTitle>
           <CardDescription>
-            Enviada automaticamente alguns minutos após marcar a consulta como concluída. Escolha o
-            NPS interno do ClinicOS ou um link externo (Google Avaliações, etc.).
+            Enviado sempre após concluir a consulta, no atraso configurado (janela 7h–20h), mesmo se
+            o paciente falar no WhatsApp. Se ainda não houver conversa, o sistema abre uma nova pelo
+            telefone do cadastro e envia o NPS. Mensagem 1 para quem nunca avaliou; mensagem 2 para
+            quem já respondeu o NPS alguma vez.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -304,7 +406,8 @@ export function SectionAutomacaoWhatsApp() {
               />
               <p className="text-xs text-muted-foreground">
                 Use a variável {"{{link_avaliacao}}"} na mensagem. Respostas do Google não entram no
-                relatório NPS do sistema.
+                relatório NPS do sistema; a escolha mensagem 1/2 usa o histórico de NPS interno, se
+                houver.
               </p>
             </div>
           ) : (
@@ -316,10 +419,31 @@ export function SectionAutomacaoWhatsApp() {
 
           <div className="space-y-1.5">
             <Label>Mensagem WhatsApp</Label>
+            <div className="flex flex-wrap gap-1.5">
+              <Button
+                type="button"
+                size="sm"
+                variant={activeNpsMessage === "first" ? "default" : "outline"}
+                onClick={() => setActiveNpsMessage("first")}
+              >
+                Mensagem 1 · nunca avaliou
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={activeNpsMessage === "returning" ? "default" : "outline"}
+                onClick={() => setActiveNpsMessage("returning")}
+              >
+                Mensagem 2 · já avaliou
+              </Button>
+            </div>
             <Textarea
+              key={activeNpsMessage}
               ref={npsTaRef}
-              value={npsSettings.message}
-              onChange={(e) => setNpsSettings((prev) => ({ ...prev, message: e.target.value }))}
+              value={npsMessageValue}
+              onChange={(e) =>
+                setNpsSettings((prev) => ({ ...prev, [npsMessageField]: e.target.value }))
+              }
               rows={4}
               maxLength={1024}
             />
@@ -349,8 +473,14 @@ export function SectionAutomacaoWhatsApp() {
             onClick={() =>
               setNpsSettings((prev) => ({
                 ...prev,
-                message:
-                  prev.mode === "external" ? DEFAULT_NPS_EXTERNAL_MESSAGE : DEFAULT_NPS_SYSTEM_MESSAGE,
+                [npsMessageField]:
+                  prev.mode === "external"
+                    ? activeNpsMessage === "returning"
+                      ? DEFAULT_NPS_EXTERNAL_MESSAGE_RETURNING
+                      : DEFAULT_NPS_EXTERNAL_MESSAGE
+                    : activeNpsMessage === "returning"
+                      ? DEFAULT_NPS_SYSTEM_MESSAGE_RETURNING
+                      : DEFAULT_NPS_SYSTEM_MESSAGE,
               }))
             }
           >
@@ -361,10 +491,99 @@ export function SectionAutomacaoWhatsApp() {
 
       <Card>
         <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Cake className="size-4" />
+            Aniversário (WhatsApp)
+          </CardTitle>
+          <CardDescription>
+            Envio automático no dia do aniversário, entre 7h e 20h. Cinco variações em rotação por
+            paciente (no máximo uma mensagem por ano).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+            <div>
+              <Label htmlFor="birthday-enabled">Envio automático ativo</Label>
+              <p className="text-xs text-muted-foreground">Desative para pausar sem apagar os textos.</p>
+            </div>
+            <Switch
+              id="birthday-enabled"
+              checked={birthdaySettings.enabled}
+              onCheckedChange={(checked) =>
+                setBirthdaySettings((prev) => ({ ...prev, enabled: checked }))
+              }
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Variações da mensagem</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {Array.from({ length: FOLLOW_UP_VARIANT_COUNT }, (_, i) => (
+                <Button
+                  key={i}
+                  type="button"
+                  size="sm"
+                  variant={activeBirthdayVariant === i ? "default" : "outline"}
+                  onClick={() => setActiveBirthdayVariant(i)}
+                >
+                  Variação {i + 1}
+                </Button>
+              ))}
+            </div>
+            <Textarea
+              key={activeBirthdayVariant}
+              ref={birthdayTaRef}
+              value={birthdayVariants[activeBirthdayVariant] ?? ""}
+              onChange={(e) => {
+                const next = [...birthdayVariants];
+                next[activeBirthdayVariant] = e.target.value;
+                setBirthdaySettings((prev) => ({ ...prev, templates: next }));
+              }}
+              rows={5}
+              maxLength={1024}
+              disabled={!birthdaySettings.enabled}
+            />
+            <div className="flex flex-wrap gap-1">
+              {BIRTHDAY_TEMPLATE_VARS.map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => insertBirthdayVar(v)}
+                  className="rounded bg-muted px-2 py-0.5 font-mono text-xs hover:bg-muted/70"
+                  disabled={!birthdaySettings.enabled}
+                >
+                  {`{{${v}}}`}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-xs text-muted-foreground">Prévia</Label>
+            <p className="mt-1 rounded-md bg-muted/50 p-3 text-sm whitespace-pre-wrap">{birthdayPreview}</p>
+          </div>
+
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              const next = [...birthdayVariants];
+              next[activeBirthdayVariant] = DEFAULT_BIRTHDAY_TEMPLATES[activeBirthdayVariant] ?? "";
+              setBirthdaySettings((prev) => ({ ...prev, templates: next }));
+            }}
+          >
+            Restaurar esta variação
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle className="text-base">Fora do horário de atendimento</CardTitle>
           <CardDescription>
             Resposta automática quando o paciente envia mensagem fora do horário configurado em
-            Clínica.
+            Clínica. Envia exatamente o texto abaixo (sem reformular com IA), uma única vez a cada 12h por conversa.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -408,29 +627,67 @@ export function SectionAutomacaoWhatsApp() {
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="space-y-4 pt-2">
+                    <p className="text-xs text-muted-foreground">
+                      Cada passo tem {FOLLOW_UP_VARIANT_COUNT} variações. Elas alternam por paciente a
+                      cada envio deste tipo (1→2→…→5→1).
+                    </p>
                     {steps.map((step) => {
-                      const value = templates[sequenceKey]?.[step.key] ?? step.template;
-                      const isCustom = value.trim() !== step.template.trim();
+                      const variants = padTemplatesToFive(
+                        templates[sequenceKey]?.[step.key] ?? step.templates,
+                      );
+                      const vi = variantIndex(step.key);
+                      const value = variants[vi] ?? "";
+                      const defaults = padTemplatesToFive(step.templates);
+                      const isCustom = variants.some((v, i) => v.trim() !== (defaults[i] ?? "").trim());
                       const preview = renderTemplate(value, previewVars);
 
                       return (
                         <div key={step.key} className="space-y-3 rounded-lg border p-4">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant="outline" className="gap-1">
-                              <Clock className="size-3" />
-                              {formatFollowUpStepDelay(step.delayMinutes)}
-                            </Badge>
-                            <Badge variant="secondary">{followUpModeLabel(step.mode)}</Badge>
-                            {isCustom && <Badge>Personalizado</Badge>}
+                          <div className="space-y-1">
+                            {step.label && (
+                              <p className="text-sm font-medium text-foreground">{step.label}</p>
+                            )}
+                            {step.key === "appointment_booked_now" && (
+                              <p className="text-xs text-muted-foreground">
+                                Enviada apenas quando a consulta é marcada. Não é reenviada depois
+                                como confirmação — os lembretes D-1 e 3h usam as mensagens abaixo.
+                              </p>
+                            )}
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="outline" className="gap-1">
+                                <Clock className="size-3" />
+                                {formatFollowUpStepDelay(step.delayMinutes)}
+                              </Badge>
+                              <Badge variant="secondary">{followUpModeLabel(step.mode)}</Badge>
+                              {isCustom && <Badge>Personalizado</Badge>}
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {Array.from({ length: FOLLOW_UP_VARIANT_COUNT }, (_, i) => (
+                              <Button
+                                key={i}
+                                type="button"
+                                size="sm"
+                                variant={vi === i ? "default" : "outline"}
+                                className="h-8 px-2.5"
+                                onClick={() =>
+                                  setActiveVariant((prev) => ({ ...prev, [step.key]: i }))
+                                }
+                              >
+                                Variação {i + 1}
+                              </Button>
+                            ))}
                           </div>
                           <div>
-                            <Label>Mensagem</Label>
+                            <Label>Mensagem — variação {vi + 1}</Label>
                             <Textarea
                               ref={(el) => {
                                 taRefs.current[step.key] = el;
                               }}
                               value={value}
-                              onChange={(e) => setStepTemplate(sequenceKey, step.key, e.target.value)}
+                              onChange={(e) =>
+                                setStepVariant(sequenceKey, step.key, vi, e.target.value)
+                              }
                               rows={4}
                               maxLength={1024}
                               className="mt-1"
@@ -461,7 +718,7 @@ export function SectionAutomacaoWhatsApp() {
                               variant="ghost"
                               onClick={() => resetStep(sequenceKey, step.key)}
                             >
-                              Restaurar padrão
+                              Restaurar padrões (5 variações)
                             </Button>
                           )}
                         </div>

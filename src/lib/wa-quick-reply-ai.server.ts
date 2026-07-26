@@ -1,4 +1,8 @@
 import { buildConversationTranscript } from "@/lib/wa-funnel-ai.server";
+import {
+  normalizeMessageLineBreaks,
+  preservesLineBreakStructure,
+} from "@/lib/wa-automation-quick-replies";
 
 type WaMessageRow = {
   direction: "inbound" | "outbound";
@@ -45,7 +49,7 @@ export async function humanizeQuickReplyMessage(input: {
   clinicName?: string | null;
   recentTranscript?: string | null;
 }): Promise<HumanizeQuickReplyResult> {
-  const base = input.message.trim();
+  const base = normalizeMessageLineBreaks(input.message);
   if (!base) return { configured: false, text: base, usedAi: false };
 
   const apiKey = process.env.OPENAI_API_KEY?.trim();
@@ -59,7 +63,8 @@ Regras OBRIGATÓRIAS:
 - Mantenha EXATAMENTE o mesmo significado, intenção e informações factuais (datas, horários, nomes, valores, links, perguntas)
 - NÃO invente fatos, promessas ou detalhes novos
 - Português do Brasil, tom acolhedor e profissional (WhatsApp)
-- Varie estrutura, ordem das frases e vocabulário — cada reescrita deve ser claramente diferente da mensagem base
+- Preserve EXATAMENTE as quebras de linha e parágrafos da mensagem base (incluindo linhas em branco entre blocos). NÃO junte tudo em um único parágrafo corrido
+- Varie vocabulário e pequenas formulações — sem destruir a estrutura de parágrafos
 - SEMPRE se refira ao paciente pelo PRIMEIRO NOME fornecido — nunca use nome completo, sobrenome ou "paciente"
 - Se a mensagem base tiver nome completo, substitua pelo primeiro nome
 - NÃO use markdown, asteriscos de formatação nem emojis em excesso
@@ -104,10 +109,13 @@ Regras OBRIGATÓRIAS:
     const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
     const rewritten = json.choices?.[0]?.message?.content?.trim() ?? "";
     if (!rewritten || rewritten === base) {
-      return { configured: true, text: base, usedAi: false };
+      return { configured: true, text: normalizeMessageLineBreaks(base), usedAi: false };
     }
     if (!mustKeepTokensPresent(base, rewritten)) {
-      return { configured: true, text: base, usedAi: false };
+      return { configured: true, text: normalizeMessageLineBreaks(base), usedAi: false };
+    }
+    if (!preservesLineBreakStructure(base, rewritten)) {
+      return { configured: true, text: normalizeMessageLineBreaks(base), usedAi: false };
     }
 
     const normalized = normalizeOutboundPatientName(rewritten, {
@@ -115,9 +123,9 @@ Regras OBRIGATÓRIAS:
       fullName: null,
     });
 
-    return { configured: true, text: normalized, usedAi: true };
+    return { configured: true, text: normalizeMessageLineBreaks(normalized), usedAi: true };
   } catch {
-    return { configured: true, text: base, usedAi: false };
+    return { configured: true, text: normalizeMessageLineBreaks(base), usedAi: false };
   }
 }
 
@@ -152,7 +160,7 @@ export function normalizeOutboundPatientName(
   message: string,
   options: { firstName?: string | null; fullName?: string | null },
 ): string {
-  let text = message.trim();
+  let text = normalizeMessageLineBreaks(message);
   if (!text) return text;
 
   const firstName = options.firstName?.trim();
@@ -248,14 +256,15 @@ export async function normalizeManualOutboundMessage(
     contactName?: string | null;
   },
 ): Promise<string> {
-  const base = message.trim();
+  const base = normalizeMessageLineBreaks(message);
   if (!base) return base;
   const ctx = await resolveOutboundPatientContext(tenantId, { ...options, loadTranscript: false });
   return finishOutboundPatientName(base, ctx);
 }
 
 /**
- * Reformula mensagem outbound com IA + contexto (follow-ups, agendadas, fora do horário).
+ * Reformula mensagem outbound com IA + contexto (follow-ups / agendadas).
+ * Fora do horário NÃO usa esta função — envia o texto cadastrado sem IA.
  * Sem OPENAI_API_KEY, apenas normaliza o primeiro nome.
  */
 export async function humanizeForConversation(
@@ -267,7 +276,7 @@ export async function humanizeForConversation(
     contactName?: string | null;
   },
 ): Promise<string> {
-  const base = message.trim();
+  const base = normalizeMessageLineBreaks(message);
   if (!base) return base;
 
   const ctx = await resolveOutboundPatientContext(tenantId, { ...options, loadTranscript: true });
@@ -296,7 +305,7 @@ export async function humanizeComposerMessage(
     contactName?: string | null;
   },
 ): Promise<{ configured: boolean; text: string; usedAi: boolean }> {
-  const base = message.trim();
+  const base = normalizeMessageLineBreaks(message);
   if (!base) return { configured: false, text: base, usedAi: false };
 
   const ctx = await resolveOutboundPatientContext(tenantId, { ...options, loadTranscript: true });

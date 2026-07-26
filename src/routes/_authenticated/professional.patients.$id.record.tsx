@@ -48,6 +48,8 @@ import {
   ensureTodayConsultationLinked,
   findPatientAppointmentToday,
 } from "@/lib/patient-appointment";
+import { PatientCompleteRegistrationDialog } from "@/components/patient-complete-registration-dialog";
+import { isPatientRegistrationIncomplete } from "@/lib/patient-registration-complete";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
@@ -60,8 +62,17 @@ interface Patient {
   full_name: string;
   cpf: string | null;
   phone: string | null;
+  phone_ddi?: string | null;
   email: string | null;
   birth_date: string | null;
+  gender?: string | null;
+  address_zip?: string | null;
+  address_street?: string | null;
+  address_number?: string | null;
+  address_complement?: string | null;
+  address_neighborhood?: string | null;
+  address_city?: string | null;
+  address_state?: string | null;
 }
 
 function RecordPage() {
@@ -83,6 +94,7 @@ function RecordPage() {
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
   const [todayAppointmentLinked, setTodayAppointmentLinked] = useState(false);
+  const [registrationOpen, setRegistrationOpen] = useState(false);
   const photoFileRef = useRef<HTMLInputElement>(null);
   const photoKindRef = useRef<"exams" | "before_after" | null>(null);
 
@@ -135,10 +147,14 @@ function RecordPage() {
       setLoading(true);
       const { data: p } = await supabase
         .from("patients")
-        .select("id, full_name, cpf, phone, email, birth_date")
+        .select(
+          "id, full_name, cpf, phone, phone_ddi, email, birth_date, gender, address_zip, address_street, address_number, address_complement, address_neighborhood, address_city, address_state",
+        )
         .eq("id", id)
         .maybeSingle();
-      setPatient(p as Patient | null);
+      const patientRow = p as Patient | null;
+      setPatient(patientRow);
+      setRegistrationOpen(isPatientRegistrationIncomplete(patientRow));
       const [finRes, , linkResult] = await Promise.all([
         supabase.rpc("patient_has_financial_pending", { p_patient_id: id }),
         loadHistory(),
@@ -441,6 +457,14 @@ function RecordPage() {
 
   return (
     <DashboardShell title={`Prontuário · ${displayName}`} fullWidth>
+      <PatientCompleteRegistrationDialog
+        open={registrationOpen}
+        patient={patient}
+        onCompleted={(updated) => {
+          setPatient((prev) => (prev ? { ...prev, ...updated } : (updated as Patient)));
+          setRegistrationOpen(false);
+        }}
+      />
       <div className="flex h-[calc(100dvh-5.25rem)] flex-col lg:h-[calc(100dvh-4.5rem)] lg:min-h-[36rem]">
         <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden pb-1">
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1.5">

@@ -47,9 +47,14 @@ export function DashboardShell({
   const { profile, tenant, signOut } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogout = async () => {
-    await performAppSignOut(signOut);
-    navigate({ to: "/login", replace: true });
+  const handleLogout = () => {
+    void (async () => {
+      try {
+        await performAppSignOut(signOut);
+      } finally {
+        navigate({ to: "/login", replace: true });
+      }
+    })();
   };
 
   useEffect(() => {
@@ -124,7 +129,10 @@ export function DashboardShell({
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  onClick={handleLogout}
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    handleLogout();
+                  }}
                   className="cursor-pointer text-destructive focus:text-destructive"
                 >
                   <LogOut className="mr-2 size-4" />

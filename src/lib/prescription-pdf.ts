@@ -196,6 +196,10 @@ function drawSimpleHeaderNoLetterhead(doc: jsPDF, rx: RxData, cx: number, y: num
   return y + 10;
 }
 
+/**
+ * Draws medication name (wrapping) + quantity on the right.
+ * Returns height used in mm. Avoids jsPDF overflow compression on long names.
+ */
 function drawMedicationHeaderRow(
   doc: jsPDF,
   x: number,
@@ -205,37 +209,59 @@ function drawMedicationHeaderRow(
   medication: string,
   concentration: string | null | undefined,
   quantity: string | null | undefined,
-) {
-  doc.setFontSize(10);
+): number {
+  const lineH = 4.6;
+  const fontSize = 10;
+  doc.setFontSize(fontSize);
+
   const prefix = `${position}. `;
-  const med = `${medication.toUpperCase()}${concentration ? ` ${concentration}` : ""}`;
+  const med = `${medication.toUpperCase()}${concentration ? ` ${concentration}` : ""}`
+    .replace(/\s+/g, " ")
+    .trim();
   const right = formatRxQuantityLabel(quantity);
 
   doc.setFont("helvetica", "normal");
   const prefixW = doc.getTextWidth(prefix);
-  doc.setFont("helvetica", "bold");
-  const medW = doc.getTextWidth(med);
-  doc.setFont("helvetica", "normal");
   const rightW = doc.getTextWidth(right);
-  const dashW = doc.getTextWidth("-");
+  const qtyGap = 4;
+  const medTextW = Math.max(20, contentW - prefixW - rightW - qtyGap);
 
-  const leftW = prefixW + medW;
-  const midStart = x + leftW + 2;
-  const midEnd = x + contentW - rightW - 2;
-  const available = Math.max(0, midEnd - midStart);
-  const dashCount = Math.max(6, Math.floor(available / dashW));
-
-  doc.setFont("helvetica", "normal");
-  doc.text(prefix, x, y);
   doc.setFont("helvetica", "bold");
-  doc.text(med, x + prefixW, y);
-  doc.setFont("helvetica", "normal");
-  if (available > 8) {
-    const dashes = "-".repeat(dashCount);
-    const dashTextW = doc.getTextWidth(dashes);
-    doc.text(dashes, midStart + (available - dashTextW) / 2, y);
+  // Slightly tighter than measured col so glyph width never exceeds the column.
+  const lines: string[] = doc.splitTextToSize(med, medTextW * 0.98);
+  const medLines = lines.length > 0 ? lines : [""];
+
+  for (let i = 0; i < medLines.length; i++) {
+    const ly = y + i * lineH;
+    if (i === 0) {
+      doc.setFont("helvetica", "normal");
+      doc.text(prefix, x, ly);
+    }
+    doc.setFont("helvetica", "bold");
+    doc.text(medLines[i], x + prefixW, ly);
   }
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(fontSize);
   doc.text(right, x + contentW, y, { align: "right" });
+
+  if (medLines.length === 1) {
+    doc.setFont("helvetica", "bold");
+    const firstW = doc.getTextWidth(medLines[0]);
+    doc.setFont("helvetica", "normal");
+    const leaderStart = x + prefixW + firstW + 1.5;
+    const leaderEnd = x + contentW - rightW - 1.5;
+    if (leaderEnd - leaderStart > 10) {
+      doc.setLineWidth(0.2);
+      doc.setDrawColor(80);
+      for (let dx = leaderStart; dx < leaderEnd; dx += 1.6) {
+        doc.line(dx, y + 0.4, Math.min(dx + 0.7, leaderEnd), y + 0.4);
+      }
+      doc.setDrawColor(0);
+    }
+  }
+
+  return Math.max(lineH, medLines.length * lineH);
 }
 
 function drawSimplePrescription(
@@ -299,7 +325,7 @@ function drawSimplePrescription(
   rx.items.forEach((it) => {
     if (!it.medication.trim()) return;
 
-    drawMedicationHeaderRow(
+    cy += drawMedicationHeaderRow(
       doc,
       contentX,
       cy,
@@ -309,7 +335,7 @@ function drawSimplePrescription(
       it.concentration,
       it.quantity,
     );
-    cy += 5.5;
+    cy += 1;
 
     doc.setFont("helvetica", "italic");
     doc.setFontSize(9);
@@ -496,6 +522,20 @@ function drawStandardPrescription(
 }
 
 const SPECIAL_CONTROL_FOOTER_H = 52;
+const SPECIAL_CONTROL_MARGIN_MM = 12;
+const SPECIAL_CONTROL_BOXES_H_MM = 38;
+const SPECIAL_CONTROL_SIGN_BLOCK_H_MM = 11;
+/** Reserva acima da linha manual para o carimbo SafeID (~altura do stamp + folga). */
+export const SPECIAL_CONTROL_DIGITAL_STAMP_RESERVE_MM = 34;
+export const SPECIAL_CONTROL_PAGE_H_MM = 297;
+
+/** Ancora da linha "Assinatura e Carimbo do Emitente" (mm a partir do topo). */
+export function computeSpecialControlSignatureAnchor(pageH = SPECIAL_CONTROL_PAGE_H_MM) {
+  const pageBottom = pageH - SPECIAL_CONTROL_MARGIN_MM;
+  const boxesY = pageBottom - SPECIAL_CONTROL_BOXES_H_MM;
+  const signatureLineY = boxesY - SPECIAL_CONTROL_SIGN_BLOCK_H_MM;
+  return { signatureLineY, boxesY, pageBottom };
+}
 
 function drawEmitterIdentificationBox(
   doc: jsPDF,
@@ -543,8 +583,8 @@ function drawSpecialControlFooter(
   contentW: number,
   pageBottom: number,
 ) {
-  const boxesH = 38;
-  const signBlockH = 11;
+  const boxesH = SPECIAL_CONTROL_BOXES_H_MM;
+  const signBlockH = SPECIAL_CONTROL_SIGN_BLOCK_H_MM;
   const boxesY = pageBottom - boxesH;
   const signY = boxesY - signBlockH;
 
@@ -609,13 +649,14 @@ function drawSpecialControlCopy(
   h: number,
   qrDataUrl?: string | null,
 ) {
-  const m = 12;
+  const m = SPECIAL_CONTROL_MARGIN_MM;
   const padB = rx.letterhead?.margins.bottom ?? m;
   const contentX = x + m;
   const contentW = w - m * 2;
   const pageCx = x + w / 2;
   const pageBottom = y + h - m;
-  const footerTop = pageBottom - SPECIAL_CONTROL_FOOTER_H;
+  const stampReserve = rx.digitalSignature ? SPECIAL_CONTROL_DIGITAL_STAMP_RESERVE_MM : 0;
+  const footerTop = pageBottom - SPECIAL_CONTROL_FOOTER_H - stampReserve;
   const maxPrescriptionY = footerTop - 6;
 
   let cy = y + 12;
@@ -664,7 +705,7 @@ function drawSpecialControlCopy(
   rx.items.forEach((it) => {
     if (!it.medication.trim() || cy > maxPrescriptionY - 12) return;
 
-    drawMedicationHeaderRow(
+    cy += drawMedicationHeaderRow(
       doc,
       contentX,
       cy,
@@ -674,7 +715,7 @@ function drawSpecialControlCopy(
       it.concentration,
       it.quantity,
     );
-    cy += 5;
+    cy += 0.5;
 
     doc.setFont("helvetica", "italic");
     doc.setFontSize(8);
@@ -721,7 +762,10 @@ function drawOfficialSpecialControlTwoCopy(doc: jsPDF, rx: RxData, qrDataUrl?: s
   drawSpecialControlCopy(doc, rx, "2ª VIA - ORIENTAÇÃO DO PACIENTE", 0, 0, pageW, pageH, qrDataUrl);
 }
 
+export const PRESCRIPTION_PDF_LAYOUT_VERSION = 3;
+
 export async function generatePrescriptionPDF(rx: RxData): Promise<Blob> {
+  // layout v3: long medication names wrap (no overflow compression)
   const qrDataUrl = rx.digitalSignature
     ? await QRCode.toDataURL(ITI_VALIDATOR_URL, { width: 120, margin: 0 })
     : null;

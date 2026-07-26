@@ -66,9 +66,14 @@ export function CrmPwaShell({ children, activeTab, hideBottomNav, header }: CrmP
     return () => document.documentElement.classList.remove("ios-standalone-safe");
   }, []);
 
-  const handleLogout = async () => {
-    await performAppSignOut(signOut);
-    navigate({ to: "/crm/login", replace: true });
+  const handleLogout = () => {
+    void (async () => {
+      try {
+        await performAppSignOut(signOut);
+      } finally {
+        navigate({ to: "/crm/login", replace: true });
+      }
+    })();
   };
 
   const tabs = TAB_ITEMS.filter(
@@ -131,7 +136,10 @@ export function CrmPwaShell({ children, activeTab, hideBottomNav, header }: CrmP
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    onClick={() => void handleLogout()}
+                    onSelect={(e) => {
+                      e.preventDefault();
+                      handleLogout();
+                    }}
                     className="cursor-pointer text-destructive focus:text-destructive"
                   >
                     <LogOut className="mr-2 size-4" />

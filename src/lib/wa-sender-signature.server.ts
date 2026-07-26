@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { normalizeMessageLineBreaks } from "@/lib/wa-automation-quick-replies";
 
 export interface WaSenderProfileRow {
   full_name: string;
@@ -20,7 +21,7 @@ export function formatStaffWaTextForPatient(
   body: string,
   profile: WaSenderProfileRow | null | undefined,
 ): string {
-  const text = body.trim();
+  const text = normalizeMessageLineBreaks(body);
   if (!text) return text;
 
   const label = waStaffSenderLabel(profile);

@@ -1,5 +1,6 @@
 import { verifyCronAuth } from "@/lib/internal-api-auth.server";
 import { processAppointmentNotifyQueue } from "@/lib/wa-appointment-notify.server";
+import { processBirthdayMessages } from "@/lib/wa-birthday.server";
 import { processDueFollowUps } from "@/lib/wa-follow-up.server";
 import { processScheduledMessages } from "@/lib/wa-scheduled.server";
 
@@ -16,6 +17,7 @@ export async function handleWaFollowUpsCron(request: Request): Promise<Response>
 
   try {
     const queue = await processAppointmentNotifyQueue(25);
+    const birthdays = await processBirthdayMessages(40);
     const followUps = await processDueFollowUps(50);
     const scheduled = await processScheduledMessages(25);
     // Limpeza da lixeira: remove itens com mais de 30 dias (ou já restaurados).
@@ -25,8 +27,8 @@ export async function handleWaFollowUpsCron(request: Request): Promise<Response>
     } catch (e) {
       console.error("[cron purge_expired_trash]", e);
     }
-    console.info("[cron wa-follow-ups]", { queue, followUps, scheduled });
-    return Response.json({ ok: true, queue, followUps, scheduled });
+    console.info("[cron wa-follow-ups]", { queue, birthdays, followUps, scheduled });
+    return Response.json({ ok: true, queue, birthdays, followUps, scheduled });
   } catch (e) {
     console.error("[cron wa-follow-ups]", e);
     return Response.json(

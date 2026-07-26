@@ -27,10 +27,13 @@ import { loadLetterheadForPdf } from "@/lib/letterhead";
 import { savePrescriptionToPatientHistory } from "@/lib/prescription-history";
 import {
   computeSimpleSignatureAnchor,
+  computeSpecialControlSignatureAnchor,
   formatRxQuantityLabel,
   formatSignedProfessionalName,
   generatePrescriptionPDF,
+  PRESCRIPTION_PDF_LAYOUT_VERSION,
   SIMPLE_RX_PAGE_H_MM,
+  SPECIAL_CONTROL_PAGE_H_MM,
   type RxData,
 } from "@/lib/prescription-pdf";
 import { formatClinicAddress, formatClinicAddressLines, getTenantSetting, type ClinicAddress } from "@/lib/settings-helpers";
@@ -494,6 +497,7 @@ function NewPrescription() {
       }
 
       if (finalize) {
+        void PRESCRIPTION_PDF_LAYOUT_VERSION;
         const letterhead = await loadLetterheadForPdf(profile.id);
         let blob = await generatePrescriptionPDF({
           ...data,
@@ -505,11 +509,14 @@ function NewPrescription() {
         let signatureCn: string | null = null;
 
         if (shouldSign) {
+          const isSpecialControl = type === "controlada" || type === "especial_2vias";
           const bottomMarginMm = letterhead?.margins.bottom ?? (type === "simples" ? 14 : 25);
           const signatureLineMmFromTop =
             type === "simples"
               ? computeSimpleSignatureAnchor(SIMPLE_RX_PAGE_H_MM, bottomMarginMm, true).signatureLineY
-              : undefined;
+              : isSpecialControl
+                ? computeSpecialControlSignatureAnchor(SPECIAL_CONTROL_PAGE_H_MM).signatureLineY
+                : undefined;
           const signedResult = await signPdf({
             data: {
               pdfBase64: await blobToBase64(blob),
@@ -517,7 +524,11 @@ function NewPrescription() {
               location: data.clinic.name,
               bottomMarginMm,
               signatureLineMmFromTop,
-              referencePageHeightMm: type === "simples" ? SIMPLE_RX_PAGE_H_MM : undefined,
+              referencePageHeightMm: isSpecialControl
+                ? SPECIAL_CONTROL_PAGE_H_MM
+                : type === "simples"
+                  ? SIMPLE_RX_PAGE_H_MM
+                  : undefined,
             },
           });
           blob = base64ToBlob(signedResult.pdfBase64);
@@ -887,8 +898,8 @@ function SpecialControlPreview({ data }: { data: RxData }) {
               .filter((i) => i.medication.trim())
               .map((i) => (
                 <div key={i.position} className="mb-2">
-                  <div className="flex items-baseline gap-1">
-                    <span>
+                  <div className="flex flex-wrap items-baseline gap-x-1 gap-y-0.5">
+                    <span className="min-w-0 max-w-[calc(100%-5.5rem)] break-words">
                       {i.position}.{" "}
                       <span className="font-bold">
                         {i.medication.toUpperCase()}
@@ -896,7 +907,7 @@ function SpecialControlPreview({ data }: { data: RxData }) {
                       </span>
                     </span>
                     <span className="min-w-3 flex-1 border-b border-dotted border-black/40" />
-                    <span className="text-[9px]">{formatRxQuantityLabel(i.quantity)}</span>
+                    <span className="shrink-0 text-[9px]">{formatRxQuantityLabel(i.quantity)}</span>
                   </div>
                   {(i.dosage || i.route || i.frequency || i.duration) && (
                     <p className="pl-3 italic">
@@ -987,8 +998,8 @@ function SimplePreviewPanel({ data }: { data: RxData }) {
             .filter((i) => i.medication.trim())
             .map((i) => (
               <div key={i.position}>
-                <div className="flex items-baseline gap-1">
-                  <span className="shrink-0">
+                <div className="flex flex-wrap items-baseline gap-x-1 gap-y-0.5">
+                  <span className="min-w-0 max-w-[calc(100%-5.5rem)] break-words">
                     {i.position}.{" "}
                     <span className="font-bold">
                       {i.medication.toUpperCase()}

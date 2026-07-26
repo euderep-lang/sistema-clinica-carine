@@ -49,7 +49,12 @@ export type ProfessionalAgendaAppointment = {
   modality?: string | null;
   notes?: string | null;
   patient_id: string | null;
-  patients: { full_name: string; phone: string | null } | null;
+  patients: {
+    full_name: string;
+    phone: string | null;
+    birth_date?: string | null;
+    gender?: string | null;
+  } | null;
   rooms: { name: string } | null;
 };
 

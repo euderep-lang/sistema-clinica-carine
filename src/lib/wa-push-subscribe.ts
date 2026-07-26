@@ -94,7 +94,10 @@ export async function ensureWaPushSubscription(): Promise<boolean> {
 export async function removeWaPushSubscription(): Promise<void> {
   try {
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
-    const reg = await navigator.serviceWorker.ready;
+    // getRegistration() não trava; serviceWorker.ready pode esperar para sempre
+    // se não houver SW ativo controlando a página.
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) return;
     const sub = await reg.pushManager.getSubscription();
     if (!sub) return;
     await deletePushSubscription({ data: { endpoint: sub.endpoint } }).catch(() => {});

@@ -4,7 +4,7 @@ import {
   normalizeGenderInTemplate,
   normalizePatientGender,
 } from "@/lib/wa-template-gender";
-import { mergeFollowUpSequences } from "@/lib/wa-follow-up-templates";
+import { mergeFollowUpSequences, primaryTemplate } from "@/lib/wa-follow-up-templates";
 import { renderFollowUpMessage } from "@/lib/wa-follow-up.server";
 
 describe("wa-template-gender", () => {
@@ -60,11 +60,11 @@ describe("wa-template-gender", () => {
     };
 
     const msg3d = renderFollowUpMessage(
-      merged.lead_no_response.find((s) => s.key === "lead_no_response_3d")!.template,
+      primaryTemplate(merged.lead_no_response.find((s) => s.key === "lead_no_response_3d")!),
       euder,
     );
     const msg48h = renderFollowUpMessage(
-      merged.lead_price_sent.find((s) => s.key === "lead_price_sent_48h")!.template,
+      primaryTemplate(merged.lead_price_sent.find((s) => s.key === "lead_price_sent_48h")!),
       euder,
     );
 

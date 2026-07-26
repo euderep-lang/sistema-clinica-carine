@@ -234,7 +234,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      await Promise.race([
+        supabase.auth.signOut(),
+        new Promise<void>((resolve) => setTimeout(resolve, 2500)),
+      ]);
+    } catch {
+      // Se a rede falhar, ainda limpa a sessão local.
+      await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+    }
     setProfile(null);
     setTenant(null);
     setPermissions(null);

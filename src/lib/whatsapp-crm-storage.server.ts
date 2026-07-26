@@ -25,7 +25,7 @@ import { applyWaTagRules, isFirstInboundMessage } from "@/lib/wa-tag-automation.
 import { handleAppointmentConfirmationReply } from "@/lib/wa-appointment-confirmation.server";
 import { isValidContactPhotoUrl } from "@/lib/wa-contact-photo";
 import { providerSendText, isWhatsAppConfigured } from "@/lib/whatsapp-provider.server";
-import { humanizeForConversation } from "@/lib/wa-quick-reply-ai.server";
+import { normalizeManualOutboundMessage } from "@/lib/wa-quick-reply-ai.server";
 
 export async function resolveTenantId(): Promise<string | null> {
   const { data } = await supabaseAdmin.from("tenants").select("id").limit(1).maybeSingle();
@@ -555,12 +555,44 @@ export async function maybeSendAfterHoursAutoReply(
   if (isWithinBusinessHours(hours, now)) return;
   if (!shouldSendAfterHoursReply(lastAfterHoursReplyAt, now)) return;
 
-  const message = customMessage?.trim() || DEFAULT_AFTER_HOURS_MESSAGE;
+  // Reserva atômica: evita 2 envios se o webhook chegar em paralelo (Z-API reentrega / 2 msgs).
+  const cooldownIso = new Date(now.getTime() - 12 * 60 * 60 * 1000).toISOString();
+  const claimTs = now.toISOString();
+  const { data: claimed, error: claimErr } = await supabaseAdmin
+    .from("wa_conversations" as never)
+    .update({ last_after_hours_reply_at: claimTs } as never)
+    .eq("id", conversationId)
+    .or(`last_after_hours_reply_at.is.null,last_after_hours_reply_at.lt.${cooldownIso}`)
+    .select("id")
+    .maybeSingle();
+
+  if (claimErr) {
+    console.error("[CRM] after-hours claim failed:", claimErr.message);
+    return;
+  }
+  if (!claimed) return;
+
+  // Texto exato cadastrado pelo admin — sem IA (nunca duas variações).
+  const rawMessage = customMessage?.trim() || DEFAULT_AFTER_HOURS_MESSAGE;
   try {
-    const humanized = await humanizeForConversation(tenantId, message, { conversationId });
+    const message = await normalizeManualOutboundMessage(tenantId, rawMessage, { conversationId });
+    if (!message.trim()) {
+      await supabaseAdmin
+        .from("wa_conversations" as never)
+        .update({ last_after_hours_reply_at: lastAfterHoursReplyAt } as never)
+        .eq("id", conversationId);
+      return;
+    }
     const normalized = normalizeWaPhone(phone);
-    if (!normalized) return;
-    const { messageId } = await providerSendText(normalized, humanized);
+    if (!normalized) {
+      await supabaseAdmin
+        .from("wa_conversations" as never)
+        .update({ last_after_hours_reply_at: lastAfterHoursReplyAt } as never)
+        .eq("id", conversationId);
+      return;
+    }
+
+    const { messageId } = await providerSendText(normalized, message);
     const ts = now.toISOString();
 
     await supabaseAdmin.from("wa_messages" as never).insert({
@@ -569,7 +601,7 @@ export async function maybeSendAfterHoursAutoReply(
       wa_message_id: messageId,
       direction: "outbound",
       message_type: "text",
-      body: humanized,
+      body: message,
       status: "sent",
       sent_by: null,
       created_at: ts,
@@ -580,7 +612,7 @@ export async function maybeSendAfterHoursAutoReply(
       .update({
         last_after_hours_reply_at: ts,
         last_message_at: ts,
-        last_message_preview: humanized.slice(0, 120),
+        last_message_preview: message.slice(0, 120),
         updated_at: ts,
       } as never)
       .eq("id", conversationId);
@@ -589,10 +621,15 @@ export async function maybeSendAfterHoursAutoReply(
       tenantId,
       conversationId,
       action: "after_hours_auto_reply",
-      details: { preview: humanized.slice(0, 80) },
+      details: { preview: message.slice(0, 80) },
       source: "automation",
     });
   } catch (e) {
+    // Libera a reserva para permitir nova tentativa se o envio falhou.
+    await supabaseAdmin
+      .from("wa_conversations" as never)
+      .update({ last_after_hours_reply_at: lastAfterHoursReplyAt } as never)
+      .eq("id", conversationId);
     console.error("[CRM] after-hours auto-reply failed:", e);
   }
 }
