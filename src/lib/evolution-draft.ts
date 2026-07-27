@@ -88,20 +88,22 @@ export async function saveEvolutionDraft(
     free_text: draft.freeText,
     updated_at: new Date().toISOString(),
   };
-  await supabase
+  const { error } = await supabase
     .from("evolution_drafts" as never)
     .upsert(row as never, { onConflict: "professional_id,patient_id" });
+  if (error) throw new Error(error.message || "Erro ao salvar rascunho");
 }
 
 export async function clearEvolutionDraft(
   professionalId: string,
   patientId: string,
 ): Promise<void> {
-  await supabase
+  const { error } = await supabase
     .from("evolution_drafts" as never)
     .delete()
     .eq("professional_id", professionalId)
     .eq("patient_id", patientId);
+  if (error) throw new Error(error.message || "Erro ao limpar rascunho");
 }
 
 /** Lista todos os prontuários em aberto (rascunhos com conteúdo) do profissional. */

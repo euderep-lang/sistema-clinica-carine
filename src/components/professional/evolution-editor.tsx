@@ -92,10 +92,15 @@ export function EvolutionEditor({
         mode,
         form,
         freeText,
-      }).then(() => {
-        setDraftSaved(hasContent);
-        onDraftChange?.();
-      });
+      })
+        .then(() => {
+          setDraftSaved(hasContent);
+          onDraftChange?.();
+        })
+        .catch((err) => {
+          setDraftSaved(false);
+          console.error("Falha ao salvar rascunho de evolução", err);
+        });
     }, 800);
     return () => clearTimeout(handle);
   }, [form, freeText, mode, canPersist, professionalId, tenantId, patientId, patientName, onDraftChange]);
@@ -117,15 +122,24 @@ export function EvolutionEditor({
         toast.error("Escreva a evolução antes de salvar.");
         return;
       }
-      await onSave(form, { writeMode: true, freeText: freeText.trim() });
-    } else {
-      if (!form.consultReason.trim()) {
-        toast.error("O motivo da consulta é obrigatório.");
-        return;
+      try {
+        await onSave(form, { writeMode: true, freeText: freeText.trim() });
+        clear();
+      } catch {
+        // Mantém formulário e rascunho se o save falhar.
       }
-      await onSave(form);
+      return;
     }
-    clear();
+    if (!form.consultReason.trim()) {
+      toast.error("O motivo da consulta é obrigatório.");
+      return;
+    }
+    try {
+      await onSave(form);
+      clear();
+    } catch {
+      // Mantém formulário e rascunho se o save falhar.
+    }
   };
 
   return (
@@ -146,7 +160,7 @@ export function EvolutionEditor({
               </p>
             ) : (
               <p className="text-xs text-muted-foreground">
-                Preencha o formulário ou escreva em texto livre
+                Após salvar, o texto fica no Histórico
               </p>
             )}
           </div>

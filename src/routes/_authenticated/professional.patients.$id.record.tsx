@@ -138,7 +138,9 @@ function RecordPage() {
 
     const evolutions = (evRes.data ?? []) as EvolutionEntry[];
     const media = ((mediaRes.data ?? []) as unknown) as MediaHistoryEntry[];
-    setHistory(mergeHistory(evolutions, media));
+    const merged = mergeHistory(evolutions, media);
+    setHistory(merged);
+    return merged.length;
   }, [id]);
 
   useEffect(() => {
@@ -155,13 +157,22 @@ function RecordPage() {
       const patientRow = p as Patient | null;
       setPatient(patientRow);
       setRegistrationOpen(isPatientRegistrationIncomplete(patientRow));
-      const [finRes, , linkResult] = await Promise.all([
+      const [finRes, historyCount, linkResult] = await Promise.all([
         supabase.rpc("patient_has_financial_pending", { p_patient_id: id }),
         loadHistory(),
         ensureTodayConsultationLinked(id, profile.id, profile.tenant_id),
       ]);
       setFinancialPending(Boolean(finRes.data));
       setTodayAppointmentLinked(linkResult.linked);
+      // No celular, abre no histórico se já houver registros — evita parecer "em branco"
+      // ao reabrir o prontuário (a aba padrão é "Nova evolução").
+      if (
+        historyCount > 0 &&
+        typeof window !== "undefined" &&
+        window.matchMedia("(max-width: 1023px)").matches
+      ) {
+        setMobileTab("history");
+      }
       setLoading(false);
     })();
   }, [id, profile, loadHistory]);
@@ -316,7 +327,7 @@ function RecordPage() {
     form: EvolutionFormValues,
     options?: { writeMode?: boolean; freeText?: string },
   ) => {
-    if (!profile) return;
+    if (!profile) throw new Error("Sessão expirada. Faça login novamente.");
     setSaving(true);
     try {
       const today = todayISO();
@@ -431,6 +442,7 @@ function RecordPage() {
       setTimeout(() => setHighlightKey(null), 4000);
     } catch (e) {
       toast.error((e as Error).message);
+      throw e;
     } finally {
       setSaving(false);
     }
