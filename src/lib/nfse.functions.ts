@@ -24,15 +24,33 @@ interface NfsePrestadorConfig {
   regime_tributario?: string;
 }
 
+function focusEnvName(): "producao" | "homologacao" {
+  const raw = (process.env.FOCUS_NFE_ENV ?? "homologacao").trim().toLowerCase();
+  return raw === "producao" || raw === "produção" || raw === "production" ? "producao" : "homologacao";
+}
+
 function focusBaseUrl(): string {
-  const env = process.env.FOCUS_NFE_ENV ?? "homologacao";
-  return env === "producao"
+  return focusEnvName() === "producao"
     ? "https://api.focusnfe.com.br"
     : "https://homologacao.focusnfe.com.br";
 }
 
+/** Token Focus: username do Basic Auth, senha vazia. Remove espaços/aspas acidentais. */
+function focusToken(): string {
+  let token = (process.env.FOCUS_NFE_TOKEN ?? "").trim();
+  if (
+    (token.startsWith('"') && token.endsWith('"')) ||
+    (token.startsWith("'") && token.endsWith("'"))
+  ) {
+    token = token.slice(1, -1).trim();
+  }
+  if (token.toLowerCase().startsWith("basic ")) token = token.slice(6).trim();
+  if (token.toLowerCase().startsWith("bearer ")) token = token.slice(7).trim();
+  return token;
+}
+
 function focusAuthHeader(): string {
-  const token = process.env.FOCUS_NFE_TOKEN;
+  const token = focusToken();
   if (!token) throw new Error("FOCUS_NFE_TOKEN não configurado no servidor.");
   return "Basic " + Buffer.from(`${token}:`).toString("base64");
 }
@@ -163,9 +181,10 @@ export const emitNfse = createServerFn({ method: "POST" })
         .update({ nfse_status: "failed", nfse_focus_ref: ref, nfse_message: msg } as never)
         .eq("id", b.id);
       if (res.status === 401) {
-        const focusEnv = process.env.FOCUS_NFE_ENV ?? "homologacao";
+        const focusEnv = focusEnvName();
+        const tokenLen = focusToken().length;
         throw new Error(
-          `Erro ao emitir NFS-e: token Focus rejeitado (401). Verifique se FOCUS_NFE_TOKEN é do ambiente "${focusEnv}" (homologação vs produção).`,
+          `Erro ao emitir NFS-e: token Focus rejeitado (401) em ${focusEnv} (token ${tokenLen} chars, host ${new URL(focusBaseUrl()).host}). Confirme FOCUS_NFE_TOKEN de produção no Vercel → Production e faça redeploy.`,
         );
       }
       throw new Error(`Erro ao emitir NFS-e: ${msg}`);
