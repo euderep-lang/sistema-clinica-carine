@@ -32,9 +32,8 @@ export const crmChatMessagesScroll =
 export const crmListItemBase =
   "mb-0 w-full max-w-full overflow-hidden border-b border-black/[0.06] px-3 py-3 text-left transition-colors active:bg-[#f5f6f6] dark:border-white/[0.06] dark:active:bg-[#202c33]";
 
-/** Evita que o viewport do ScrollArea (Radix) estoure a largura da coluna */
-export const crmListScrollArea =
-  "min-w-0 w-full [&_[data-radix-scroll-area-viewport]>div]:!block [&_[data-radix-scroll-area-viewport]>div]:!min-w-0 [&_[data-radix-scroll-area-viewport]>div]:!max-w-full";
+/** Lista de conversas — largura contida no scroll nativo (ex-ScrollArea Radix). */
+export const crmListScrollArea = "min-w-0 w-full";
 
 export const crmFilterPill = (active: boolean) =>
   active
