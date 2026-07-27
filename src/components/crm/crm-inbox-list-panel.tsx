@@ -21,7 +21,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   CHANNEL_BADGE_CLASS,
   CHANNEL_LABEL,
@@ -245,7 +244,13 @@ export function CrmInboxListPanel({
           ) : null}
         </div>
       </div>
-      <ScrollArea className={cn("flex-1 py-1", crmListScrollArea)}>
+      {/* Scroll nativo: Radix ScrollArea costuma travar toque/rolagem no iOS/PWA. */}
+      <div
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto overscroll-contain py-1 [-webkit-overflow-scrolling:touch]",
+          crmListScrollArea,
+        )}
+      >
         {loadingList ? (
           <div className="flex justify-center py-10">
             <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -363,7 +368,7 @@ export function CrmInboxListPanel({
             ) : null}
           </div>
         )}
-      </ScrollArea>
+      </div>
       <div className="flex gap-2 border-t border-border/50 bg-background/50 p-2">
         <Button
           variant="outline"

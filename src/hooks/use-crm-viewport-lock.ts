@@ -12,7 +12,14 @@ export function useCrmViewportLock(active: boolean) {
 
     const root = document.documentElement;
     const body = document.body;
+    // Se a página estava rolada (ex.: veio do dashboard), fixed sem top:0
+    // “prende” o body fora da tela — a UI parece toda travada no celular.
+    const scrollY = window.scrollY || window.pageYOffset || 0;
+    window.scrollTo(0, 0);
     body.classList.add(BODY_CLASS);
+    body.style.top = "0px";
+    body.style.left = "0px";
+    body.dataset.crmScrollY = String(scrollY);
 
     // Bloqueia zoom (pinça e duplo-toque) enquanto o CRM está ativo — comportamento
     // de app nativo. No Android a meta viewport resolve; no iOS (que ignora
@@ -29,8 +36,11 @@ export function useCrmViewportLock(active: boolean) {
     const applyViewport = () => {
       const vv = window.visualViewport;
       if (vv) {
-        root.style.setProperty("--crm-vv-height", `${vv.height}px`);
-        root.style.setProperty("--crm-vv-width", `${vv.width}px`);
+        // Nunca deixe altura 0 (iOS às vezes reporta 0 no meio de resize).
+        const height = Math.max(vv.height || 0, Math.min(window.innerHeight || 0, 320) || 320);
+        const width = Math.max(vv.width || 0, window.innerWidth || 0, 1);
+        root.style.setProperty("--crm-vv-height", `${height}px`);
+        root.style.setProperty("--crm-vv-width", `${width}px`);
         const keyboard = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
         root.style.setProperty("--crm-keyboard-inset", `${keyboard}px`);
         // Só desloca o frame com o teclado aberto — offsetTop em repouso cortava o topo no iOS.
@@ -53,6 +63,10 @@ export function useCrmViewportLock(active: boolean) {
 
     return () => {
       body.classList.remove(BODY_CLASS);
+      body.style.top = "";
+      body.style.left = "";
+      const restoreY = Number(body.dataset.crmScrollY || "0");
+      delete body.dataset.crmScrollY;
       window.visualViewport?.removeEventListener("resize", applyViewport);
       window.visualViewport?.removeEventListener("scroll", applyViewport);
       window.removeEventListener("orientationchange", applyViewport);
@@ -65,6 +79,7 @@ export function useCrmViewportLock(active: boolean) {
       root.style.removeProperty("--crm-vv-offset-top");
       root.style.removeProperty("--crm-vv-offset-left");
       root.style.removeProperty("--crm-keyboard-inset");
+      if (restoreY > 0) window.scrollTo(0, restoreY);
     };
   }, [active]);
 }
