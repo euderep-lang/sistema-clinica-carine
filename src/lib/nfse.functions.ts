@@ -162,6 +162,12 @@ export const emitNfse = createServerFn({ method: "POST" })
         .from("bills_receivable")
         .update({ nfse_status: "failed", nfse_focus_ref: ref, nfse_message: msg } as never)
         .eq("id", b.id);
+      if (res.status === 401) {
+        const focusEnv = process.env.FOCUS_NFE_ENV ?? "homologacao";
+        throw new Error(
+          `Erro ao emitir NFS-e: token Focus rejeitado (401). Verifique se FOCUS_NFE_TOKEN é do ambiente "${focusEnv}" (homologação vs produção).`,
+        );
+      }
       throw new Error(`Erro ao emitir NFS-e: ${msg}`);
     }
 
