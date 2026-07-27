@@ -43,6 +43,7 @@ import { Route as AuthenticatedProfessionalAgendaRouteImport } from './routes/_a
 import { Route as AuthenticatedFinancialRelatoriosRouteImport } from './routes/_authenticated/financial.relatorios'
 import { Route as AuthenticatedFinancialReceivablesRouteImport } from './routes/_authenticated/financial.receivables'
 import { Route as AuthenticatedFinancialPayablesRouteImport } from './routes/_authenticated/financial.payables'
+import { Route as AuthenticatedFinancialNfseRouteImport } from './routes/_authenticated/financial.nfse'
 import { Route as AuthenticatedFinancialInventoryRouteImport } from './routes/_authenticated/financial.inventory'
 import { Route as AuthenticatedFinancialFluxoRouteImport } from './routes/_authenticated/financial.fluxo'
 import { Route as AuthenticatedFinancialDashboardRouteImport } from './routes/_authenticated/financial.dashboard'
@@ -260,6 +261,12 @@ const AuthenticatedFinancialPayablesRoute =
     path: '/financial/payables',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedFinancialNfseRoute =
+  AuthenticatedFinancialNfseRouteImport.update({
+    id: '/financial/nfse',
+    path: '/financial/nfse',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedFinancialInventoryRoute =
   AuthenticatedFinancialInventoryRouteImport.update({
     id: '/financial/inventory',
@@ -418,6 +425,7 @@ export interface FileRoutesByFullPath {
   '/financial/dashboard': typeof AuthenticatedFinancialDashboardRoute
   '/financial/fluxo': typeof AuthenticatedFinancialFluxoRoute
   '/financial/inventory': typeof AuthenticatedFinancialInventoryRouteWithChildren
+  '/financial/nfse': typeof AuthenticatedFinancialNfseRoute
   '/financial/payables': typeof AuthenticatedFinancialPayablesRoute
   '/financial/receivables': typeof AuthenticatedFinancialReceivablesRoute
   '/financial/relatorios': typeof AuthenticatedFinancialRelatoriosRoute
@@ -475,6 +483,7 @@ export interface FileRoutesByTo {
   '/crm/pipeline': typeof AuthenticatedCrmPipelineRoute
   '/financial/dashboard': typeof AuthenticatedFinancialDashboardRoute
   '/financial/fluxo': typeof AuthenticatedFinancialFluxoRoute
+  '/financial/nfse': typeof AuthenticatedFinancialNfseRoute
   '/financial/payables': typeof AuthenticatedFinancialPayablesRoute
   '/financial/receivables': typeof AuthenticatedFinancialReceivablesRoute
   '/financial/relatorios': typeof AuthenticatedFinancialRelatoriosRoute
@@ -531,6 +540,7 @@ export interface FileRoutesById {
   '/_authenticated/financial/dashboard': typeof AuthenticatedFinancialDashboardRoute
   '/_authenticated/financial/fluxo': typeof AuthenticatedFinancialFluxoRoute
   '/_authenticated/financial/inventory': typeof AuthenticatedFinancialInventoryRouteWithChildren
+  '/_authenticated/financial/nfse': typeof AuthenticatedFinancialNfseRoute
   '/_authenticated/financial/payables': typeof AuthenticatedFinancialPayablesRoute
   '/_authenticated/financial/receivables': typeof AuthenticatedFinancialReceivablesRoute
   '/_authenticated/financial/relatorios': typeof AuthenticatedFinancialRelatoriosRoute
@@ -591,6 +601,7 @@ export interface FileRouteTypes {
     | '/financial/dashboard'
     | '/financial/fluxo'
     | '/financial/inventory'
+    | '/financial/nfse'
     | '/financial/payables'
     | '/financial/receivables'
     | '/financial/relatorios'
@@ -648,6 +659,7 @@ export interface FileRouteTypes {
     | '/crm/pipeline'
     | '/financial/dashboard'
     | '/financial/fluxo'
+    | '/financial/nfse'
     | '/financial/payables'
     | '/financial/receivables'
     | '/financial/relatorios'
@@ -703,6 +715,7 @@ export interface FileRouteTypes {
     | '/_authenticated/financial/dashboard'
     | '/_authenticated/financial/fluxo'
     | '/_authenticated/financial/inventory'
+    | '/_authenticated/financial/nfse'
     | '/_authenticated/financial/payables'
     | '/_authenticated/financial/receivables'
     | '/_authenticated/financial/relatorios'
@@ -996,6 +1009,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedFinancialPayablesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/financial/nfse': {
+      id: '/_authenticated/financial/nfse'
+      path: '/financial/nfse'
+      fullPath: '/financial/nfse'
+      preLoaderRoute: typeof AuthenticatedFinancialNfseRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/financial/inventory': {
       id: '/_authenticated/financial/inventory'
       path: '/financial/inventory'
@@ -1270,6 +1290,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedFinancialDashboardRoute: typeof AuthenticatedFinancialDashboardRoute
   AuthenticatedFinancialFluxoRoute: typeof AuthenticatedFinancialFluxoRoute
   AuthenticatedFinancialInventoryRoute: typeof AuthenticatedFinancialInventoryRouteWithChildren
+  AuthenticatedFinancialNfseRoute: typeof AuthenticatedFinancialNfseRoute
   AuthenticatedFinancialPayablesRoute: typeof AuthenticatedFinancialPayablesRoute
   AuthenticatedFinancialReceivablesRoute: typeof AuthenticatedFinancialReceivablesRoute
   AuthenticatedFinancialRelatoriosRoute: typeof AuthenticatedFinancialRelatoriosRoute
@@ -1307,6 +1328,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedFinancialFluxoRoute: AuthenticatedFinancialFluxoRoute,
   AuthenticatedFinancialInventoryRoute:
     AuthenticatedFinancialInventoryRouteWithChildren,
+  AuthenticatedFinancialNfseRoute: AuthenticatedFinancialNfseRoute,
   AuthenticatedFinancialPayablesRoute: AuthenticatedFinancialPayablesRoute,
   AuthenticatedFinancialReceivablesRoute:
     AuthenticatedFinancialReceivablesRoute,

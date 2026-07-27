@@ -67,6 +67,7 @@ const NAV: Record<Role, { label: string; items: NavItem[] }[]> = {
       label: "Gestão",
       items: [
         { title: "Financeiro", url: "/financial/dashboard", icon: Wallet },
+        { title: "NFS-e", url: "/financial/nfse", icon: FileText },
         { title: "Serviços", url: "/admin/services", icon: Receipt },
         { title: "Estoque", url: "/financial/inventory", icon: Package },
         { title: "Relatórios", url: "/admin/relatorios", icon: BarChart3 },
@@ -127,6 +128,7 @@ const NAV: Record<Role, { label: string; items: NavItem[] }[]> = {
       items: [
         { title: "Painel", url: "/financial/dashboard", icon: LayoutDashboard },
         { title: "Contas a Receber", url: "/financial/receivables", icon: TrendingUp },
+        { title: "NFS-e", url: "/financial/nfse", icon: FileText },
         { title: "Contas a Pagar", url: "/financial/payables", icon: TrendingDown },
         { title: "Fluxo de Caixa", url: "/financial/fluxo", icon: LineChart },
         { title: "Estoque", url: "/financial/inventory", icon: Package },

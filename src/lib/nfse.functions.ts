@@ -265,3 +265,68 @@ export const consultNfse = createServerFn({ method: "POST" })
 
                return { status: "processing" as const };
   });
+
+/** Baixa o PDF/DANFSe autenticado na Focus (o link direto exige Basic Auth). */
+export const downloadNfsePdf = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: { billId: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { data: profile } = await supabaseAdmin
+      .from("profiles")
+      .select("tenant_id")
+      .eq("id", context.userId)
+      .maybeSingle();
+    if (!profile?.tenant_id) throw new Error("Perfil não encontrado");
+
+    const { data: bill } = await supabaseAdmin
+      .from("bills_receivable")
+      .select("id, nfse_number, nfse_pdf_url, nfse_focus_ref, nfse_status")
+      .eq("id", data.billId)
+      .eq("tenant_id", profile.tenant_id)
+      .maybeSingle();
+
+    const row = bill as {
+      id: string;
+      nfse_number: string | null;
+      nfse_pdf_url: string | null;
+      nfse_focus_ref: string | null;
+      nfse_status: string | null;
+    } | null;
+
+    if (!row) throw new Error("Cobrança não encontrada");
+    if (row.nfse_status !== "issued" && !row.nfse_pdf_url) {
+      throw new Error("PDF disponível apenas após a NFS-e ser autorizada.");
+    }
+
+    let pdfUrl = row.nfse_pdf_url;
+    if (!pdfUrl && row.nfse_focus_ref) {
+      const res = await fetch(`${focusBaseUrl()}/v2/nfse/${encodeURIComponent(row.nfse_focus_ref)}`, {
+        headers: { Authorization: focusAuthHeader() },
+      });
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      if (body.caminho_danfse) {
+        pdfUrl = `${focusBaseUrl()}${body.caminho_danfse as string}`;
+        await supabaseAdmin
+          .from("bills_receivable")
+          .update({
+            nfse_pdf_url: pdfUrl,
+            nfse_url: (body.url as string) ?? null,
+            nfse_number: (body.numero as string) ?? row.nfse_number,
+          } as never)
+          .eq("id", row.id);
+      }
+    }
+    if (!pdfUrl) throw new Error("Focus ainda não disponibilizou o PDF desta nota.");
+
+    const fileRes = await fetch(pdfUrl, { headers: { Authorization: focusAuthHeader() } });
+    if (!fileRes.ok) {
+      throw new Error(`Não foi possível baixar o PDF (HTTP ${fileRes.status}).`);
+    }
+    const buf = Buffer.from(await fileRes.arrayBuffer());
+    const numero = row.nfse_number?.replace(/\W+/g, "_") || row.id.slice(0, 8);
+    return {
+      fileName: `NFSe-${numero}.pdf`,
+      mimeType: "application/pdf",
+      base64: buf.toString("base64"),
+    };
+  });

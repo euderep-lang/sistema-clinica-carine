@@ -168,6 +168,14 @@ export const FEATURES: FeatureDef[] = [
     match: ["/financial/receivables"],
   },
   {
+    key: "nfse",
+    label: "NFS-e",
+    description: "Controle de emissões de notas fiscais de serviço.",
+    group: "Administrativo e Financeiro",
+    roles: ["financial"],
+    match: ["/financial/nfse"],
+  },
+  {
     key: "payables",
     label: "Contas a pagar",
     description: "Despesas e pagamentos.",
