@@ -82,11 +82,11 @@ export function CrmPwaShell({ children, activeTab, hideBottomNav, header }: CrmP
 
   return (
     <div
-      className="crm-mobile-shell app-safe-area-top app-safe-area-x fixed left-[var(--crm-vv-offset-left,0)] top-[var(--crm-vv-offset-top,0)] z-50 flex flex-col overflow-hidden bg-[#111b21]"
+      className="crm-mobile-shell app-safe-area-top app-safe-area-x fixed inset-0 z-50 flex flex-col overflow-hidden bg-[#111b21]"
       style={{
-        width: "var(--crm-vv-width, 100%)",
-        height: "var(--crm-vv-height, 100svh)",
-        maxHeight: "var(--crm-vv-height, 100svh)",
+        width: "100%",
+        height: "var(--crm-vv-height, 100dvh)",
+        maxHeight: "var(--crm-vv-height, 100dvh)",
         // O frame já acompanha a altura do viewport visível (encolhe com o teclado),
         // então o compositor não deve somar o inset do teclado de novo (evita contar
         // o teclado 2x e empurrar os chips/compositor para fora da tela).
