@@ -54,7 +54,7 @@ export const Route = createFileRoute("/_authenticated/financial/nfse")({
 type StatusFilter = "all" | Exclude<NfseStatus, null>;
 
 const SELECT =
-  "id, description, amount, paid_amount, due_date, status, nfse_number, nfse_status, nfse_issued_at, nfse_url, nfse_pdf_url, nfse_message, nfse_focus_ref, patients(id, full_name, cpf, phone, phone_ddi), profiles:professional_id(full_name)";
+  "id, description, amount, paid_amount, due_date, status, nfse_number, nfse_status, nfse_issued_at, nfse_url, nfse_pdf_url, nfse_message, nfse_focus_ref, nfse_amount, nfse_description, patients(id, full_name, cpf, phone, phone_ddi), profiles:professional_id(full_name)";
 
 function NfsePage() {
   const navigate = useNavigate();
@@ -113,7 +113,7 @@ function NfsePage() {
     for (const r of rows) {
       if (r.nfse_status === "issued") {
         issued += 1;
-        issuedAmount += Number(r.amount) || 0;
+        issuedAmount += Number(r.nfse_amount ?? r.amount) || 0;
       } else if (r.nfse_status === "processing" || r.nfse_status === "pending") {
         processing += 1;
       } else if (r.nfse_status === "failed") {
@@ -155,8 +155,8 @@ function NfsePage() {
     const draft = nfseWhatsAppDraft({
       patientName: bill.patients?.full_name,
       nfseNumber: bill.nfse_number,
-      amount: bill.amount,
-      description: bill.description,
+      amount: bill.nfse_amount ?? bill.amount,
+      description: bill.nfse_description ?? bill.description,
       portalUrl: bill.nfse_url,
     });
     const ok = openCrmInbox(navigate, {
@@ -279,13 +279,13 @@ function NfsePage() {
                           )}
                         </TableCell>
                         <TableCell className="text-right tabular-nums font-medium">
-                          {fmt(Number(r.amount))}
+                          {fmt(Number(r.nfse_amount ?? r.amount))}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {r.nfse_issued_at ? fmtDate(r.nfse_issued_at.slice(0, 10)) : "—"}
                         </TableCell>
                         <TableCell className="max-w-[14rem] truncate text-sm">
-                          {r.description ?? "—"}
+                          {r.nfse_description ?? r.description ?? "—"}
                         </TableCell>
                         <TableCell>
                           <div className="flex justify-end gap-1">

@@ -205,7 +205,13 @@ export const emitNfse = createServerFn({ method: "POST" })
 
                await supabaseAdmin
           .from("bills_receivable")
-          .update({ nfse_status: "processing", nfse_focus_ref: ref, nfse_message: null } as never)
+          .update({
+            nfse_status: "processing",
+            nfse_focus_ref: ref,
+            nfse_message: null,
+            nfse_amount: valor,
+            nfse_description: discriminacao,
+          } as never)
           .eq("id", b.id);
 
                return { ref, status: "processing" as const };

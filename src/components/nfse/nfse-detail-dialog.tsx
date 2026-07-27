@@ -44,6 +44,8 @@ export type NfseBillDetail = {
   nfse_pdf_url: string | null;
   nfse_message: string | null;
   nfse_focus_ref: string | null;
+  nfse_amount: number | null;
+  nfse_description: string | null;
   patients: {
     id: string;
     full_name: string;
@@ -100,8 +102,8 @@ export function NfseDetailDialog({ open, onOpenChange, bill, onChanged }: Props)
     const draft = nfseWhatsAppDraft({
       patientName: bill.patients?.full_name,
       nfseNumber: bill.nfse_number,
-      amount: bill.amount,
-      description: bill.description,
+      amount: bill.nfse_amount ?? bill.amount,
+      description: bill.nfse_description ?? bill.description,
       portalUrl: bill.nfse_url,
     });
     const ok = openCrmInbox(navigate, {
@@ -156,8 +158,10 @@ export function NfseDetailDialog({ open, onOpenChange, bill, onChanged }: Props)
             <dt className="text-muted-foreground">Profissional</dt>
             <dd>{bill.profiles?.full_name ?? "—"}</dd>
 
-            <dt className="text-muted-foreground">Valor</dt>
-            <dd className="font-semibold tabular-nums">{fmt(Number(bill.amount))}</dd>
+            <dt className="text-muted-foreground">Valor da nota</dt>
+            <dd className="font-semibold tabular-nums">
+              {fmt(Number(bill.nfse_amount ?? bill.amount))}
+            </dd>
 
             <dt className="text-muted-foreground">Vencimento</dt>
             <dd>{fmtDate(bill.due_date)}</dd>
@@ -168,8 +172,10 @@ export function NfseDetailDialog({ open, onOpenChange, bill, onChanged }: Props)
             <dt className="text-muted-foreground">Ref. Focus</dt>
             <dd className="break-all font-mono text-xs">{bill.nfse_focus_ref ?? "—"}</dd>
 
-            <dt className="text-muted-foreground">Descrição</dt>
-            <dd className="whitespace-pre-wrap">{bill.description?.trim() || "—"}</dd>
+            <dt className="text-muted-foreground">Discriminação</dt>
+            <dd className="whitespace-pre-wrap">
+              {(bill.nfse_description ?? bill.description)?.trim() || "—"}
+            </dd>
           </dl>
 
           {bill.nfse_message ? (

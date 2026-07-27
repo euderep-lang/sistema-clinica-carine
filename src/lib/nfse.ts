@@ -41,19 +41,27 @@ export function formatNfseLabel(bill: BillNfseFields): string {
 export function nfseWhatsAppDraft(opts: {
   patientName?: string | null;
   nfseNumber?: string | null;
+  /** Preferir valor/discriminação do popup de emissão. */
   amount?: number | null;
   description?: string | null;
   portalUrl?: string | null;
 }): string {
   const first = (opts.patientName ?? "").trim().split(/\s+/)[0] || "olá";
+  const amount =
+    opts.amount != null && Number.isFinite(Number(opts.amount)) ? Number(opts.amount) : null;
+  const description = opts.description?.trim() || "";
   const lines = [
     `Olá, ${first}!`,
     opts.nfseNumber
-      ? `Segue a NFS-e nº ${opts.nfseNumber}${opts.amount != null ? ` no valor de ${fmt(Number(opts.amount))}` : ""}.`
-      : `Segue a NFS-e${opts.amount != null ? ` no valor de ${fmt(Number(opts.amount))}` : ""}.`,
+      ? `Segue a NFS-e nº ${opts.nfseNumber}${amount != null ? ` no valor de ${fmt(amount)}` : ""}.`
+      : `Segue a NFS-e${amount != null ? ` no valor de ${fmt(amount)}` : ""}.`,
   ];
-  if (opts.description?.trim()) lines.push(`Referente a: ${opts.description.trim()}`);
-  if (opts.portalUrl?.trim()) lines.push(`Consulta/portal: ${opts.portalUrl.trim()}`);
+  if (description) lines.push(`Referente a: ${description}`);
+  const portal = opts.portalUrl?.trim() || "";
+  // Evita colar link bruto de PDF no S3; portal municipal costuma ser mais útil.
+  if (portal && !/s3[.-].*amazonaws\.com/i.test(portal)) {
+    lines.push(`Consulta/portal: ${portal}`);
+  }
   lines.push("Qualquer dúvida, estamos à disposição.");
   return lines.join("\n");
 }
