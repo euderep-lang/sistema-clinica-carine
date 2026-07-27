@@ -24,29 +24,40 @@ export function formatNfseLabel(bill: BillNfseFields): string {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Emite a NFS-e via Focus NFe e aguarda o processamento (polling). */
-export async function emitBillNfse(billId: string): Promise<void> {
+export async function emitBillNfse(
+  billId: string,
+  overrides?: { amount?: number; description?: string },
+): Promise<boolean> {
   const toastId = toast.loading("Enviando NFS-e para a prefeitura…");
   try {
-    await emitNfse({ data: { billId } });
+    await emitNfse({
+      data: {
+        billId,
+        amount: overrides?.amount,
+        description: overrides?.description,
+      },
+    });
     // Polling do status (autorização é assíncrona na prefeitura).
     for (let i = 0; i < 8; i++) {
       await sleep(2500);
       const res = await consultNfse({ data: { billId } });
       if (res.status === "issued") {
         toast.success(`NFS-e emitida${"numero" in res && res.numero ? ` (nº ${res.numero})` : ""}.`, { id: toastId });
-        return;
+        return true;
       }
       if (res.status === "failed") {
         toast.error(`Falha na emissão: ${"message" in res ? res.message : "erro desconhecido"}`, { id: toastId });
-        return;
+        return false;
       }
       if (res.status === "cancelled") {
         toast.error("NFS-e cancelada pela prefeitura.", { id: toastId });
-        return;
+        return false;
       }
     }
     toast.info("NFS-e em processamento na prefeitura. Atualize em instantes para ver o número.", { id: toastId });
+    return true;
   } catch (e) {
     toast.error((e as Error).message, { id: toastId });
+    return false;
   }
 }

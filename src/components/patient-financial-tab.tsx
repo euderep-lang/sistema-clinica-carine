@@ -65,7 +65,8 @@ import {
 import { paymentLabel } from "@/lib/payment-methods";
 import { computeTotalOpenBalance } from "@/lib/financial-competence";
 import { RECEIVABLE_BILL_SELECT } from "@/lib/financial-scope";
-import { billOpenAmount, emitBillNfse, formatNfseLabel } from "@/lib/nfse";
+import { billOpenAmount, formatNfseLabel } from "@/lib/nfse";
+import { EmitNfseDialog, type EmitNfseBillDefaults } from "@/components/emit-nfse-dialog";
 import {
   billCanDelete,
   billCanReverse,
@@ -98,6 +99,7 @@ export function PatientFinancialTab({ patientId }: PatientFinancialTabProps) {
   const [reversePackages, setReversePackages] = useState<BillSessionPackage[]>([]);
   const [reversePkgsLoading, setReversePkgsLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SaleBillRow | null>(null);
+  const [nfseBill, setNfseBill] = useState<EmitNfseBillDefaults | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   const load = useCallback(async () => {
@@ -463,7 +465,17 @@ export function PatientFinancialTab({ patientId }: PatientFinancialTabProps) {
                               Abrir conta
                             </DropdownMenuItem>
                             {!isBudget && (
-                              <DropdownMenuItem disabled={hasNfse} onClick={() => void emitBillNfse(r.id)}>
+                              <DropdownMenuItem
+                                disabled={hasNfse}
+                                onClick={() =>
+                                  setNfseBill({
+                                    id: r.id,
+                                    amount: Number(r.amount) || 0,
+                                    description: r.description,
+                                    patientName: r.patients?.full_name ?? null,
+                                  })
+                                }
+                              >
                                 <Receipt className="mr-2 size-4" />
                                 {hasNfse ? "NFS-e emitida" : "Emitir NFSe"}
                               </DropdownMenuItem>
@@ -522,6 +534,12 @@ export function PatientFinancialTab({ patientId }: PatientFinancialTabProps) {
         onOpenChange={(open) => !open && setDetailBillId(null)}
         bill={detailBill}
         onChanged={() => void load()}
+      />
+      <EmitNfseDialog
+        open={Boolean(nfseBill)}
+        onOpenChange={(open) => !open && setNfseBill(null)}
+        bill={nfseBill}
+        onIssued={() => void load()}
       />
       <PaymentHistoryDialog
         open={historyOpen}

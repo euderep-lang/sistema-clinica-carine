@@ -60,7 +60,7 @@ async function getNfseConfig(tenantId: string): Promise<NfsePrestadorConfig> {
 
 export const emitNfse = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((d: { billId: string }) => d)
+  .validator((d: { billId: string; amount?: number; description?: string }) => d)
   .handler(async ({ data, context }) => {
     const { data: profile } = await supabaseAdmin
       .from("profiles")
@@ -94,8 +94,16 @@ export const emitNfse = createServerFn({ method: "POST" })
 
     const cfg = await getNfseConfig(profile.tenant_id);
     const ref = `bill-${b.id}`;
-    const valor = Number(b.amount);
-    const discriminacao = b.description?.trim() || cfg.discriminacao_padrao || "Prestação de serviços de saúde";
+    const valor =
+      data.amount != null && Number.isFinite(Number(data.amount)) && Number(data.amount) > 0
+        ? Number(data.amount)
+        : Number(b.amount);
+    if (!(valor > 0)) throw new Error("Informe um valor válido para a NFS-e.");
+    const discriminacao =
+      data.description?.trim() ||
+      b.description?.trim() ||
+      cfg.discriminacao_padrao ||
+      "Prestação de serviços de saúde";
 
     const tomadorCpf = onlyDigits(b.patients?.cpf);
     const tomador: Record<string, unknown> = {

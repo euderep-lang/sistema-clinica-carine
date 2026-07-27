@@ -103,7 +103,8 @@ import {
   RECEIVABLE_BILL_SELECT,
   type FinancialTabScopeProps,
 } from "@/lib/financial-scope";
-import { billOpenAmount, emitBillNfse, formatNfseLabel } from "@/lib/nfse";
+import { billOpenAmount, formatNfseLabel } from "@/lib/nfse";
+import { EmitNfseDialog, type EmitNfseBillDefaults } from "@/components/emit-nfse-dialog";
 
 export function FinancialCobrancasTab({
   scope,
@@ -125,6 +126,7 @@ export function FinancialCobrancasTab({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyBillId, setHistoryBillId] = useState<string | null>(null);
   const [summaryKind, setSummaryKind] = useState<FinancialSummaryKind | null>(null);
+  const [nfseBill, setNfseBill] = useState<EmitNfseBillDefaults | null>(null);
   const [periodFrom, setPeriodFrom] = useState(firstDayOfMonth());
   const [periodTo, setPeriodTo] = useState(todayISO());
   const [periodPayments, setPeriodPayments] = useState<PeriodPaymentDetail[]>([]);
@@ -217,54 +219,124 @@ export function FinancialCobrancasTab({
     );
   }, [periodRows, rows, search, status]);
 
+  const hasListFilter = Boolean(search.trim()) || status !== "all";
+
+  const filteredBillIds = useMemo(() => new Set(filtered.map((r) => r.id)), [filtered]);
+
+  /** Pagamentos do período limitados às cobranças do filtro (busca/status). */
+  const summaryPayments = useMemo(() => {
+    if (!hasListFilter) return periodPayments;
+    return periodPayments.filter((p) => filteredBillIds.has(p.bill_receivable_id));
+  }, [hasListFilter, periodPayments, filteredBillIds]);
+
+  const filterSummary = useMemo(() => {
+    let total = 0;
+    let paid = 0;
+    let open = 0;
+    let paidCount = 0;
+    let openCount = 0;
+    for (const r of filtered) {
+      if (billIsBudget(r)) continue;
+      const amount = Number(r.amount) || 0;
+      const paidAmt = Number(r.paid_amount) || 0;
+      const openAmt = billOpenAmount(amount, paidAmt);
+      total += amount;
+      paid += paidAmt;
+      open += openAmt;
+      if (openAmt <= 0.009 && paidAmt > 0) paidCount += 1;
+      else if (openAmt > 0.009) openCount += 1;
+    }
+    return {
+      count: filtered.length,
+      total: Math.round(total * 100) / 100,
+      paid: Math.round(paid * 100) / 100,
+      open: Math.round(open * 100) / 100,
+      paidCount,
+      openCount,
+    };
+  }, [filtered]);
+
   const stats = useMemo(() => {
     if (!period) return { production: 0, received: 0, receivedNet: 0, pending: 0 };
+    if (hasListFilter) {
+      // Com busca/status: totais das faturas filtradas (pago = paid_amount acumulado).
+      const totals = aggregatePeriodPaymentTotals(summaryPayments);
+      return {
+        production: filterSummary.total,
+        received: filterSummary.paid,
+        receivedNet: totals.net,
+        pending: filterSummary.open,
+      };
+    }
     return computeCompetencePeriodStats(periodRows, period, { periodPayments });
-  }, [periodRows, period, periodPayments]);
+  }, [periodRows, period, periodPayments, hasListFilter, filterSummary, summaryPayments]);
 
   const paymentTotals = useMemo(
-    () => aggregatePeriodPaymentTotals(periodPayments),
-    [periodPayments],
+    () => aggregatePeriodPaymentTotals(summaryPayments),
+    [summaryPayments],
   );
 
-  const totalOpen = useMemo(() => computeTotalOpenBalance(rows), [rows]);
-  const openBudgets = useMemo(() => computeOpenBudgetsStats(rows), [rows]);
+  const totalOpen = useMemo(
+    () => (hasListFilter ? filterSummary.open : computeTotalOpenBalance(rows)),
+    [hasListFilter, filterSummary.open, rows],
+  );
+  const openBudgets = useMemo(() => {
+    if (!hasListFilter) return computeOpenBudgetsStats(rows);
+    return computeOpenBudgetsStats(filtered);
+  }, [hasListFilter, rows, filtered]);
 
   const summaryBills = useMemo((): SaleBillRow[] => {
     if (!summaryKind) return [];
     if (!period && summaryKind !== "totalOpen" && summaryKind !== "openBudgets") return [];
 
-    let filtered: SaleBillRow[];
+    let list: SaleBillRow[];
     switch (summaryKind) {
       case "production":
-        filtered = filterProductionBills(rows, period!) as SaleBillRow[];
+        list = hasListFilter
+          ? (filtered.filter((r) => !billIsBudget(r)) as SaleBillRow[])
+          : (filterProductionBills(rows, period!) as SaleBillRow[]);
         break;
       case "received":
-        filtered = filterReceivedBills(rows, period!, paymentBillIds) as SaleBillRow[];
+        list = hasListFilter
+          ? (filtered.filter(
+              (r) => !billIsBudget(r) && (Number(r.paid_amount) || 0) > 0,
+            ) as SaleBillRow[])
+          : (filterReceivedBills(rows, period!, paymentBillIds) as SaleBillRow[]);
         break;
       case "pending":
-        filtered = filterPendingMonthBills(rows, period!) as SaleBillRow[];
+        list = hasListFilter
+          ? (filtered.filter(
+              (r) => !billIsBudget(r) && billOpenAmount(Number(r.amount), Number(r.paid_amount)) > 0,
+            ) as SaleBillRow[])
+          : (filterPendingMonthBills(rows, period!) as SaleBillRow[]);
         break;
       case "totalOpen":
-        filtered = filterTotalOpenBills(rows) as SaleBillRow[];
+        list = hasListFilter
+          ? (filtered.filter(
+              (r) => !billIsBudget(r) && billOpenAmount(Number(r.amount), Number(r.paid_amount)) > 0,
+            ) as SaleBillRow[])
+          : (filterTotalOpenBills(rows) as SaleBillRow[]);
         break;
       case "openBudgets":
-        filtered = filterOpenBudgetBills(rows) as SaleBillRow[];
+        list = hasListFilter
+          ? (filtered.filter((r) => billIsBudget(r)) as SaleBillRow[])
+          : (filterOpenBudgetBills(rows) as SaleBillRow[]);
         break;
       default:
-        filtered = [];
+        list = [];
     }
 
-    return [...filtered].sort((a, b) => b.due_date.localeCompare(a.due_date));
-  }, [rows, period, summaryKind, paymentBillIds]);
+    return [...list].sort((a, b) => b.due_date.localeCompare(a.due_date));
+  }, [rows, period, summaryKind, paymentBillIds, hasListFilter, filtered, filteredBillIds]);
 
   const receivedPaymentsForSummary = useMemo(() => {
     if (!period) return [];
     const billMap = new Map(rows.map((r) => [r.id, r]));
-    return [...periodPayments]
+    const payments = hasListFilter ? summaryPayments : periodPayments;
+    return [...payments]
       .map((payment) => ({ payment, bill: billMap.get(payment.bill_receivable_id) }))
       .sort((a, b) => b.payment.paid_date.localeCompare(a.payment.paid_date));
-  }, [periodPayments, rows, period]);
+  }, [periodPayments, summaryPayments, rows, period, hasListFilter]);
 
   const summaryMeta = summaryKind ? FINANCIAL_SUMMARY_META[summaryKind] : null;
   const summaryDescription = summaryKind
@@ -273,8 +345,8 @@ export function FinancialCobrancasTab({
 
   const commissionEst = stats.received * (commissionPct / 100);
   const netRevenueByChannel = useMemo(
-    () => aggregateNetRevenueByChannel(periodPayments),
-    [periodPayments],
+    () => aggregateNetRevenueByChannel(summaryPayments),
+    [summaryPayments],
   );
   const detailBill = useMemo(
     () => rows.find((r) => r.id === detailBillId) ?? null,
@@ -397,14 +469,66 @@ export function FinancialCobrancasTab({
       </div>
 
       <PageSection
-        title="Resumo do período"
+        title={hasListFilter ? "Resumo do filtro" : "Resumo do período"}
         description={
-          period
-            ? `${fmtDate(period.from)} – ${fmtDate(period.to)}`
-            : "Selecione um período válido"
+          hasListFilter
+            ? `${filterSummary.count} cobrança(s) na lista abaixo${
+                search.trim() ? ` · “${search.trim()}”` : ""
+              }${status !== "all" ? ` · ${BILL_STATUS_LABEL[status] ?? status}` : ""}`
+            : period
+              ? `${fmtDate(period.from)} – ${fmtDate(period.to)}`
+              : "Selecione um período válido"
         }
       >
-        {period ? (
+        {hasListFilter ? (
+          <div className="mb-4 rounded-lg border bg-background p-4">
+            <p className="text-sm font-medium text-foreground">Sobre as cobranças filtradas:</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <div>
+                <p className="text-xs text-muted-foreground">Valor total</p>
+                <p className="text-lg font-semibold tabular-nums">{fmt(filterSummary.total)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">
+                  Valor pago ({filterSummary.paidCount} quitada
+                  {filterSummary.paidCount === 1 ? "" : "s"})
+                </p>
+                <p className="text-lg font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+                  {fmt(filterSummary.paid)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">
+                  Valor em aberto ({filterSummary.openCount} com saldo)
+                </p>
+                <p className="text-lg font-semibold tabular-nums text-amber-700 dark:text-amber-400">
+                  {fmt(filterSummary.open)}
+                </p>
+              </div>
+            </div>
+            {period && summaryPayments.length > 0 ? (
+              <div className="mt-4 space-y-1 border-t pt-3 text-sm text-muted-foreground">
+                <p>
+                  Entradas no período ({fmtDate(period.from)} – {fmtDate(period.to)}) dessas cobranças:
+                </p>
+                <p className="flex flex-wrap gap-x-6 gap-y-1">
+                  <span>
+                    Dinheiro: <span className="font-semibold tabular-nums text-foreground">{fmt(netRevenueByChannel.cash)}</span>
+                  </span>
+                  <span>
+                    Cartão: <span className="font-semibold tabular-nums text-foreground">{fmt(netRevenueByChannel.card)}</span>
+                  </span>
+                  <span>
+                    PIX: <span className="font-semibold tabular-nums text-foreground">{fmt(netRevenueByChannel.pix)}</span>
+                  </span>
+                  <span>
+                    Bruto: <span className="font-semibold tabular-nums text-foreground">{fmt(paymentTotals.gross)}</span>
+                  </span>
+                </p>
+              </div>
+            ) : null}
+          </div>
+        ) : period ? (
           <div className="mb-4 rounded-lg border bg-background p-4">
             <p className="text-sm font-medium text-foreground">Dentro do período selecionado:</p>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -448,39 +572,41 @@ export function FinancialCobrancasTab({
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 2xl:grid-cols-6">
           <StatCard
             size="sm"
-            label="Produção"
+            label={hasListFilter ? "Valor total" : "Produção"}
             value={fmt(stats.production)}
-            sub="Competência no período"
+            sub={hasListFilter ? "Soma das cobranças filtradas" : "Competência no período"}
             icon={Wallet}
             onClick={() => period && setSummaryKind("production")}
           />
           <StatCard
             size="sm"
-            label="Recebido bruto"
+            label={hasListFilter ? "Valor pago" : "Recebido bruto"}
             value={fmt(stats.received)}
-            sub="Data do pagamento"
+            sub={hasListFilter ? "Já quitado nessas cobranças" : "Data do pagamento"}
             icon={TrendingUp}
             tone="success"
             onClick={() => period && setSummaryKind("received")}
           />
           <StatCard
             size="sm"
-            label="A receber"
+            label={hasListFilter ? "Em aberto" : "A receber"}
             value={fmt(stats.pending)}
-            sub="Saldo em aberto (competência)"
+            sub={hasListFilter ? "Saldo das cobranças filtradas" : "Saldo em aberto (competência)"}
             icon={TrendingDown}
             tone="warning"
             onClick={() => period && setSummaryKind("pending")}
           />
-          <StatCard
-            size="sm"
-            label={scope === "clinic" ? "Total em aberto (clínica)" : "Total em aberto"}
-            value={fmt(totalOpen)}
-            sub="Todas as faturas em aberto"
-            icon={HandCoins}
-            tone="danger"
-            onClick={() => setSummaryKind("totalOpen")}
-          />
+          {!hasListFilter ? (
+            <StatCard
+              size="sm"
+              label={scope === "clinic" ? "Total em aberto (clínica)" : "Total em aberto"}
+              value={fmt(totalOpen)}
+              sub="Todas as faturas em aberto"
+              icon={HandCoins}
+              tone="danger"
+              onClick={() => setSummaryKind("totalOpen")}
+            />
+          ) : null}
           <StatCard
             size="sm"
             label="Orçamentos em aberto"
@@ -498,11 +624,17 @@ export function FinancialCobrancasTab({
               size="sm"
               label="Comissão estimada"
               value={fmt(commissionEst)}
-              sub={`${commissionPct}% sobre recebido bruto`}
+              sub={`${commissionPct}% sobre ${hasListFilter ? "valor pago" : "recebido bruto"}`}
               icon={Wallet}
             />
           ) : (
-            <StatCard size="sm" label="Cobranças" value={String(filtered.length)} sub="No período selecionado" icon={Wallet} />
+            <StatCard
+              size="sm"
+              label="Cobranças"
+              value={String(filtered.length)}
+              sub={hasListFilter ? "Na lista filtrada" : "No período selecionado"}
+              icon={Wallet}
+            />
           )}
         </div>
       </PageSection>
@@ -588,7 +720,14 @@ export function FinancialCobrancasTab({
                             {!isBudget && (
                               <DropdownMenuItem
                                 disabled={hasNfse}
-                                onClick={() => void emitBillNfse(r.id)}
+                                onClick={() =>
+                                  setNfseBill({
+                                    id: r.id,
+                                    amount: Number(r.amount) || 0,
+                                    description: r.description,
+                                    patientName: r.patients?.full_name ?? null,
+                                  })
+                                }
                               >
                                 <Receipt className="mr-2 size-4" />
                                 {hasNfse ? "NFS-e emitida" : "Emitir NFSe"}
@@ -629,6 +768,12 @@ export function FinancialCobrancasTab({
       />
       <StandaloneSaleDialog open={saleOpen} onOpenChange={setSaleOpen} billId={editBillId} scope={scope} onSaved={() => void load()} />
       <BillDetailDialog open={Boolean(detailBillId)} onOpenChange={(open) => !open && setDetailBillId(null)} bill={detailBill} onChanged={() => void load()} />
+      <EmitNfseDialog
+        open={Boolean(nfseBill)}
+        onOpenChange={(open) => !open && setNfseBill(null)}
+        bill={nfseBill}
+        onIssued={() => void load()}
+      />
       <PaymentHistoryDialog open={historyOpen} onOpenChange={setHistoryOpen} billId={historyBillId} onChanged={() => void load()} />
       <AlertDialog open={Boolean(reverseTarget)} onOpenChange={(o) => !o && setReverseTarget(null)}>
         <AlertDialogContent>
