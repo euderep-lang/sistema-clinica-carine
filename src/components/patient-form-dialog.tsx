@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/mock-auth";
 import { maskCPF, maskPhoneByDdi, phonePlaceholderByDdi, maskCEP, isValidCPF, ageFromBirthDate, fetchCEP, DEFAULT_PHONE_DDI, PHONE_DDI_OPTIONS, sanitizeDdi } from "@/lib/patient-utils";
+import { syncPatientWhatsAppPhoneFn } from "@/lib/whatsapp-crm.functions";
+import { phonesMatch } from "@/lib/wa-phone";
 
 export interface PatientFormData {
   id?: string;
@@ -166,9 +168,18 @@ export function PatientFormDialog({
       toast.error(res.error.message);
       return;
     }
+    const savedId = res.data!.id;
+    const phoneChanged =
+      !!initial?.id &&
+      !phonesMatch(initial.phone ?? "", form.phone ?? "");
+    if (phoneChanged || (!initial?.id && form.phone)) {
+      void syncPatientWhatsAppPhoneFn({ data: { patientId: savedId } }).catch((err) =>
+        console.error("[patient] sync WhatsApp phone:", err),
+      );
+    }
     toast.success(initial?.id ? "Paciente atualizado" : "Paciente cadastrado");
     onOpenChange(false);
-    onSaved?.(res.data!.id);
+    onSaved?.(savedId);
   };
 
   return (

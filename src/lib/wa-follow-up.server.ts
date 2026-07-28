@@ -217,10 +217,30 @@ function pickPreferredConversation(rows: OutboundConversation[]): OutboundConver
   return open ?? pool[0] ?? null;
 }
 
+function conversationMatchesPhone(
+  contactPhone: string,
+  patientPhoneE164: string | null | undefined,
+  rawPatientPhone?: string | null,
+): boolean {
+  if (!patientPhoneE164 && !rawPatientPhone) return false;
+  if (patientPhoneE164 && phonesMatch(contactPhone, patientPhoneE164)) return true;
+  if (rawPatientPhone && phonesMatch(contactPhone, rawPatientPhone)) return true;
+  return false;
+}
+
 export async function findConversationForPatient(
   tenantId: string,
   patientId: string,
 ): Promise<OutboundConversation | null> {
+  const { data: patient } = await supabaseAdmin
+    .from("patients")
+    .select("phone, phone_ddi, full_name")
+    .eq("id", patientId)
+    .maybeSingle();
+  const patientPhone = patient?.phone
+    ? resolvePatientPhoneE164(patient.phone, patient.phone_ddi)
+    : null;
+
   const { data: byLink } = await supabaseAdmin
     .from("wa_conversations" as never)
     .select("id, contact_phone, contact_name, status, channel")
@@ -228,34 +248,121 @@ export async function findConversationForPatient(
     .eq("patient_id", patientId)
     .order("last_message_at", { ascending: false, nullsFirst: false })
     .limit(20);
-  const linked = pickPreferredConversation((byLink ?? []) as OutboundConversation[]);
-  if (linked) return linked;
+  const linked = (byLink ?? []) as OutboundConversation[];
 
+  // Prioriza conversa com o telefone ATUAL do paciente (evita enviar pro número antigo).
+  if (patientPhone || patient?.phone) {
+    const matching = linked.filter((c) =>
+      conversationMatchesPhone(c.contact_phone, patientPhone, patient?.phone),
+    );
+    const preferred = pickPreferredConversation(matching);
+    if (preferred) return preferred;
+  }
+
+  // Sem match pelo número atual: tenta achar conversa pelo telefone (ainda sem vínculo).
+  if (patientPhone || patient?.phone) {
+    const { data: convs } = await supabaseAdmin
+      .from("wa_conversations" as never)
+      .select("id, contact_phone, contact_name, status, channel")
+      .eq("tenant_id", tenantId)
+      .limit(500);
+    const matches = ((convs ?? []) as OutboundConversation[]).filter((c) =>
+      conversationMatchesPhone(c.contact_phone, patientPhone, patient?.phone),
+    );
+    const match = pickPreferredConversation(matches);
+    if (match) {
+      await supabaseAdmin
+        .from("wa_conversations" as never)
+        .update({ patient_id: patientId, contact_name: patient?.full_name ?? match.contact_name } as never)
+        .eq("id", match.id);
+      return match;
+    }
+  }
+
+  // Sem telefone no cadastro: usa qualquer conversa vinculada (legado).
+  if (!patientPhone && !patient?.phone) {
+    return pickPreferredConversation(linked);
+  }
+
+  // Tem telefone novo e nenhuma conversa nesse número — não reutiliza o número antigo.
+  return null;
+}
+
+/**
+ * Após trocar o telefone no cadastro: migra automações pendentes para a conversa do número novo
+ * e encerra conversas abertas no número antigo (sem apagar histórico).
+ */
+export async function syncPatientWhatsAppPhone(
+  tenantId: string,
+  patientId: string,
+): Promise<{ conversationId: string | null; migratedSchedules: number }> {
   const { data: patient } = await supabaseAdmin
     .from("patients")
     .select("phone, phone_ddi, full_name")
     .eq("id", patientId)
+    .eq("tenant_id", tenantId)
     .maybeSingle();
-  if (!patient?.phone) return null;
-
-  const { data: convs } = await supabaseAdmin
-    .from("wa_conversations" as never)
-    .select("id, contact_phone, contact_name, status, channel")
-    .eq("tenant_id", tenantId);
-
-  const patientPhone = resolvePatientPhoneE164(patient.phone, patient.phone_ddi);
-  const matches = ((convs ?? []) as OutboundConversation[]).filter((c) =>
-    phonesMatch(c.contact_phone, patientPhone || patient.phone),
-  );
-  const match = pickPreferredConversation(matches);
-  if (match) {
-    await supabaseAdmin
-      .from("wa_conversations" as never)
-      .update({ patient_id: patientId, contact_name: patient.full_name } as never)
-      .eq("id", match.id);
-    return match;
+  if (!patient?.phone?.trim()) {
+    return { conversationId: null, migratedSchedules: 0 };
   }
-  return null;
+
+  const newPhone = resolvePatientPhoneE164(patient.phone, patient.phone_ddi);
+  if (!newPhone) return { conversationId: null, migratedSchedules: 0 };
+
+  const target = await ensureOutboundConversationForPatient(tenantId, patientId);
+  if (!target) return { conversationId: null, migratedSchedules: 0 };
+
+  const { data: linked } = await supabaseAdmin
+    .from("wa_conversations" as never)
+    .select("id, contact_phone, status")
+    .eq("tenant_id", tenantId)
+    .eq("patient_id", patientId);
+
+  const now = new Date().toISOString();
+  const staleIds: string[] = [];
+  for (const row of (linked ?? []) as { id: string; contact_phone: string; status: string | null }[]) {
+    if (row.id === target.id) continue;
+    if (conversationMatchesPhone(row.contact_phone, newPhone, patient.phone)) continue;
+    staleIds.push(row.id);
+    if (row.status !== "closed") {
+      await supabaseAdmin
+        .from("wa_conversations" as never)
+        .update({
+          status: "closed",
+          close_reason: "phone_changed",
+          closed_at: now,
+          updated_at: now,
+        } as never)
+        .eq("id", row.id);
+    }
+  }
+
+  let migratedSchedules = 0;
+  if (staleIds.length) {
+    const { data: pending } = await supabaseAdmin
+      .from("wa_follow_up_schedules" as never)
+      .select("id")
+      .eq("patient_id", patientId)
+      .eq("status", "pending")
+      .in("conversation_id", staleIds);
+    const ids = ((pending ?? []) as { id: string }[]).map((p) => p.id);
+    if (ids.length) {
+      const { error } = await supabaseAdmin
+        .from("wa_follow_up_schedules" as never)
+        .update({ conversation_id: target.id } as never)
+        .in("id", ids);
+      if (!error) migratedSchedules = ids.length;
+    }
+
+    await supabaseAdmin
+      .from("wa_follow_up_runs" as never)
+      .update({ conversation_id: target.id } as never)
+      .eq("patient_id", patientId)
+      .eq("status", "active")
+      .in("conversation_id", staleIds);
+  }
+
+  return { conversationId: target.id, migratedSchedules };
 }
 
 async function reopenConversationForOutbound(conversationId: string): Promise<void> {
@@ -277,15 +384,6 @@ export async function ensureOutboundConversationForPatient(
   tenantId: string,
   patientId: string,
 ): Promise<OutboundConversation | null> {
-  const existing = await findConversationForPatient(tenantId, patientId);
-  if (existing && isWhatsAppChannel(existing.channel)) {
-    if (existing.status === "closed") {
-      await reopenConversationForOutbound(existing.id);
-      return { ...existing, status: "open" };
-    }
-    return existing;
-  }
-
   const { data: patient } = await supabaseAdmin
     .from("patients")
     .select("full_name, phone, phone_ddi")
@@ -296,6 +394,19 @@ export async function ensureOutboundConversationForPatient(
 
   const phone = resolvePatientPhoneE164(patient.phone, patient.phone_ddi);
   if (!phone) return null;
+
+  const existing = await findConversationForPatient(tenantId, patientId);
+  if (
+    existing &&
+    isWhatsAppChannel(existing.channel) &&
+    conversationMatchesPhone(existing.contact_phone, phone, patient.phone)
+  ) {
+    if (existing.status === "closed") {
+      await reopenConversationForOutbound(existing.id);
+      return { ...existing, status: "open" };
+    }
+    return existing;
+  }
 
   const receptionistId = await getDefaultReceptionAssignee(tenantId);
   const now = new Date().toISOString();
@@ -1402,10 +1513,28 @@ export async function processDueFollowUps(
 
       const run = row.wa_follow_up_runs;
 
-      if (row.conversation_id) {
+      // Sempre resolve a conversa pelo telefone ATUAL do paciente (evita número antigo).
+      let conversationId = row.conversation_id;
+      if (row.patient_id) {
+        const currentConv = await ensureOutboundConversationForPatient(
+          row.tenant_id,
+          row.patient_id,
+        );
+        if (currentConv && currentConv.id !== conversationId) {
+          await supabaseAdmin
+            .from("wa_follow_up_schedules" as never)
+            .update({ conversation_id: currentConv.id } as never)
+            .eq("id", row.id);
+          conversationId = currentConv.id;
+        } else if (currentConv) {
+          conversationId = currentConv.id;
+        }
+      }
+
+      if (conversationId) {
         const decision = await shouldSendFollowUpStep({
           tenantId: row.tenant_id,
-          conversationId: row.conversation_id,
+          conversationId,
           triggerType: run.trigger_type,
           runStartedAt: run.started_at,
           appointmentId: row.appointment_id,
@@ -1428,14 +1557,14 @@ export async function processDueFollowUps(
         const manualCtx = await resolveFollowUpTemplateContext({
           tenantId: row.tenant_id,
           patientId: row.patient_id,
-          conversationId: row.conversation_id,
+          conversationId,
           appointmentId: row.appointment_id,
         });
         const manualText = renderFollowUpMessage(row.message_template, manualCtx);
         if (assignee) {
           await createManualTask({
             tenantId: row.tenant_id,
-            conversationId: row.conversation_id,
+            conversationId,
             patientId: row.patient_id,
             assignedTo: assignee,
             title: `Follow-up: ${row.step_key.replace(/_/g, " ")}`,
@@ -1447,7 +1576,7 @@ export async function processDueFollowUps(
         continue;
       }
 
-      if (!row.conversation_id || !row.message_template) {
+      if (!conversationId || !row.message_template) {
         await supabaseAdmin
           .from("wa_follow_up_schedules" as never)
           .update({ status: "skipped", error_message: "Sem conversa WhatsApp vinculada" } as never)
@@ -1465,7 +1594,7 @@ export async function processDueFollowUps(
       const sendCtx = await resolveFollowUpTemplateContext({
         tenantId: row.tenant_id,
         patientId: row.patient_id,
-        conversationId: row.conversation_id,
+        conversationId,
         appointmentId: row.appointment_id,
       });
       const textToSend =
@@ -1475,7 +1604,7 @@ export async function processDueFollowUps(
 
       const result = await sendAutomatedMessage(
         row.tenant_id,
-        row.conversation_id,
+        conversationId,
         textToSend,
         {
           stepKey: row.step_key,
@@ -1525,7 +1654,7 @@ export async function processDueFollowUps(
       await logCrmEvent({
         tenantId: row.tenant_id,
         eventType: "follow_up_sent",
-        conversationId: row.conversation_id,
+        conversationId,
         patientId: row.patient_id,
         metadata: { step_key: row.step_key, run_id: row.run_id },
       });
@@ -1538,7 +1667,7 @@ export async function processDueFollowUps(
         entityType: "follow_up_schedule",
         entityId: row.id,
         patientId: row.patient_id,
-        conversationId: row.conversation_id,
+        conversationId,
         details: {
           step_key: row.step_key,
           run_id: row.run_id,

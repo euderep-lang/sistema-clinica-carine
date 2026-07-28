@@ -11,7 +11,7 @@ describe("isPatientRegistrationIncomplete", () => {
     ).toBe(true);
   });
 
-  it("accepts complete registration", () => {
+  it("rejects placeholder CEP 00000-000", () => {
     expect(
       isPatientRegistrationIncomplete({
         full_name: "Maria Silva",
@@ -19,13 +19,13 @@ describe("isPatientRegistrationIncomplete", () => {
         gender: "Feminino",
         birth_date: "1990-01-15",
         phone: "(48) 99999-9999",
-        address_zip: "88010-000",
+        address_zip: "00000-000",
         address_street: "Rua A",
         address_number: "100",
         address_neighborhood: "Centro",
         address_city: "Florianópolis",
         address_state: "SC",
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 });

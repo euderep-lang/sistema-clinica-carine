@@ -32,6 +32,8 @@ import {
   PHONE_DDI_OPTIONS,
   sanitizeDdi,
 } from "@/lib/patient-utils";
+import { syncPatientWhatsAppPhoneFn } from "@/lib/whatsapp-crm.functions";
+import { phonesMatch } from "@/lib/wa-phone";
 
 export type CompleteRegistrationPatient = {
   id: string;
@@ -213,6 +215,12 @@ export function PatientCompleteRegistrationDialog({
       return;
     }
     const updated = data as CompleteRegistrationPatient;
+    const phoneChanged = !phonesMatch(patient.phone ?? "", form.phone ?? "");
+    if (phoneChanged) {
+      void syncPatientWhatsAppPhoneFn({ data: { patientId: patient.id } }).catch((err) =>
+        console.error("[patient] sync WhatsApp phone:", err),
+      );
+    }
     // Fecha já no dialog; não depende do pai (evita corrida que reabre em branco).
     setForceClosed(true);
     hydratedForOpen.current = false;

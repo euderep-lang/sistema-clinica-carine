@@ -21,6 +21,7 @@ import {
   onOutboundMessageForFollowUp,
   processDueFollowUps,
   setupProfessionalPostConsultFollowUp,
+  syncPatientWhatsAppPhone,
   type ObjectionType,
 } from "@/lib/wa-follow-up.server";
 import {
@@ -208,6 +209,23 @@ export const reopenWaConversation = createServerFn({ method: "POST" })
     });
 
     return { ok: true };
+  });
+
+/** Após trocar telefone no cadastro: migra automações e encerra conversa no número antigo. */
+export const syncPatientWhatsAppPhoneFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: { patientId: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { data: profile } = await context.supabase
+      .from("profiles")
+      .select("tenant_id, role")
+      .eq("id", context.userId)
+      .maybeSingle();
+    if (!profile?.tenant_id) throw new Error("Perfil não encontrado");
+    if (!["admin", "professional", "receptionist"].includes(profile.role)) {
+      throw new Error("Sem permissão");
+    }
+    return syncPatientWhatsAppPhone(profile.tenant_id, data.patientId);
   });
 
 export const linkWaPatient = createServerFn({ method: "POST" })
