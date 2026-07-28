@@ -19,7 +19,12 @@ const PREFIX_TO_ROLE: Record<string, Role> = {
 
 /** Rotas de outro módulo que este perfil pode acessar (ex.: estoque do profissional). */
 const CROSS_ROLE_PATH_PREFIXES: Partial<Record<Role, string[]>> = {
-  professional: ["/financial/inventory", "/financial/inventory/items", "/financial/inventory/categories"],
+  professional: [
+    "/financial/inventory",
+    "/financial/inventory/items",
+    "/financial/inventory/categories",
+    "/financial/nfse",
+  ],
   receptionist: ["/financial/inventory", "/financial/inventory/items", "/financial/inventory/categories"],
 };
 

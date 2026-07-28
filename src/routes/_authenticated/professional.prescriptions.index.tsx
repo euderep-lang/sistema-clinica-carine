@@ -21,6 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { supabase } from "@/integrations/supabase/client";
 import { softDelete } from "@/lib/trash";
 import { useAuth } from "@/lib/mock-auth";
@@ -29,6 +30,17 @@ import { sendPrescriptionViaCrm } from "@/lib/whatsapp.functions";
 export const Route = createFileRoute("/_authenticated/professional/prescriptions/")({
   component: PrescriptionsList,
 });
+
+interface RxItem {
+  medication: string;
+  concentration: string | null;
+  dosage: string | null;
+  route: string | null;
+  frequency: string | null;
+  duration: string | null;
+  quantity: string | null;
+  position: number;
+}
 
 interface RxRow {
   id: string;
@@ -41,6 +53,7 @@ interface RxRow {
   updated_at: string;
   signed_at: string | null;
   patients: { full_name: string; phone: string | null } | null;
+  prescription_items?: RxItem[] | null;
 }
 
 function formatRxGeneratedAt(row: RxRow) {
@@ -55,6 +68,67 @@ function formatRxGeneratedAt(row: RxRow) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function sortedItems(row: RxRow): RxItem[] {
+  return [...(row.prescription_items ?? [])].sort((a, b) => a.position - b.position);
+}
+
+function formatItemTitle(it: RxItem) {
+  const name = it.medication.trim();
+  const conc = it.concentration?.trim();
+  return conc ? `${name} ${conc}` : name;
+}
+
+function formatItemPosology(it: RxItem) {
+  return [it.dosage, it.route ? `via ${it.route.toLowerCase()}` : null, it.frequency, it.duration ? `por ${it.duration}` : null]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function PatientMedsHover({ row }: { row: RxRow }) {
+  const name = row.patients?.full_name ?? "—";
+  const items = sortedItems(row);
+
+  return (
+    <HoverCard openDelay={200} closeDelay={100}>
+      <HoverCardTrigger asChild>
+        <button
+          type="button"
+          className="cursor-default text-left font-medium underline-offset-2 hover:underline decoration-dotted"
+        >
+          {name}
+        </button>
+      </HoverCardTrigger>
+      <HoverCardContent align="start" className="w-80 p-3">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Medicamentos da receita
+        </p>
+        {items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum medicamento cadastrado.</p>
+        ) : (
+          <ul className="max-h-64 space-y-2 overflow-y-auto text-sm">
+            {items.map((it, idx) => {
+              const posology = formatItemPosology(it);
+              return (
+                <li key={`${it.position}-${it.medication}-${idx}`} className="border-b border-border/60 pb-2 last:border-0 last:pb-0">
+                  <p className="font-medium leading-snug">
+                    {idx + 1}. {formatItemTitle(it)}
+                  </p>
+                  {posology ? (
+                    <p className="mt-0.5 text-xs text-muted-foreground">{posology}</p>
+                  ) : null}
+                  {it.quantity?.trim() ? (
+                    <p className="mt-0.5 text-xs text-muted-foreground">Qtd.: {it.quantity}</p>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </HoverCardContent>
+    </HoverCard>
+  );
 }
 
 const PAGE_SIZE = 20;
@@ -109,7 +183,7 @@ function PrescriptionsList() {
     let query = supabase
       .from("prescriptions" as never)
       .select(
-        "id, date, type, status, patient_id, pdf_url, created_at, updated_at, signed_at, patients!inner(full_name, phone)",
+        "id, date, type, status, patient_id, pdf_url, created_at, updated_at, signed_at, patients!inner(full_name, phone), prescription_items(medication, concentration, dosage, route, frequency, duration, quantity, position)",
         { count: "exact" },
       )
       .eq("professional_id", profile!.id)
@@ -253,7 +327,9 @@ function PrescriptionsList() {
                 ) : rows.map((r) => (
                   <TableRow key={r.id}>
                     <TableCell className="whitespace-nowrap">{formatRxGeneratedAt(r)}</TableCell>
-                    <TableCell className="font-medium">{r.patients?.full_name ?? "—"}</TableCell>
+                    <TableCell>
+                      <PatientMedsHover row={r} />
+                    </TableCell>
                     <TableCell>{typeBadge(r.type)}</TableCell>
                     <TableCell>{statusBadge(r.status)}</TableCell>
                     <TableCell>{signatureBadge(r)}</TableCell>
