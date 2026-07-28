@@ -27,7 +27,8 @@ export function isPatientRegistrationIncomplete(
   if (!p.gender?.trim()) return true;
   if (!p.birth_date?.trim()) return true;
   if (digits(p.phone).length < 8) return true;
-  if (digits(p.address_zip).length !== 8) return true;
+  const zip = digits(p.address_zip);
+  if (zip.length !== 8 || /^0{8}$/.test(zip)) return true;
   if (!p.address_street?.trim()) return true;
   if (!p.address_number?.trim()) return true;
   if (!p.address_neighborhood?.trim()) return true;

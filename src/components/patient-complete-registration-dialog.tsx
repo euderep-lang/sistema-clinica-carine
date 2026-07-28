@@ -91,6 +91,7 @@ function toForm(p: CompleteRegistrationPatient): FormState {
 
 /**
  * Popup bloqueante para completar ficha mínima ao iniciar consulta de paciente novo.
+ * Vale para qualquer perfil que abra o prontuário.
  */
 export function PatientCompleteRegistrationDialog({
   open,
@@ -105,12 +106,15 @@ export function PatientCompleteRegistrationDialog({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
+  /** Fecha na hora após save OK, mesmo se o pai ainda não atualizou `open`. */
+  const [forceClosed, setForceClosed] = useState(false);
   const wasOpen = useRef(false);
+  const formTopRef = useRef<HTMLDivElement>(null);
 
-  // Só hidrata o form ao abrir (não a cada update do patient) — evita tela em branco.
   useEffect(() => {
-    if (open && patient) {
-      if (!wasOpen.current) {
+    if (open) {
+      setForceClosed(false);
+      if (patient && !wasOpen.current) {
         setForm(toForm(patient));
         setErrors({});
         setSaving(false);
@@ -120,7 +124,6 @@ export function PatientCompleteRegistrationDialog({
     }
     if (!open && wasOpen.current) {
       wasOpen.current = false;
-      // Limpa depois da animação de fechamento do Radix.
       const t = window.setTimeout(() => setForm(null), 220);
       return () => window.clearTimeout(t);
     }
@@ -128,9 +131,11 @@ export function PatientCompleteRegistrationDialog({
 
   const set = (k: keyof FormState, v: string) => setForm((f) => (f ? { ...f, [k]: v } : f));
   const age = form ? ageFromBirthDate(form.birth_date) : null;
+  const dialogOpen = Boolean(open && patient && !forceClosed);
 
   const onCepBlur = async () => {
     if (!form || digitsOnly(form.address_zip).length !== 8) return;
+    if (/^0{8}$/.test(digitsOnly(form.address_zip))) return;
     setCepLoading(true);
     const r = await fetchCEP(form.address_zip);
     setCepLoading(false);
@@ -157,7 +162,8 @@ export function PatientCompleteRegistrationDialog({
     if (!f.gender.trim()) e.gender = "Obrigatório";
     if (!f.birth_date.trim()) e.birth_date = "Obrigatório";
     if (digitsOnly(f.phone).length < 8) e.phone = "Informe o WhatsApp";
-    if (digitsOnly(f.address_zip).length !== 8) e.address_zip = "CEP inválido";
+    const cep = digitsOnly(f.address_zip);
+    if (cep.length !== 8 || /^0{8}$/.test(cep)) e.address_zip = "Informe um CEP válido";
     if (!f.address_street.trim()) e.address_street = "Obrigatório";
     if (!f.address_number.trim()) e.address_number = "Obrigatório";
     if (!f.address_neighborhood.trim()) e.address_neighborhood = "Obrigatório";
@@ -169,8 +175,12 @@ export function PatientCompleteRegistrationDialog({
 
   const onSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
-    if (!patient || !form) return;
-    if (!validate(form)) return;
+    if (!patient || !form || saving) return;
+    if (!validate(form)) {
+      toast.error("Preencha todos os campos obrigatórios, inclusive o endereço completo.");
+      formTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     setSaving(true);
     const payload = {
       full_name: form.full_name.trim(),
@@ -194,25 +204,30 @@ export function PatientCompleteRegistrationDialog({
       .select(
         "id, full_name, cpf, gender, birth_date, phone, phone_ddi, address_zip, address_street, address_number, address_complement, address_neighborhood, address_city, address_state",
       )
-      .single();
+      .maybeSingle();
     setSaving(false);
     if (error) {
       toast.error(error.message);
       return;
     }
-    const updated = (data ?? { id: patient.id, ...payload }) as CompleteRegistrationPatient;
+    if (!data) {
+      toast.error("Não foi possível salvar o cadastro. Tente novamente.");
+      return;
+    }
+    const updated = data as CompleteRegistrationPatient;
+    // Fecha o dialog imediatamente (estado local) e avisa o pai.
+    setForceClosed(true);
+    wasOpen.current = false;
     toast.success("Cadastro completo");
-    // Fecha imediatamente no fluxo do submit (antes de qualquer re-render do load).
     onCompleted(updated);
   };
 
-  // Sempre monta o Dialog controlado — nunca `return null` com overlay aberto (fica em branco).
   return (
     <Dialog
-      open={open}
+      open={dialogOpen}
       onOpenChange={(next) => {
-        // Bloqueia fechar por overlay/ESC; só o pai fecha após salvar (open=false).
-        if (next) return;
+        // Bloqueia ESC/overlay; fechamento só após save (forceClosed).
+        if (!next && !forceClosed) return;
       }}
     >
       <DialogContent
@@ -221,6 +236,7 @@ export function PatientCompleteRegistrationDialog({
         onEscapeKeyDown={(e) => e.preventDefault()}
         onInteractOutside={(e) => e.preventDefault()}
       >
+        <div ref={formTopRef} />
         <DialogHeader>
           <DialogTitle>Complete o cadastro do paciente</DialogTitle>
           <DialogDescription>
@@ -275,7 +291,9 @@ export function PatientCompleteRegistrationDialog({
             <div className="space-y-1.5">
               <Label>
                 Data de nascimento *{" "}
-                {age !== null && <span className="text-xs text-muted-foreground">({age} anos)</span>}
+                {age !== null ? (
+                  <span className="font-normal text-muted-foreground">({age} anos)</span>
+                ) : null}
               </Label>
               <Input
                 type="date"
@@ -286,30 +304,23 @@ export function PatientCompleteRegistrationDialog({
               {errors.birth_date && <p className="text-xs text-destructive">{errors.birth_date}</p>}
             </div>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-              <div className="w-full sm:w-36 space-y-1.5">
-                <Label>DDI *</Label>
-                <Select
-                  value={form.phone_ddi}
-                  onValueChange={(ddi) =>
-                    setForm((f) =>
-                      f ? { ...f, phone_ddi: ddi, phone: maskPhoneByDdi(f.phone, ddi) } : f,
-                    )
-                  }
-                >
+            <div className="grid grid-cols-[7.5rem_1fr] gap-3">
+              <div className="space-y-1.5">
+                <Label>DDI</Label>
+                <Select value={form.phone_ddi} onValueChange={(v) => set("phone_ddi", v)}>
                   <SelectTrigger>
-                    <SelectValue placeholder="+55" />
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {PHONE_DDI_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
+                    {PHONE_DDI_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex-1 space-y-1.5">
+              <div className="space-y-1.5">
                 <Label>Telefone / WhatsApp *</Label>
                 <Input
                   value={form.phone}
@@ -321,12 +332,10 @@ export function PatientCompleteRegistrationDialog({
               </div>
             </div>
 
-            <div className="space-y-3 rounded-md border p-3">
-              <h3 className="text-sm font-semibold">Endereço *</h3>
+            <div className="space-y-3 rounded-lg border border-border/70 bg-muted/20 p-3">
+              <p className="text-sm font-medium">Endereço *</p>
               <div className="space-y-1.5">
-                <Label>
-                  CEP {cepLoading ? <Loader2 className="inline size-3 animate-spin" /> : null}
-                </Label>
+                <Label>CEP *</Label>
                 <Input
                   value={form.address_zip}
                   onChange={(e) => set("address_zip", maskCEP(e.target.value))}
@@ -334,22 +343,25 @@ export function PatientCompleteRegistrationDialog({
                   placeholder="00000-000"
                   className={errors.address_zip ? "border-destructive" : ""}
                 />
+                {cepLoading ? (
+                  <p className="text-xs text-muted-foreground">Buscando CEP…</p>
+                ) : null}
                 {errors.address_zip && (
                   <p className="text-xs text-destructive">{errors.address_zip}</p>
                 )}
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="col-span-2 space-y-1.5">
-                  <Label>Logradouro *</Label>
-                  <Input
-                    value={form.address_street}
-                    onChange={(e) => set("address_street", e.target.value)}
-                    className={errors.address_street ? "border-destructive" : ""}
-                  />
-                  {errors.address_street && (
-                    <p className="text-xs text-destructive">{errors.address_street}</p>
-                  )}
-                </div>
+              <div className="space-y-1.5">
+                <Label>Logradouro *</Label>
+                <Input
+                  value={form.address_street}
+                  onChange={(e) => set("address_street", e.target.value)}
+                  className={errors.address_street ? "border-destructive" : ""}
+                />
+                {errors.address_street && (
+                  <p className="text-xs text-destructive">{errors.address_street}</p>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Número *</Label>
                   <Input
@@ -361,8 +373,6 @@ export function PatientCompleteRegistrationDialog({
                     <p className="text-xs text-destructive">{errors.address_number}</p>
                   )}
                 </div>
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label>Complemento</Label>
                   <Input
@@ -370,19 +380,19 @@ export function PatientCompleteRegistrationDialog({
                     onChange={(e) => set("address_complement", e.target.value)}
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Bairro *</Label>
-                  <Input
-                    value={form.address_neighborhood}
-                    onChange={(e) => set("address_neighborhood", e.target.value)}
-                    className={errors.address_neighborhood ? "border-destructive" : ""}
-                  />
-                  {errors.address_neighborhood && (
-                    <p className="text-xs text-destructive">{errors.address_neighborhood}</p>
-                  )}
-                </div>
               </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Bairro *</Label>
+                <Input
+                  value={form.address_neighborhood}
+                  onChange={(e) => set("address_neighborhood", e.target.value)}
+                  className={errors.address_neighborhood ? "border-destructive" : ""}
+                />
+                {errors.address_neighborhood && (
+                  <p className="text-xs text-destructive">{errors.address_neighborhood}</p>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Cidade *</Label>
                   <Input
@@ -399,7 +409,7 @@ export function PatientCompleteRegistrationDialog({
                   <Input
                     value={form.address_state}
                     onChange={(e) => set("address_state", e.target.value.toUpperCase().slice(0, 2))}
-                    placeholder="SC"
+                    placeholder="MG"
                     className={errors.address_state ? "border-destructive" : ""}
                   />
                   {errors.address_state && (
