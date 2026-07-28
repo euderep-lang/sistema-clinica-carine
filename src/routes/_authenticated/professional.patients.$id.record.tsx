@@ -102,6 +102,7 @@ function RecordPage() {
   const [recordReady, setRecordReady] = useState(false);
   /** Após completar ficha nesta visita, não reabre o popup por corrida do load. */
   const registrationDoneRef = useRef(false);
+  const loadSeqRef = useRef(0);
   const photoFileRef = useRef<HTMLInputElement>(null);
   const photoKindRef = useRef<"exams" | "before_after" | null>(null);
 
@@ -159,6 +160,7 @@ function RecordPage() {
   useEffect(() => {
     if (!profile?.id) return;
     let cancelled = false;
+    const loadId = ++loadSeqRef.current;
     (async () => {
       setLoading(true);
       if (!registrationDoneRef.current) setRecordReady(false);
@@ -169,14 +171,15 @@ function RecordPage() {
         )
         .eq("id", id)
         .maybeSingle();
-      if (cancelled) return;
+      if (cancelled || loadId !== loadSeqRef.current) return;
       const patientRow = p as Patient | null;
-      setPatient(patientRow);
       const incomplete = isPatientRegistrationIncomplete(patientRow);
       if (registrationDoneRef.current) {
+        // Já completou nesta visita: não sobrescreve com fetch antigo incompleto.
         setRegistrationOpen(false);
         setRecordReady(true);
       } else {
+        setPatient(patientRow);
         setRegistrationOpen(incomplete);
         setRecordReady(!incomplete);
       }
@@ -185,11 +188,9 @@ function RecordPage() {
         loadHistory(),
         ensureTodayConsultationLinked(id, profile.id, profile.tenant_id),
       ]);
-      if (cancelled) return;
+      if (cancelled || loadId !== loadSeqRef.current) return;
       setFinancialPending(Boolean(finRes.data));
       setTodayAppointmentLinked(linkResult.linked);
-      // No celular, abre no histórico se já houver registros — evita parecer "em branco"
-      // ao reabrir o prontuário (a aba padrão é "Nova evolução").
       if (
         historyCount > 0 &&
         typeof window !== "undefined" &&
@@ -505,12 +506,12 @@ function RecordPage() {
         patient={patient}
         onCompleted={(updated) => {
           registrationDoneRef.current = true;
-          setPatient((prev) => (prev ? { ...prev, ...updated } : (updated as Patient)));
           setRegistrationOpen(false);
+          setPatient((prev) => (prev ? { ...prev, ...updated } : (updated as Patient)));
           // Libera o prontuário após o fade-out do popup.
           window.setTimeout(() => {
             if (registrationDoneRef.current) setRecordReady(true);
-          }, 220);
+          }, 180);
         }}
       />
       <div

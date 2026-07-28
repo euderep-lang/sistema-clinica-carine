@@ -108,26 +108,24 @@ export function PatientCompleteRegistrationDialog({
   const [cepLoading, setCepLoading] = useState(false);
   /** Fecha na hora após save OK, mesmo se o pai ainda não atualizou `open`. */
   const [forceClosed, setForceClosed] = useState(false);
-  const wasOpen = useRef(false);
+  const hydratedForOpen = useRef(false);
   const formTopRef = useRef<HTMLDivElement>(null);
 
+  // Hidrata só ao ABRIR o popup — nunca ao atualizar `patient` no meio do preenchimento/save.
   useEffect(() => {
-    if (open) {
+    if (!open) {
+      hydratedForOpen.current = false;
       setForceClosed(false);
-      if (patient && !wasOpen.current) {
-        setForm(toForm(patient));
-        setErrors({});
-        setSaving(false);
-        wasOpen.current = true;
-      }
-      return;
-    }
-    if (!open && wasOpen.current) {
-      wasOpen.current = false;
       const t = window.setTimeout(() => setForm(null), 220);
       return () => window.clearTimeout(t);
     }
-  }, [open, patient]);
+    if (open && patient && !hydratedForOpen.current && !forceClosed) {
+      hydratedForOpen.current = true;
+      setForm(toForm(patient));
+      setErrors({});
+      setSaving(false);
+    }
+  }, [open, patient, forceClosed]);
 
   const set = (k: keyof FormState, v: string) => setForm((f) => (f ? { ...f, [k]: v } : f));
   const age = form ? ageFromBirthDate(form.birth_date) : null;
@@ -215,9 +213,9 @@ export function PatientCompleteRegistrationDialog({
       return;
     }
     const updated = data as CompleteRegistrationPatient;
-    // Fecha o dialog imediatamente (estado local) e avisa o pai.
+    // Fecha já no dialog; não depende do pai (evita corrida que reabre em branco).
     setForceClosed(true);
-    wasOpen.current = false;
+    hydratedForOpen.current = false;
     toast.success("Cadastro completo");
     onCompleted(updated);
   };
