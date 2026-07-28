@@ -172,7 +172,7 @@ export const FEATURES: FeatureDef[] = [
     label: "NFS-e",
     description: "Controle de emissões de notas fiscais de serviço.",
     group: "Administrativo e Financeiro",
-    roles: ["receptionist", "professional", "financial"],
+    roles: ["professional", "financial"],
     match: ["/financial/nfse"],
   },
   {

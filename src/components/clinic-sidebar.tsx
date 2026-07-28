@@ -94,12 +94,6 @@ const NAV: Record<Role, { label: string; items: NavItem[] }[]> = {
         { title: "Campanhas", url: "/reception/marketing", icon: Megaphone },
       ],
     },
-    {
-      label: "Financeiro",
-      items: [
-        { title: "NFS-e", url: "/financial/nfse", icon: FileText },
-      ],
-    },
   ],
   professional: [
     {
