@@ -95,6 +95,7 @@ function ProfessionalAgendaPage() {
   const [birthdayAlert, setBirthdayAlert] = useState<{
     message: string;
     patientId: string;
+    appointmentId: string;
   } | null>(null);
 
   const weekStart = useMemo(() => startOfWeekMonday(date), [date]);
@@ -173,10 +174,11 @@ function ProfessionalAgendaPage() {
     return true;
   };
 
-  const goToPatientRecord = (patientId: string) => {
+  const goToPatientRecord = (patientId: string, appointmentId?: string) => {
     navigate({
       to: "/professional/patients/$id/record",
       params: { id: patientId },
+      search: { appointment: appointmentId },
     });
   };
 
@@ -197,11 +199,12 @@ function ProfessionalAgendaPage() {
           alert,
         }),
         patientId: appointment.patient_id,
+        appointmentId: appointment.id,
       });
       return;
     }
 
-    goToPatientRecord(appointment.patient_id);
+    goToPatientRecord(appointment.patient_id, appointment.id);
   };
 
   const handleStatusChange = async (id: string, status: string) => {
@@ -522,6 +525,7 @@ function ProfessionalAgendaPage() {
                                   navigate({
                                     to: "/professional/patients/$id/record",
                                     params: { id: a.patient_id! },
+                                    search: { appointment: a.id },
                                   })
                                 }
                               >
@@ -609,8 +613,9 @@ function ProfessionalAgendaPage() {
         onOpenChange={(open) => {
           if (open) return;
           const patientId = birthdayAlert?.patientId;
+          const appointmentId = birthdayAlert?.appointmentId;
           setBirthdayAlert(null);
-          if (patientId) goToPatientRecord(patientId);
+          if (patientId) goToPatientRecord(patientId, appointmentId);
         }}
       >
         <AlertDialogContent>

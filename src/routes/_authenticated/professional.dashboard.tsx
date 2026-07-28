@@ -33,6 +33,7 @@ import {
   listOpenEvolutionDrafts,
   type OpenEvolutionDraft,
 } from "@/lib/evolution-draft";
+import { filterAppointmentsMissingClinicalRecord } from "@/lib/patient-appointment";
 import { useAuth } from "@/lib/mock-auth";
 import { cn } from "@/lib/utils";
 
@@ -142,13 +143,11 @@ function ProfessionalDashboard() {
       setPendingRows([]);
       return;
     }
-    const ids = completedList.map((c) => c.id);
-    const { data: linked } = await supabase
-      .from("medical_records")
-      .select("appointment_id")
-      .in("appointment_id", ids);
-    const linkedSet = new Set((linked ?? []).map((l) => l.appointment_id));
-    setPendingRows(completedList.filter((c) => !linkedSet.has(c.id)));
+    const pending = await filterAppointmentsMissingClinicalRecord(
+      completedList.filter((c) => Boolean(c.patient_id)),
+      profile.id,
+    );
+    setPendingRows(pending);
   };
 
   useEffect(() => {
@@ -183,12 +182,13 @@ function ProfessionalDashboard() {
 
   const firstName = profile?.full_name?.split(" ")[0] ?? "Profissional";
 
-  const openPatientRecord = (patientId: string | null) => {
+  const openPatientRecord = (patientId: string | null, appointmentId?: string) => {
     if (!patientId) return;
     setSummaryOpen(null);
     navigate({
       to: "/professional/patients/$id/record",
       params: { id: patientId },
+      search: { appointment: appointmentId },
     });
   };
 
@@ -237,6 +237,7 @@ function ProfessionalDashboard() {
                     navigate({
                       to: "/professional/patients/$id/record",
                       params: { id: d.patientId },
+                      search: { appointment: undefined },
                     })
                   }
                 >
@@ -381,6 +382,7 @@ function ProfessionalDashboard() {
                   primary: a.patients?.full_name ?? "Paciente",
                   secondary: `${fmtDate(a.date)} · ${a.start_time.slice(0, 5)}`,
                   patientId: a.patient_id,
+                  appointmentId: a.id,
                 }))}
                 onOpen={openPatientRecord}
               />
@@ -413,10 +415,11 @@ function IndicatorList({
     badge?: string | null;
     badgeDanger?: boolean;
     patientId: string | null;
+    appointmentId?: string;
   }>;
   empty: string;
   actionLabel?: string;
-  onOpen: (patientId: string | null) => void;
+  onOpen: (patientId: string | null, appointmentId?: string) => void;
 }) {
   if (rows.length === 0) {
     return <p className="py-6 text-center text-sm text-muted-foreground">{empty}</p>;
@@ -447,7 +450,7 @@ function IndicatorList({
                 size="sm"
                 variant="ghost"
                 className="h-8 px-2"
-                onClick={() => onOpen(row.patientId)}
+                onClick={() => onOpen(row.patientId, row.appointmentId)}
               >
                 <Eye className="mr-1 size-3.5" />
                 {actionLabel}
@@ -605,6 +608,7 @@ function AgendaGroup({
                       navigate({
                         to: "/professional/patients/$id/record",
                         params: { id: a.patient_id! },
+                        search: { appointment: a.id },
                       })
                     }
                   >
@@ -620,6 +624,7 @@ function AgendaGroup({
                       navigate({
                         to: "/professional/patients/$id/record",
                         params: { id: a.patient_id! },
+                        search: { appointment: a.id },
                       })
                     }
                   >
@@ -636,6 +641,7 @@ function AgendaGroup({
                       navigate({
                         to: "/professional/patients/$id/record",
                         params: { id: a.patient_id! },
+                        search: { appointment: a.id },
                       })
                     }
                   >

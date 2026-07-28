@@ -116,3 +116,93 @@ export async function ensureTodayConsultationLinked(
 
   return { appointmentId, linked: true };
 }
+
+/**
+ * Consultas concluídas sem registro clínico real (evolução ou prontuário no dia).
+ * Considera vínculo por appointment_id OU evolução/prontuário do mesmo paciente/data.
+ */
+export async function filterAppointmentsMissingClinicalRecord<
+  T extends { id: string; patient_id: string | null; date: string },
+>(
+  appointments: T[],
+  professionalId: string,
+): Promise<T[]> {
+  if (appointments.length === 0) return [];
+
+  const ids = appointments.map((a) => a.id);
+  const patientIds = [...new Set(appointments.map((a) => a.patient_id).filter(Boolean))] as string[];
+  const dates = [...new Set(appointments.map((a) => a.date))];
+
+  const [{ data: linked }, { data: dayRecords }, { data: dayEvolutions }] = await Promise.all([
+    supabase.from("medical_records").select("appointment_id").in("appointment_id", ids),
+    patientIds.length
+      ? supabase
+          .from("medical_records")
+          .select("id, appointment_id, patient_id, date")
+          .eq("professional_id", professionalId)
+          .in("patient_id", patientIds)
+          .in("date", dates)
+      : Promise.resolve({ data: [] as { id: string; appointment_id: string | null; patient_id: string; date: string }[] }),
+    patientIds.length
+      ? supabase
+          .from("patient_evolutions")
+          .select("patient_id, date")
+          .eq("professional_id", professionalId)
+          .in("patient_id", patientIds)
+          .in("date", dates)
+      : Promise.resolve({ data: [] as { patient_id: string; date: string }[] }),
+  ]);
+
+  const linkedByAppt = new Set(
+    (linked ?? []).map((l) => l.appointment_id).filter(Boolean) as string[],
+  );
+  const dayKey = (patientId: string, date: string) => `${patientId}|${date}`;
+  const recordsByDay = new Set(
+    (dayRecords ?? []).map((r) => dayKey(r.patient_id, r.date)),
+  );
+  const evolutionsByDay = new Set(
+    (dayEvolutions ?? []).map((e) => dayKey(e.patient_id, e.date)),
+  );
+
+  // Auto-vincula prontuários órfãos do mesmo dia à consulta concluída.
+  const orphans = (dayRecords ?? []).filter((r) => !r.appointment_id);
+  for (const orphan of orphans) {
+    const match = appointments.find(
+      (a) => a.patient_id === orphan.patient_id && a.date === orphan.date && !linkedByAppt.has(a.id),
+    );
+    if (!match) continue;
+    const { error } = await supabase
+      .from("medical_records")
+      .update({ appointment_id: match.id })
+      .eq("id", orphan.id)
+      .is("appointment_id", null);
+    if (!error) linkedByAppt.add(match.id);
+  }
+
+  return appointments.filter((a) => {
+    if (linkedByAppt.has(a.id)) return false;
+    if (!a.patient_id) return true;
+    const key = dayKey(a.patient_id, a.date);
+    if (recordsByDay.has(key) || evolutionsByDay.has(key)) return false;
+    return true;
+  });
+}
+
+/** Resolve a consulta a vincular: id explícito, senão a de hoje. */
+export async function resolveConsultationAppointmentId(
+  patientId: string,
+  professionalId: string,
+  preferredAppointmentId?: string | null,
+): Promise<string | null> {
+  if (preferredAppointmentId) {
+    const { data } = await supabase
+      .from("appointments")
+      .select("id")
+      .eq("id", preferredAppointmentId)
+      .eq("patient_id", patientId)
+      .eq("professional_id", professionalId)
+      .maybeSingle();
+    if (data?.id) return data.id;
+  }
+  return findPatientAppointmentToday(patientId, professionalId);
+}

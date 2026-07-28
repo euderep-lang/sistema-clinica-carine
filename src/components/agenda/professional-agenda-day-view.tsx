@@ -298,6 +298,7 @@ export function ProfessionalAgendaDayView({
                           navigate({
                             to: "/professional/patients/$id/record",
                             params: { id: row.patient_id! },
+                            search: { appointment: row.id },
                           })
                         }
                       >

@@ -46,7 +46,7 @@ import { useAuth } from "@/lib/mock-auth";
 import { ageFromBirthDate, shortDisplayName } from "@/lib/patient-utils";
 import {
   ensureTodayConsultationLinked,
-  findPatientAppointmentToday,
+  resolveConsultationAppointmentId,
 } from "@/lib/patient-appointment";
 import { PatientCompleteRegistrationDialog } from "@/components/patient-complete-registration-dialog";
 import { isPatientRegistrationIncomplete } from "@/lib/patient-registration-complete";
@@ -55,6 +55,9 @@ import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/professional/patients/$id/record")({
   component: RecordPage,
+  validateSearch: (s: Record<string, unknown>) => ({
+    appointment: typeof s.appointment === "string" && s.appointment ? s.appointment : undefined,
+  }),
 });
 
 interface Patient {
@@ -77,6 +80,7 @@ interface Patient {
 
 function RecordPage() {
   const { id } = Route.useParams();
+  const { appointment: appointmentFromSearch } = Route.useSearch();
   const { profile } = useAuth();
   const isMobile = useIsMobile();
   const [mobileTab, setMobileTab] = useState<"editor" | "history">("editor");
@@ -95,6 +99,7 @@ function RecordPage() {
   const [compareOpen, setCompareOpen] = useState(false);
   const [todayAppointmentLinked, setTodayAppointmentLinked] = useState(false);
   const [registrationOpen, setRegistrationOpen] = useState(false);
+  const [recordReady, setRecordReady] = useState(false);
   const photoFileRef = useRef<HTMLInputElement>(null);
   const photoKindRef = useRef<"exams" | "before_after" | null>(null);
 
@@ -147,6 +152,7 @@ function RecordPage() {
     if (!profile) return;
     (async () => {
       setLoading(true);
+      setRecordReady(false);
       const { data: p } = await supabase
         .from("patients")
         .select(
@@ -156,7 +162,9 @@ function RecordPage() {
         .maybeSingle();
       const patientRow = p as Patient | null;
       setPatient(patientRow);
-      setRegistrationOpen(isPatientRegistrationIncomplete(patientRow));
+      const incomplete = isPatientRegistrationIncomplete(patientRow);
+      setRegistrationOpen(incomplete);
+      setRecordReady(!incomplete);
       const [finRes, historyCount, linkResult] = await Promise.all([
         supabase.rpc("patient_has_financial_pending", { p_patient_id: id }),
         loadHistory(),
@@ -331,7 +339,11 @@ function RecordPage() {
     setSaving(true);
     try {
       const today = todayISO();
-      const appointmentId = await findPatientAppointmentToday(id, profile.id);
+      const appointmentId = await resolveConsultationAppointmentId(
+        id,
+        profile.id,
+        appointmentFromSearch,
+      );
       let evId: string;
 
       if (options?.writeMode && options.freeText) {
@@ -474,11 +486,17 @@ function RecordPage() {
         patient={patient}
         onCompleted={(updated) => {
           setPatient((prev) => (prev ? { ...prev, ...updated } : (updated as Patient)));
-          // Fecha o popup; o prontuário (já montado atrás) fica pronto para iniciar.
           setRegistrationOpen(false);
+          // Libera o prontuário após o fade-out do popup.
+          window.setTimeout(() => setRecordReady(true), 220);
         }}
       />
-      <div className="flex h-[calc(100dvh-5.25rem)] flex-col lg:h-[calc(100dvh-4.5rem)] lg:min-h-[36rem]">
+      <div
+        className={cn(
+          "flex h-[calc(100dvh-5.25rem)] flex-col transition-opacity duration-300 lg:h-[calc(100dvh-4.5rem)] lg:min-h-[36rem]",
+          recordReady ? "opacity-100" : "pointer-events-none opacity-0",
+        )}
+      >
         <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden pb-1">
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
           <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-sm">

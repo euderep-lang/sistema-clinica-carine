@@ -120,7 +120,11 @@ export async function listOpenEvolutionDrafts(
   const out: OpenEvolutionDraft[] = [];
   for (const row of rows) {
     const draft = rowToDraft(row);
-    if (!draftHasContent(draft)) continue;
+    if (!draftHasContent(draft)) {
+      // Remove rascunhos vazios que ficaram no banco e inflavam "prontuário em aberto".
+      void clearEvolutionDraft(professionalId, draft.patientId);
+      continue;
+    }
     out.push({
       patientId: draft.patientId,
       patientName: draft.patientName || "Paciente",

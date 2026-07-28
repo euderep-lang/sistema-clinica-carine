@@ -373,6 +373,7 @@ export function ProfessionalAgendaWeekView({
                                       navigate({
                                         to: "/professional/patients/$id/record",
                                         params: { id: row.patient_id! },
+                                        search: { appointment: row.id },
                                       })
                                     }
                                   >

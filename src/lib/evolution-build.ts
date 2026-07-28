@@ -113,29 +113,31 @@ export function buildEvolutionText(v: EvolutionFormValues): string {
 }
 
 export function evolutionFormHasContent(v: EvolutionFormValues): boolean {
+  const text = (s: string | null | undefined) => Boolean(s?.trim());
   return Boolean(
-    v.systolic ||
-      v.diastolic ||
-      v.hr ||
-      v.temp ||
-      v.weight ||
-      v.height ||
-      v.spo2 ||
-      v.glucose ||
-      v.consultReason ||
-      v.familyHistory ||
-      v.personalHistory ||
-      v.continuousMedication ||
-      v.supplementation ||
-      v.sleepQuality ||
-      v.bowelFunction ||
-      v.libido ||
-      v.foodAllergies ||
-      v.diet ||
-      v.physicalActivity ||
-      v.cid ||
-      v.diagnosis ||
-      v.conduct ||
-      v.notes,
+    text(v.systolic) ||
+      text(v.diastolic) ||
+      text(v.hr) ||
+      text(v.temp) ||
+      text(v.weight) ||
+      text(v.height) ||
+      text(v.spo2) ||
+      text(v.glucose) ||
+      text(v.consultReason) ||
+      text(v.familyHistory) ||
+      text(v.personalHistory) ||
+      text(v.continuousMedication) ||
+      text(v.supplementation) ||
+      text(v.sleepQuality) ||
+      text(v.bowelFunction) ||
+      text(v.libido) ||
+      text(v.foodAllergies) ||
+      text(v.diet) ||
+      text(v.physicalActivity) ||
+      text(v.cid?.code) ||
+      text(v.cid?.description) ||
+      text(v.diagnosis) ||
+      text(v.conduct) ||
+      text(v.notes),
   );
 }
