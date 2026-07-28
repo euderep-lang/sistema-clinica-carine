@@ -100,6 +100,8 @@ function RecordPage() {
   const [todayAppointmentLinked, setTodayAppointmentLinked] = useState(false);
   const [registrationOpen, setRegistrationOpen] = useState(false);
   const [recordReady, setRecordReady] = useState(false);
+  /** Após completar ficha nesta visita, não reabre o popup por corrida do load. */
+  const registrationDoneRef = useRef(false);
   const photoFileRef = useRef<HTMLInputElement>(null);
   const photoKindRef = useRef<"exams" | "before_after" | null>(null);
 
@@ -149,10 +151,17 @@ function RecordPage() {
   }, [id]);
 
   useEffect(() => {
-    if (!profile) return;
+    registrationDoneRef.current = false;
+    setRegistrationOpen(false);
+    setRecordReady(false);
+  }, [id]);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    let cancelled = false;
     (async () => {
       setLoading(true);
-      setRecordReady(false);
+      if (!registrationDoneRef.current) setRecordReady(false);
       const { data: p } = await supabase
         .from("patients")
         .select(
@@ -160,16 +169,23 @@ function RecordPage() {
         )
         .eq("id", id)
         .maybeSingle();
+      if (cancelled) return;
       const patientRow = p as Patient | null;
       setPatient(patientRow);
       const incomplete = isPatientRegistrationIncomplete(patientRow);
-      setRegistrationOpen(incomplete);
-      setRecordReady(!incomplete);
+      if (registrationDoneRef.current) {
+        setRegistrationOpen(false);
+        setRecordReady(true);
+      } else {
+        setRegistrationOpen(incomplete);
+        setRecordReady(!incomplete);
+      }
       const [finRes, historyCount, linkResult] = await Promise.all([
         supabase.rpc("patient_has_financial_pending", { p_patient_id: id }),
         loadHistory(),
         ensureTodayConsultationLinked(id, profile.id, profile.tenant_id),
       ]);
+      if (cancelled) return;
       setFinancialPending(Boolean(finRes.data));
       setTodayAppointmentLinked(linkResult.linked);
       // No celular, abre no histórico se já houver registros — evita parecer "em branco"
@@ -183,7 +199,10 @@ function RecordPage() {
       }
       setLoading(false);
     })();
-  }, [id, profile, loadHistory]);
+    return () => {
+      cancelled = true;
+    };
+  }, [id, profile?.id, profile?.tenant_id, loadHistory]);
 
   const prepareMediaFiles = async (
     list: FileList,
@@ -485,10 +504,13 @@ function RecordPage() {
         open={registrationOpen}
         patient={patient}
         onCompleted={(updated) => {
+          registrationDoneRef.current = true;
           setPatient((prev) => (prev ? { ...prev, ...updated } : (updated as Patient)));
           setRegistrationOpen(false);
           // Libera o prontuário após o fade-out do popup.
-          window.setTimeout(() => setRecordReady(true), 220);
+          window.setTimeout(() => {
+            if (registrationDoneRef.current) setRecordReady(true);
+          }, 220);
         }}
       />
       <div

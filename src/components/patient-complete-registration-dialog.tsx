@@ -200,13 +200,21 @@ export function PatientCompleteRegistrationDialog({
       toast.error(error.message);
       return;
     }
+    const updated = (data ?? { id: patient.id, ...payload }) as CompleteRegistrationPatient;
     toast.success("Cadastro completo");
-    onCompleted((data ?? { id: patient.id, ...payload }) as CompleteRegistrationPatient);
+    // Fecha imediatamente no fluxo do submit (antes de qualquer re-render do load).
+    onCompleted(updated);
   };
 
   // Sempre monta o Dialog controlado — nunca `return null` com overlay aberto (fica em branco).
   return (
-    <Dialog open={open} onOpenChange={() => { /* bloqueante até salvar */ }}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        // Bloqueia fechar por overlay/ESC; só o pai fecha após salvar (open=false).
+        if (next) return;
+      }}
+    >
       <DialogContent
         className="max-w-lg max-h-[90vh] overflow-y-auto [&>button]:hidden"
         onPointerDownOutside={(e) => e.preventDefault()}
