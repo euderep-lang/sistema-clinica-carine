@@ -725,7 +725,10 @@ export function FinancialCobrancasTab({
                                     id: r.id,
                                     amount: Number(r.amount) || 0,
                                     description: r.description,
+                                    patientId: r.patient_id ?? r.patients?.id ?? null,
                                     patientName: r.patients?.full_name ?? null,
+                                    patientPhone: r.patients?.phone ?? null,
+                                    patientPhoneDdi: r.patients?.phone_ddi ?? null,
                                   })
                                 }
                               >

@@ -72,6 +72,7 @@ export function NfseDetailDialog({ open, onOpenChange, bill, onChanged }: Props)
   const status = bill.nfse_status;
   const statusLabel = status ? NFSE_STATUS_LABEL[status] : "Sem emissão";
   const statusClass = status ? NFSE_STATUS_CLASS[status] : "bg-muted text-muted-foreground";
+  const viewUrl = bill.nfse_url || bill.nfse_pdf_url || null;
 
   const downloadPdf = async () => {
     setBusy("pdf");
@@ -215,11 +216,11 @@ export function NfseDetailDialog({ open, onOpenChange, bill, onChanged }: Props)
             </Button>
           </div>
           <div className="flex w-full flex-wrap gap-2">
-            {bill.nfse_url ? (
+            {viewUrl ? (
               <Button variant="outline" className="flex-1" asChild>
-                <a href={bill.nfse_url} target="_blank" rel="noreferrer">
+                <a href={viewUrl} target="_blank" rel="noreferrer">
                   <ExternalLink className="mr-2 size-4" />
-                  Abrir portal
+                  Visualizar NFS-e
                 </a>
               </Button>
             ) : null}

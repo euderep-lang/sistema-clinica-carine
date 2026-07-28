@@ -7,7 +7,7 @@ export interface FinancialTabScopeProps {
 }
 
 export const RECEIVABLE_BILL_SELECT =
-  "id, description, amount, discount_value, paid_amount, due_date, paid_date, competence_date, payment_method, status, notes, budget_id, patient_id, professional_id, installment_number, installment_count, consultation_charge_id, nfse_number, nfse_status, nfse_issued_at, patients(full_name), profiles:professional_id(full_name)";
+  "id, description, amount, discount_value, paid_amount, due_date, paid_date, competence_date, payment_method, status, notes, budget_id, patient_id, professional_id, installment_number, installment_count, consultation_charge_id, nfse_number, nfse_status, nfse_issued_at, patients(id, full_name, phone, phone_ddi), profiles:professional_id(full_name)";
 
 export function applyReceivableProfessionalFilter<
   T extends { eq: (col: string, val: string) => T },

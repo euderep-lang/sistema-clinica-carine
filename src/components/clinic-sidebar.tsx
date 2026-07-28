@@ -94,6 +94,12 @@ const NAV: Record<Role, { label: string; items: NavItem[] }[]> = {
         { title: "Campanhas", url: "/reception/marketing", icon: Megaphone },
       ],
     },
+    {
+      label: "Financeiro",
+      items: [
+        { title: "NFS-e", url: "/financial/nfse", icon: FileText },
+      ],
+    },
   ],
   professional: [
     {
@@ -117,6 +123,7 @@ const NAV: Record<Role, { label: string; items: NavItem[] }[]> = {
         { title: "Orçamentos", url: "/professional/budgets", icon: Receipt },
         { title: "Procedimentos", url: "/professional/procedimentos", icon: ClipboardList },
         { title: "Financeiro", url: "/professional/financial", icon: Wallet },
+        { title: "NFS-e", url: "/financial/nfse", icon: FileText },
         { title: "Estoque", url: "/professional/inventory", icon: Package },
         { title: "Configurações", url: "/professional/settings", icon: Settings },
       ],

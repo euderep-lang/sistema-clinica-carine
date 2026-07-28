@@ -36,7 +36,12 @@ export interface SaleBillRow {
   nfse_number?: string | null;
   nfse_status?: string | null;
   nfse_issued_at?: string | null;
-  patients: { full_name: string } | null;
+  patients: {
+    id?: string;
+    full_name: string;
+    phone?: string | null;
+    phone_ddi?: string | null;
+  } | null;
   profiles?: { full_name: string } | null;
 }
 

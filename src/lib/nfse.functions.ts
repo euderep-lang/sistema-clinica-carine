@@ -64,6 +64,64 @@ function onlyDigits(v: string | null | undefined): string {
     return (v ?? "").replace(/\D/g, "");
 }
 
+/** Absolutiza caminho relativo da Focus (ex.: /arquivos/…). */
+function absoluteFocusUrl(pathOrUrl: string | null | undefined): string | null {
+  if (!pathOrUrl || typeof pathOrUrl !== "string") return null;
+  const s = pathOrUrl.trim();
+  if (!s) return null;
+  if (/^https?:\/\//i.test(s)) return s;
+  const base = focusBaseUrl();
+  return `${base}${s.startsWith("/") ? s : `/${s}`}`;
+}
+
+/**
+ * Links úteis na resposta Focus: portal municipal (`url`) e DANFSe PDF
+ * (`url_danfse` é o campo oficial; `caminho_danfse` aparece em alguns municípios).
+ */
+function extractNfseLinks(body: Record<string, unknown>): {
+  portalUrl: string | null;
+  pdfUrl: string | null;
+} {
+  const portal =
+    typeof body.url === "string" && body.url.trim() ? body.url.trim() : null;
+  const pdfUrl =
+    absoluteFocusUrl(body.url_danfse as string | undefined) ||
+    absoluteFocusUrl(body.caminho_danfse as string | undefined);
+  return { portalUrl: portal, pdfUrl };
+}
+
+/** Baixa bytes do PDF: URLs Focus precisam de auth; S3/público costuma falhar com Basic. */
+async function fetchPdfBytes(pdfUrl: string): Promise<Buffer> {
+  const isFocusHost = /focusnfe\.com\.br/i.test(pdfUrl);
+  const tryFetch = (withAuth: boolean) =>
+    fetch(pdfUrl, {
+      headers: withAuth ? { Authorization: focusAuthHeader() } : undefined,
+    });
+
+  let res = await tryFetch(isFocusHost);
+  if (!res.ok && isFocusHost) {
+    res = await tryFetch(false);
+  } else if (!res.ok && !isFocusHost) {
+    res = await tryFetch(true);
+  }
+  if (!res.ok) {
+    throw new Error(`Não foi possível baixar o PDF (HTTP ${res.status}).`);
+  }
+  const contentType = (res.headers.get("content-type") || "").toLowerCase();
+  const buf = Buffer.from(await res.arrayBuffer());
+  // Focus às vezes devolve JSON de erro com 200.
+  if (contentType.includes("json") || (buf[0] === 0x7b /* { */ && buf.length < 2048)) {
+    const text = buf.toString("utf8");
+    try {
+      const err = JSON.parse(text) as { mensagem?: string; message?: string };
+      throw new Error(err.mensagem || err.message || "Focus não disponibilizou o PDF.");
+    } catch (e) {
+      if (e instanceof Error && !e.message.startsWith("Unexpected")) throw e;
+    }
+  }
+  return buf;
+}
+
 async function getNfseConfig(tenantId: string): Promise<NfsePrestadorConfig> {
     const { data } = await supabaseAdmin
       .from("tenant_settings")
@@ -244,20 +302,24 @@ export const consultNfse = createServerFn({ method: "POST" })
         const status = body.status as string | undefined;
 
                if (status === "autorizado") {
+                       const { portalUrl, pdfUrl } = extractNfseLinks(body);
                        await supabaseAdmin
                          .from("bills_receivable")
                          .update({
                                      nfse_status: "issued",
                                      nfse_number: (body.numero as string) ?? null,
                                      nfse_issued_at: new Date().toISOString(),
-                                     nfse_url: (body.url as string) ?? null,
-                                     nfse_pdf_url: (body.caminho_danfse as string)
-                                       ? `${focusBaseUrl()}${body.caminho_danfse as string}`
-                                                   : null,
+                                     nfse_url: portalUrl,
+                                     nfse_pdf_url: pdfUrl,
                                      nfse_message: null,
                          } as never)
                          .eq("id", data.billId);
-                       return { status: "issued" as const, numero: body.numero ?? null };
+                       return {
+                         status: "issued" as const,
+                         numero: (body.numero as string | null) ?? null,
+                         url: portalUrl,
+                         pdfUrl,
+                       };
                }
 
                if (status === "erro" || status === "cancelado") {
@@ -286,7 +348,7 @@ export const downloadNfsePdf = createServerFn({ method: "POST" })
 
     const { data: bill } = await supabaseAdmin
       .from("bills_receivable")
-      .select("id, nfse_number, nfse_pdf_url, nfse_focus_ref, nfse_status")
+      .select("id, nfse_number, nfse_pdf_url, nfse_url, nfse_focus_ref, nfse_status")
       .eq("id", data.billId)
       .eq("tenant_id", profile.tenant_id)
       .maybeSingle();
@@ -295,6 +357,7 @@ export const downloadNfsePdf = createServerFn({ method: "POST" })
       id: string;
       nfse_number: string | null;
       nfse_pdf_url: string | null;
+      nfse_url: string | null;
       nfse_focus_ref: string | null;
       nfse_status: string | null;
     } | null;
@@ -305,34 +368,39 @@ export const downloadNfsePdf = createServerFn({ method: "POST" })
     }
 
     let pdfUrl = row.nfse_pdf_url;
-    if (!pdfUrl && row.nfse_focus_ref) {
+    let portalUrl: string | null = row.nfse_url;
+    if (row.nfse_focus_ref) {
       const res = await fetch(`${focusBaseUrl()}/v2/nfse/${encodeURIComponent(row.nfse_focus_ref)}`, {
         headers: { Authorization: focusAuthHeader() },
       });
       const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      if (body.caminho_danfse) {
-        pdfUrl = `${focusBaseUrl()}${body.caminho_danfse as string}`;
+      const links = extractNfseLinks(body);
+      if (links.portalUrl) portalUrl = links.portalUrl;
+      if (links.pdfUrl) pdfUrl = links.pdfUrl;
+      if (links.pdfUrl || links.portalUrl || body.numero) {
         await supabaseAdmin
           .from("bills_receivable")
           .update({
-            nfse_pdf_url: pdfUrl,
-            nfse_url: (body.url as string) ?? null,
+            nfse_pdf_url: links.pdfUrl ?? row.nfse_pdf_url,
+            nfse_url: links.portalUrl ?? row.nfse_url,
             nfse_number: (body.numero as string) ?? row.nfse_number,
           } as never)
           .eq("id", row.id);
       }
     }
-    if (!pdfUrl) throw new Error("Focus ainda não disponibilizou o PDF desta nota.");
-
-    const fileRes = await fetch(pdfUrl, { headers: { Authorization: focusAuthHeader() } });
-    if (!fileRes.ok) {
-      throw new Error(`Não foi possível baixar o PDF (HTTP ${fileRes.status}).`);
+    if (!pdfUrl) {
+      const hint = portalUrl
+        ? " Use “Visualizar NFS-e” para abrir no portal e imprimir/salvar."
+        : "";
+      throw new Error(`Focus ainda não disponibilizou o PDF desta nota.${hint}`);
     }
-    const buf = Buffer.from(await fileRes.arrayBuffer());
+
+    const buf = await fetchPdfBytes(pdfUrl);
     const numero = row.nfse_number?.replace(/\W+/g, "_") || row.id.slice(0, 8);
     return {
       fileName: `NFSe-${numero}.pdf`,
       mimeType: "application/pdf",
       base64: buf.toString("base64"),
+      portalUrl,
     };
   });
