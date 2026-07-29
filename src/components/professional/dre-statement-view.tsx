@@ -41,7 +41,7 @@ function DreSummaryCards({ data }: { data: DreStatementData }) {
     {
       label: "Receita líquida",
       value: data.netRevenue,
-      sub: "Produção − descontos (competência)",
+      sub: "Bruto − descontos = faturamento/produção",
       icon: TrendingUp,
       tone: "text-emerald-700 dark:text-emerald-400 bg-emerald-500/10",
     },

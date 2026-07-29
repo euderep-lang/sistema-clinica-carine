@@ -169,8 +169,10 @@ export async function loadDreStatement(
     });
   }
 
-  const grossRevenue = metrics.production;
-  const netRevenue = roundChartMoney(grossRevenue - discounts);
+  // amount já é líquido (bruto − desconto). Faturamento/produção = Σ amount.
+  // Bruta reconstrói o valor antes do desconto só para a linha 1 do DRE.
+  const netRevenue = roundChartMoney(metrics.production);
+  const grossRevenue = roundChartMoney(netRevenue + discounts);
   const operationalExpenses = metrics.expenses;
   const financialExpenses = metrics.fees;
   const operatingResult = roundChartMoney(
@@ -206,7 +208,7 @@ export function buildDreSummaryLines(data: DreStatementData): DreDisplayLine[] {
     {
       id: "gross",
       code: "1.01",
-      label: "Receita de serviços (produção por competência)",
+      label: "Receita de serviços (valor bruto antes do desconto)",
       amount: data.grossRevenue,
       kind: "item",
       indent: 1,
@@ -231,7 +233,7 @@ export function buildDreSummaryLines(data: DreStatementData): DreDisplayLine[] {
     {
       id: "net-revenue",
       code: "3",
-      label: "(=) Receita operacional líquida",
+      label: "(=) Receita operacional líquida (faturamento/produção)",
       amount: data.netRevenue,
       kind: "subtotal",
       indent: 0,
@@ -302,48 +304,14 @@ export function buildDreDetailedLines(data: DreStatementData): DreDisplayLine[] 
       kind: "section",
       indent: 0,
     },
-  ];
-
-  if (data.revenueByProfessional.length === 0) {
-    detailed.push({
+    {
       id: "gross",
       code: "1.01",
-      label: "Receita de serviços (produção por competência)",
+      label: "Receita de serviços (valor bruto antes do desconto)",
       amount: data.grossRevenue,
       kind: "item",
       indent: 1,
-    });
-  } else {
-    detailed.push({
-      id: "sec-revenue-pros",
-      code: "1.0",
-      label: "Receita por profissional (produção por competência)",
-      amount: null,
-      kind: "group",
-      indent: 1,
-    });
-    data.revenueByProfessional.forEach((row, index) => {
-      detailed.push({
-        id: `rev-${row.professionalId}`,
-        code: `1.${String(index + 1).padStart(2, "0")}`,
-        label: row.name,
-        amount: row.production,
-        kind: "item",
-        indent: 2,
-      });
-    });
-    detailed.push({
-      id: "gross-subtotal",
-      code: "1.99",
-      label: "Subtotal receita operacional bruta",
-      amount: data.grossRevenue,
-      kind: "subtotal",
-      indent: 1,
-      highlight: true,
-    });
-  }
-
-  detailed.push(
+    },
     {
       id: "sec-deductions",
       code: "2",
@@ -364,12 +332,36 @@ export function buildDreDetailedLines(data: DreStatementData): DreDisplayLine[] 
     {
       id: "net-revenue",
       code: "3",
-      label: "(=) Receita operacional líquida",
+      label: "(=) Receita operacional líquida (faturamento/produção)",
       amount: data.netRevenue,
       kind: "subtotal",
       indent: 0,
       highlight: true,
     },
+  ];
+
+  if (data.revenueByProfessional.length > 0) {
+    detailed.push({
+      id: "sec-revenue-pros",
+      code: "3.0",
+      label: "Produção por profissional (competência)",
+      amount: null,
+      kind: "group",
+      indent: 1,
+    });
+    data.revenueByProfessional.forEach((row, index) => {
+      detailed.push({
+        id: `rev-${row.professionalId}`,
+        code: `3.${String(index + 1).padStart(2, "0")}`,
+        label: row.name,
+        amount: row.production,
+        kind: "item",
+        indent: 2,
+      });
+    });
+  }
+
+  detailed.push(
     {
       id: "sec-opex",
       code: "4",

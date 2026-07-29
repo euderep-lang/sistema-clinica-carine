@@ -199,7 +199,8 @@ export async function loadFinancialMetrics(
   const discounts = roundChartMoney(
     productionBills.reduce((sum, bill) => sum + Number(bill.discount_value ?? 0), 0),
   );
-  const netRevenue = roundChartMoney(stats.production - discounts);
+  // amount já é líquido; desconto não entra em faturamento/produção.
+  const netRevenue = roundChartMoney(stats.production);
   const expenseTotal = roundChartMoney(expenses.reduce((s, e) => s + Number(e.amount), 0));
   const commissions = roundChartMoney(
     commissionRows.reduce((sum, row) => sum + row.commissionAmount, 0),
@@ -209,8 +210,7 @@ export async function loadFinancialMetrics(
   const avgTicket =
     productionBills.length > 0
       ? roundChartMoney(
-          productionBills.reduce((s, b) => s + Number(b.amount) + Number(b.discount_value ?? 0), 0) /
-            productionBills.length,
+          productionBills.reduce((s, b) => s + Number(b.amount), 0) / productionBills.length,
         )
       : 0;
 

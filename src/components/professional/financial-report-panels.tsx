@@ -179,7 +179,7 @@ function MetricsPanel({ ctx }: { ctx: ReportQueryCtx }) {
             <StatCard
               label="Resultado operacional"
               value={fmt(data.operatingResult)}
-              sub="Produção − descontos − despesas − comissões − taxas"
+              sub="Produção − despesas − comissões − taxas"
               tone={data.operatingResult >= 0 ? "success" : "danger"}
             />
             <StatCard

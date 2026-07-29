@@ -219,11 +219,14 @@ export function FinancialCobrancasTab({
     );
   }, [periodRows, rows, search, status]);
 
-  const hasListFilter = Boolean(search.trim()) || status !== "all";
+  // Busca só afeta a lista. Com status "Todos", os cards mostram o faturamento do período.
+  const hasStatusFilter = status !== "all";
+  const hasSearch = Boolean(search.trim());
+  const hasListFilter = hasStatusFilter;
 
   const filteredBillIds = useMemo(() => new Set(filtered.map((r) => r.id)), [filtered]);
 
-  /** Pagamentos do período limitados às cobranças do filtro (busca/status). */
+  /** Pagamentos do período; com filtro de status, limita às cobranças filtradas. */
   const summaryPayments = useMemo(() => {
     if (!hasListFilter) return periodPayments;
     return periodPayments.filter((p) => filteredBillIds.has(p.bill_receivable_id));
@@ -472,11 +475,13 @@ export function FinancialCobrancasTab({
         title={hasListFilter ? "Resumo do filtro" : "Resumo do período"}
         description={
           hasListFilter
-            ? `${filterSummary.count} cobrança(s) na lista abaixo${
-                search.trim() ? ` · “${search.trim()}”` : ""
-              }${status !== "all" ? ` · ${BILL_STATUS_LABEL[status] ?? status}` : ""}`
+            ? `${filterSummary.count} cobrança(s) · ${BILL_STATUS_LABEL[status] ?? status}${
+                hasSearch ? ` · “${search.trim()}”` : ""
+              }`
             : period
-              ? `${fmtDate(period.from)} – ${fmtDate(period.to)}`
+              ? `${fmtDate(period.from)} – ${fmtDate(period.to)}${
+                  hasSearch ? ` · lista filtrada por “${search.trim()}”` : ""
+                }`
               : "Selecione um período válido"
         }
       >
@@ -574,7 +579,11 @@ export function FinancialCobrancasTab({
             size="sm"
             label={hasListFilter ? "Valor total" : "Produção"}
             value={fmt(stats.production)}
-            sub={hasListFilter ? "Soma das cobranças filtradas" : "Competência no período"}
+            sub={
+              hasListFilter
+                ? "Soma das cobranças filtradas"
+                : "Valor final da venda (após desconto)"
+            }
             icon={Wallet}
             onClick={() => period && setSummaryKind("production")}
           />
