@@ -45,6 +45,7 @@ export function nfseWhatsAppDraft(opts: {
   amount?: number | null;
   description?: string | null;
   portalUrl?: string | null;
+  pdfUrl?: string | null;
 }): string {
   const first = (opts.patientName ?? "").trim().split(/\s+/)[0] || "olá";
   const amount =
@@ -57,11 +58,27 @@ export function nfseWhatsAppDraft(opts: {
       : `Segue a NFS-e${amount != null ? ` no valor de ${fmt(amount)}` : ""}.`,
   ];
   if (description) lines.push(`Referente a: ${description}`);
+
   const portal = opts.portalUrl?.trim() || "";
-  // Evita colar link bruto de PDF no S3; portal municipal costuma ser mais útil.
-  if (portal && !/s3[.-].*amazonaws\.com/i.test(portal)) {
-    lines.push(`Consulta/portal: ${portal}`);
+  const pdf = opts.pdfUrl?.trim() || "";
+  const isS3 = (u: string) => /s3[.-].*amazonaws\.com/i.test(u);
+  // Links Focus autenticados não abrem para a paciente.
+  const isFocusAuth = (u: string) => /focusnfe\.com\.br/i.test(u);
+
+  // Preferir portal municipal; se não houver, usar PDF (mesmo S3 público da DANFSe).
+  let link: string | null = null;
+  let linkLabel = "Consulta/portal";
+  if (portal && !isS3(portal) && !isFocusAuth(portal)) {
+    link = portal;
+  } else if (pdf && !isFocusAuth(pdf)) {
+    link = pdf;
+    linkLabel = "PDF da NFS-e";
+  } else if (portal && !isFocusAuth(portal)) {
+    link = portal;
+    linkLabel = "PDF da NFS-e";
   }
+  if (link) lines.push(`${linkLabel}: ${link}`);
+
   lines.push("Qualquer dúvida, estamos à disposição.");
   return lines.join("\n");
 }

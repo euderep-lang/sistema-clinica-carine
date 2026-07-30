@@ -187,6 +187,7 @@ export function EmitNfseDialog({
       amount: issued.amount,
       description: issued.description,
       portalUrl: issued.url,
+      pdfUrl: issued.pdfUrl,
     });
     const ok = openCrmInbox(navigate, {
       patientId: issued.patientId,

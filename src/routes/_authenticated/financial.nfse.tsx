@@ -158,6 +158,7 @@ function NfsePage() {
       amount: bill.nfse_amount ?? bill.amount,
       description: bill.nfse_description ?? bill.description,
       portalUrl: bill.nfse_url,
+      pdfUrl: bill.nfse_pdf_url,
     });
     const ok = openCrmInbox(navigate, {
       patientId: bill.patients?.id,
