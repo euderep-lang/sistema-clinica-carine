@@ -38,6 +38,7 @@ import {
   type InventoryLinkInput,
 } from "@/lib/procedures";
 import { AUTOMATION_QUEUED_MESSAGE } from "@/lib/automation-messages";
+import { findPatientAppointmentToday } from "@/lib/patient-appointment";
 
 interface Procedure {
   id: string;
@@ -65,6 +66,8 @@ interface FinishConsultationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   patientId: string;
+  /** Consulta aberta no prontuário/agenda — prioridade ao finalizar. */
+  appointmentId?: string | null;
 }
 
 const PRICE_TABLES = [
@@ -76,6 +79,7 @@ export function FinishConsultationDialog({
   open,
   onOpenChange,
   patientId,
+  appointmentId: appointmentIdProp = null,
 }: FinishConsultationDialogProps) {
   const { profile } = useAuth();
   const navigate = useNavigate();
@@ -261,42 +265,83 @@ export function FinishConsultationDialog({
     const inventoryMap = inventoryOverride ?? saleInventory;
 
     setSaving(true);
-    const { data, error } = await supabase.rpc("finish_consultation", {
-      p_patient_id: patientId,
-      p_room_id: roomId === "geral" ? null : roomId,
-      p_price_table: priceTable,
-      p_new_items: expandSaleItemsWithPerUnitInventory(
-        selectedNew,
-        quantities,
-        (p) => {
-          const qty = quantities[p.id] ?? 0;
-          return qty > 0 ? lineTotalPrice(p) / qty : lineUnitPrice(p);
-        },
-        inventoryMap,
-      ),
-      p_session_items: [],
-    });
-    setSaving(false);
+    try {
+      let appointmentId = appointmentIdProp ?? null;
+      if (!appointmentId) {
+        appointmentId = await findPatientAppointmentToday(patientId, profile.id);
+      }
 
-    if (error) {
-      toast.error(error.message);
-      return;
+      const rpcPayload = {
+        p_patient_id: patientId,
+        p_room_id: roomId === "geral" ? null : roomId,
+        p_price_table: priceTable,
+        p_new_items: expandSaleItemsWithPerUnitInventory(
+          selectedNew,
+          quantities,
+          (p) => {
+            const qty = quantities[p.id] ?? 0;
+            return qty > 0 ? lineTotalPrice(p) / qty : lineUnitPrice(p);
+          },
+          inventoryMap,
+        ),
+        p_session_items: [] as never[],
+      };
+
+      let { data, error } = await supabase.rpc("finish_consultation", {
+        ...rpcPayload,
+        p_appointment_id: appointmentId,
+      });
+
+      // Compatível com RPC antiga (sem p_appointment_id) até a migration aplicar.
+      if (
+        error &&
+        /p_appointment_id|could not find the function|function public\.finish_consultation/i.test(
+          error.message,
+        )
+      ) {
+        ({ data, error } = await supabase.rpc("finish_consultation", rpcPayload));
+      }
+
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      const result = data as { total?: number; bill_id?: string; appointment_id?: string } | null;
+      let finishedId = result?.appointment_id ?? appointmentId ?? null;
+
+      // Garante concluído → trigger enfileira mensagens automáticas.
+      if (finishedId) {
+        const { error: statusErr } = await supabase
+          .from("appointments")
+          .update({ status: "completed" })
+          .eq("id", finishedId)
+          .neq("status", "completed");
+        if (statusErr) {
+          console.error("[finish] status completed:", statusErr.message);
+        }
+      }
+
+      if (result?.total && result.total > 0) {
+        toast.success(`Consulta finalizada · ${fmt(result.total)} lançado no financeiro`);
+      } else {
+        toast.success("Consulta finalizada");
+      }
+
+      if (finishedId) {
+        toast.info(AUTOMATION_QUEUED_MESSAGE);
+      } else {
+        toast.warning(
+          "Consulta finalizada, mas nenhum agendamento do dia foi vinculado. Confira a agenda.",
+        );
+      }
+
+      onOpenChange(false);
+      setFinishedAppointmentId(finishedId);
+      setFollowUpOpen(true);
+    } finally {
+      setSaving(false);
     }
-
-    const result = data as { total?: number; bill_id?: string; appointment_id?: string } | null;
-    if (result?.total && result.total > 0) {
-      toast.success(`Consulta finalizada · ${fmt(result.total)} lançado no financeiro`);
-    } else {
-      toast.success("Consulta finalizada");
-    }
-
-    if (result?.appointment_id) {
-      toast.info(AUTOMATION_QUEUED_MESSAGE);
-    }
-
-    onOpenChange(false);
-    setFinishedAppointmentId(result?.appointment_id ?? null);
-    setFollowUpOpen(true);
   };
 
   const inventoryPendingQueue = useMemo(

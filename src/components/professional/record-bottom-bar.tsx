@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 interface RecordBottomBarProps {
   patientId: string;
   patientName: string;
+  appointmentId?: string | null;
   onSessionsClick?: () => void;
   onPhotosExamsClick?: () => void;
   onPhotosBeforeAfterClick?: () => void;
@@ -138,6 +139,7 @@ function BarButton({
 export function RecordBottomBar({
   patientId,
   patientName,
+  appointmentId = null,
   onSessionsClick,
   onPhotosExamsClick,
   onPhotosBeforeAfterClick,
@@ -313,6 +315,7 @@ export function RecordBottomBar({
         open={finishOpen}
         onOpenChange={setFinishOpen}
         patientId={patientId}
+        appointmentId={appointmentId}
       />
 
       {docType && (

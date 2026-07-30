@@ -660,6 +660,7 @@ function RecordPage() {
         <RecordBottomBar
           patientId={id}
           patientName={patient.full_name}
+          appointmentId={appointmentFromSearch}
           onSessionsClick={() => setSessionsOpen(true)}
           onPhotosExamsClick={() => openPhotoPicker("exams")}
           onPhotosBeforeAfterClick={() => openPhotoPicker("before_after")}
