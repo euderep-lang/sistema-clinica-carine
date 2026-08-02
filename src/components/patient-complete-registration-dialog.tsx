@@ -111,17 +111,32 @@ export function PatientCompleteRegistrationDialog({
   /** Fecha na hora após save OK, mesmo se o pai ainda não atualizou `open`. */
   const [forceClosed, setForceClosed] = useState(false);
   const hydratedForOpen = useRef(false);
+  /** Após salvar com sucesso, nunca reabre/rehidrata neste paciente. */
+  const completedRef = useRef(false);
   const formTopRef = useRef<HTMLDivElement>(null);
+  const patientId = patient?.id ?? null;
+
+  useEffect(() => {
+    completedRef.current = false;
+    setForceClosed(false);
+    hydratedForOpen.current = false;
+    setForm(null);
+  }, [patientId]);
 
   // Hidrata só ao ABRIR o popup — nunca ao atualizar `patient` no meio do preenchimento/save.
   useEffect(() => {
     if (!open) {
       hydratedForOpen.current = false;
-      setForceClosed(false);
-      const t = window.setTimeout(() => setForm(null), 220);
-      return () => window.clearTimeout(t);
+      // Se já concluiu, mantém fechado e não apaga o “completed” (evita popup em branco).
+      if (!completedRef.current) {
+        setForceClosed(false);
+        const t = window.setTimeout(() => setForm(null), 220);
+        return () => window.clearTimeout(t);
+      }
+      return;
     }
-    if (open && patient && !hydratedForOpen.current && !forceClosed) {
+    if (completedRef.current || forceClosed) return;
+    if (patient && !hydratedForOpen.current) {
       hydratedForOpen.current = true;
       setForm(toForm(patient));
       setErrors({});
@@ -131,7 +146,7 @@ export function PatientCompleteRegistrationDialog({
 
   const set = (k: keyof FormState, v: string) => setForm((f) => (f ? { ...f, [k]: v } : f));
   const age = form ? ageFromBirthDate(form.birth_date) : null;
-  const dialogOpen = Boolean(open && patient && !forceClosed);
+  const dialogOpen = Boolean(open && patient && !forceClosed && !completedRef.current);
 
   const onCepBlur = async () => {
     if (!form || digitsOnly(form.address_zip).length !== 8) return;
@@ -221,7 +236,8 @@ export function PatientCompleteRegistrationDialog({
         console.error("[patient] sync WhatsApp phone:", err),
       );
     }
-    // Fecha já no dialog; não depende do pai (evita corrida que reabre em branco).
+    // Fecha de forma definitiva: não reabre mesmo se o pai setar open=true por corrida.
+    completedRef.current = true;
     setForceClosed(true);
     hydratedForOpen.current = false;
     toast.success("Cadastro completo");

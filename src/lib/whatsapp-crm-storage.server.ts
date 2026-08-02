@@ -784,7 +784,11 @@ export async function updateMessageStatus(waMessageId: string, status: string, e
     .eq("wa_message_id", waMessageId);
 }
 
-/** Reflete no CRM uma mensagem apagada no WhatsApp (revoke feito pelo contato ou no celular). */
+/**
+ * Marca mensagem como apagada no CRM a partir do wa_message_id.
+ * Não é mais chamado pelo webhook Z-API (delete no celular não remove do CRM).
+ * Mantido para uso interno / migração se necessário.
+ */
 export async function markWaMessageDeletedByWaId(waMessageId: string) {
   const { data: existing } = await supabaseAdmin
     .from("wa_messages" as never)

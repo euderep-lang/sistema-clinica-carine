@@ -3,7 +3,6 @@ import { isWhatsAppLid, normalizeWaPhone } from "@/lib/wa-phone";
 import { verifyZApiWebhookAuth } from "@/lib/zapi-webhook-auth.server";
 import {
   insertWaMessage,
-  markWaMessageDeletedByWaId,
   maybeSendAfterHoursAutoReply,
   patchWaMessageMediaIfMissing,
   resolveTenantId,
@@ -405,14 +404,21 @@ export async function handleZApiWebhook(request: Request): Promise<Response> {
         );
       }
     } else if (/^(messagestatuscallback|deliverycallback)$/i.test(payload.type ?? "")) {
-      // Reflete no CRM quando o contato apaga uma mensagem para todos (revoke).
+      // Mensagens apagadas no celular NÃO são removidas do CRM (controle/auditoria).
+      // Apagar no CRM continua disponível só pela ação explícita na interface.
       if (payload.messageId && /^(deleted|revoked|revoke)$/i.test(payload.status ?? "")) {
-        await markWaMessageDeletedByWaId(payload.messageId);
+        console.info(
+          "[Z-API webhook] Ignorando delete/revoke remoto — mensagem preservada no CRM:",
+          payload.messageId,
+        );
       } else if (payload.messageId && payload.status) {
         await updateMessageStatus(payload.messageId, payload.status);
       }
     } else if (/deletecallback$/i.test(payload.type ?? "") && payload.messageId) {
-      await markWaMessageDeletedByWaId(payload.messageId);
+      console.info(
+        "[Z-API webhook] Ignorando deletecallback — mensagem preservada no CRM:",
+        payload.messageId,
+      );
     }
   } catch (e) {
     console.error("[Z-API webhook] error:", e);

@@ -154,13 +154,13 @@ export function EvolutionEditor({
               Nova evolução
             </h2>
             {draftSaved ? (
-              <p className="flex items-center gap-1 text-xs text-emerald-600">
+              <p className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
                 <Check className="size-3" />
-                Rascunho salvo automaticamente
+                Rascunho local — clique em Salvar para gravar no Histórico
               </p>
             ) : (
               <p className="text-xs text-muted-foreground">
-                Após salvar, o texto fica no Histórico
+                Após Salvar, o texto fica no Histórico
               </p>
             )}
           </div>

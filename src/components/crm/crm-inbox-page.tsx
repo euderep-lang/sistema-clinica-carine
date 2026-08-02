@@ -31,6 +31,7 @@ import { CrmMetricsStrip } from "@/components/crm/crm-metrics-strip";
 import { CrmGlobalSearch } from "@/components/crm/crm-global-search";
 import { CrmBroadcastDialog } from "@/components/crm/crm-broadcast-dialog";
 import { CrmForwardMessageDialog } from "@/components/crm/crm-forward-message-dialog";
+import { NewAppointmentDialog } from "@/components/agenda/new-appointment-dialog";
 import { PatientFormDialog } from "@/components/patient-form-dialog";
 import {
   crmChatBg,
@@ -79,7 +80,6 @@ import { getCachedWaMediaUrl, setCachedWaMediaUrl } from "@/lib/wa-media-url-cac
 import {
   conversationAssigneeName,
   conversationDisplayName,
-  conversationHandlerSubtitle,
   conversationPrimaryTagColor,
   fileToBase64,
   formatPhoneBR,
@@ -248,6 +248,15 @@ export function CrmInboxPage() {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleAt, setScheduleAt] = useState("");
   const [scheduling, setScheduling] = useState(false);
+  /** Agendar consulta (swipe / atalho) */
+  const [appointmentDialogOpen, setAppointmentDialogOpen] = useState(false);
+  const [appointmentConvId, setAppointmentConvId] = useState<string | null>(null);
+  /** Lembrete rápido via swipe na lista */
+  const [swipeReminderOpen, setSwipeReminderOpen] = useState(false);
+  const [swipeReminderConvId, setSwipeReminderConvId] = useState<string | null>(null);
+  const [swipeReminderAt, setSwipeReminderAt] = useState("");
+  const [swipeReminderNote, setSwipeReminderNote] = useState("");
+  const [swipeReminderSaving, setSwipeReminderSaving] = useState(false);
   const [scheduledList, setScheduledList] = useState<
     { id: string; body: string; send_at: string; status: string; created_at: string; error: string | null }[]
   >([]);
@@ -337,22 +346,16 @@ export function CrmInboxPage() {
     [conversations, selectedId],
   );
 
+  const appointmentConv = useMemo(
+    () => conversations.find((c) => c.id === appointmentConvId) ?? null,
+    [conversations, appointmentConvId],
+  );
+
   const chatHandlerInfo = useMemo(() => {
     const assignedName = conversationAssigneeName(selected);
     const lastOutboundStaff = lastOutboundStaffName(messages);
     return { assignedName, lastOutboundStaff };
   }, [selected, messages]);
-
-  const chatHandlerSubtitle = useMemo(
-    () =>
-      conversationHandlerSubtitle({
-        typingUser,
-        assignedName: chatHandlerInfo.assignedName,
-        lastOutboundStaff: chatHandlerInfo.lastOutboundStaff,
-        phone: selected ? formatPhoneBR(selected.contact_phone) : undefined,
-      }),
-    [typingUser, chatHandlerInfo, selected],
-  );
 
   const resolveTagColor = useCallback(
     (tagIds: string[] | undefined) => conversationPrimaryTagColor(tagIds, tags),
@@ -1366,9 +1369,10 @@ export function CrmInboxPage() {
     });
   };
 
-  const markUnread = async () => {
-    if (!selectedId || !tenant?.id) return;
-    const convId = selectedId;
+  const markUnread = async (conversationId?: string) => {
+    if (!tenant?.id) return;
+    const convId = conversationId ?? selectedId;
+    if (!convId) return;
     const current = conversations.find((c) => c.id === convId)?.unread_count ?? 0;
     const nextUnread = current > 0 ? current : 1;
 
@@ -1390,8 +1394,10 @@ export function CrmInboxPage() {
         prev.map((c) => (c.id === convId ? { ...c, unread_count: nextUnread } : c)),
       );
       toast.success("Marcada como não lida");
-      setSelectedId(null);
-      setMobileView("list");
+      if (selectedId === convId) {
+        setSelectedId(null);
+        setMobileView("list");
+      }
     } catch (e) {
       const msg = (e as Error).message;
       toast.error(
@@ -1399,6 +1405,50 @@ export function CrmInboxPage() {
           ? "Falha de conexão ao marcar como não lida. Tente novamente."
           : msg || "Falha ao marcar como não lida",
       );
+    }
+  };
+
+  const openSwipeSchedule = (conversationId: string) => {
+    setAppointmentConvId(conversationId);
+    setAppointmentDialogOpen(true);
+  };
+
+  const openSwipeReminder = (conversationId: string) => {
+    const inOneHour = new Date(Date.now() + 60 * 60 * 1000);
+    const local = new Date(inOneHour.getTime() - inOneHour.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
+    setSwipeReminderConvId(conversationId);
+    setSwipeReminderAt(local);
+    setSwipeReminderNote("");
+    setSwipeReminderOpen(true);
+  };
+
+  const saveSwipeReminder = async () => {
+    if (!profile || !swipeReminderConvId || !swipeReminderAt) return;
+    const convId = swipeReminderConvId;
+    const conv = conversations.find((c) => c.id === convId);
+    setSwipeReminderSaving(true);
+    try {
+      const { error } = await supabase.from("wa_reminders" as never).insert({
+        tenant_id: profile.tenant_id,
+        conversation_id: convId,
+        assigned_to: conv?.assigned_to ?? profile.id,
+        remind_at: new Date(swipeReminderAt).toISOString(),
+        note: swipeReminderNote.trim() || null,
+        created_by: profile.id,
+      } as never);
+      if (error) throw new Error(error.message);
+      setSwipeReminderOpen(false);
+      setSwipeReminderConvId(null);
+      if (selectedId === convId) {
+        await loadConversationDetails(convId, { refresh: true });
+      }
+      toast.success("Lembrete criado");
+    } catch (e) {
+      toast.error((e as Error).message || "Falha ao criar lembrete");
+    } finally {
+      setSwipeReminderSaving(false);
     }
   };
 
@@ -1955,8 +2005,12 @@ export function CrmInboxPage() {
                   : "Conversa",
           subtitle:
             mobileView === "chat" && selected
-              ? chatHandlerSubtitle
-              : undefined,
+              ? typingUser
+                ? `${typingUser} está digitando…`
+                : formatPhoneBR(selected.contact_phone)
+              : composeTarget
+                ? formatPhoneBR(composeTarget.phone)
+                : undefined,
           showBack: true,
           onBack: () => setMobileView(mobileView === "details" ? "chat" : "list"),
           right:
@@ -2089,6 +2143,12 @@ export function CrmInboxPage() {
             </p>
             {mobileView === "list" ? (
               <p className="truncate text-xs text-muted-foreground">Inbox da clínica</p>
+            ) : selected || composeTarget ? (
+              <p className="truncate text-xs text-muted-foreground">
+                {composeTarget
+                  ? formatPhoneBR(composeTarget.phone)
+                  : formatPhoneBR(selected!.contact_phone)}
+              </p>
             ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -2152,6 +2212,10 @@ export function CrmInboxPage() {
             convTagsMap={convTagsMap}
             resolveTagColor={resolveTagColor}
             onSelectConversation={selectConversation}
+            swipeActionsEnabled
+            onSwipeUnread={(id) => void markUnread(id)}
+            onSwipeSchedule={openSwipeSchedule}
+            onSwipeReminder={openSwipeReminder}
             hasMoreConversations={hasMoreConversations}
             listSentinelRef={listSentinelRef}
             onLoadMore={() => setVisibleCount((c) => c + 30)}
@@ -2610,6 +2674,68 @@ export function CrmInboxPage() {
         currentConversationId={selectedId}
         onConfirm={confirmForwardMessage}
       />
+
+      <NewAppointmentDialog
+        open={appointmentDialogOpen}
+        onOpenChange={(open) => {
+          setAppointmentDialogOpen(open);
+          if (!open) setAppointmentConvId(null);
+        }}
+        defaultPatientId={appointmentConv?.patient_id ?? undefined}
+        defaultPatientName={
+          appointmentConv
+            ? appointmentConv.patients?.full_name ??
+              appointmentConv.contact_name ??
+              formatPhoneBR(appointmentConv.contact_phone)
+            : undefined
+        }
+        defaultProfessionalId={profile?.role === "professional" ? profile.id : undefined}
+        appointmentSource="crm"
+        waConversationId={appointmentConv?.id}
+        onSaved={() => toast.success("Consulta agendada")}
+      />
+
+      <Dialog
+        open={swipeReminderOpen}
+        onOpenChange={(open) => {
+          setSwipeReminderOpen(open);
+          if (!open) setSwipeReminderConvId(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Novo lembrete</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="swipe-reminder-at">Quando lembrar</Label>
+              <Input
+                id="swipe-reminder-at"
+                type="datetime-local"
+                value={swipeReminderAt}
+                onChange={(e) => setSwipeReminderAt(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="swipe-reminder-note">Nota (opcional)</Label>
+              <Input
+                id="swipe-reminder-note"
+                value={swipeReminderNote}
+                onChange={(e) => setSwipeReminderNote(e.target.value)}
+                placeholder="Ex.: Retornar ligação"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSwipeReminderOpen(false)} disabled={swipeReminderSaving}>
+              Cancelar
+            </Button>
+            <Button onClick={() => void saveSwipeReminder()} disabled={swipeReminderSaving || !swipeReminderAt}>
+              {swipeReminderSaving ? <Loader2 className="size-4 animate-spin" /> : "Salvar lembrete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <PatientFormDialog
         open={createPatientOpen}

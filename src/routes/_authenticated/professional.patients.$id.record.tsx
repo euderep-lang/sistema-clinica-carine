@@ -103,8 +103,12 @@ function RecordPage() {
   /** Após completar ficha nesta visita, não reabre o popup por corrida do load. */
   const registrationDoneRef = useRef(false);
   const loadSeqRef = useRef(0);
+  /** Evita que um loadHistory antigo sobrescreva o histórico após um save. */
+  const historySeqRef = useRef(0);
+  const patientRef = useRef<Patient | null>(null);
   const photoFileRef = useRef<HTMLInputElement>(null);
   const photoKindRef = useRef<"exams" | "before_after" | null>(null);
+  patientRef.current = patient;
 
   const openPhotoPicker = (kind: "exams" | "before_after") => {
     photoKindRef.current = kind;
@@ -122,7 +126,8 @@ function RecordPage() {
     setPendingPhotoKind(null);
   }, []);
 
-  const loadHistory = useCallback(async () => {
+  const loadHistory = useCallback(async (): Promise<number | null> => {
+    const seq = ++historySeqRef.current;
     const [evRes, mediaRes] = await Promise.all([
       supabase
         .from("patient_evolutions")
@@ -140,13 +145,23 @@ function RecordPage() {
         .order("created_at", { ascending: false }) as never,
     ]);
 
-    if (evRes.error) toast.error(evRes.error.message);
+    // Resposta atrasada: não apaga o histórico já atualizado pelo save.
+    if (seq !== historySeqRef.current) return null;
+
+    if (evRes.error) {
+      toast.error(evRes.error.message);
+      // Não zera o histórico em erro de rede/RLS.
+      throw new Error(evRes.error.message);
+    }
     const mediaError = (mediaRes as { error: { message: string } | null }).error;
     if (mediaError) toast.error(mediaError.message);
 
     const evolutions = (evRes.data ?? []) as EvolutionEntry[];
-    const media = ((mediaRes.data ?? []) as unknown) as MediaHistoryEntry[];
+    const media = mediaError
+      ? []
+      : (((mediaRes.data ?? []) as unknown) as MediaHistoryEntry[]);
     const merged = mergeHistory(evolutions, media);
+    if (seq !== historySeqRef.current) return null;
     setHistory(merged);
     return merged.length;
   }, [id]);
@@ -155,6 +170,8 @@ function RecordPage() {
     registrationDoneRef.current = false;
     setRegistrationOpen(false);
     setRecordReady(false);
+    setHistory([]);
+    historySeqRef.current += 1;
   }, [id]);
 
   useEffect(() => {
@@ -162,7 +179,8 @@ function RecordPage() {
     let cancelled = false;
     const loadId = ++loadSeqRef.current;
     (async () => {
-      setLoading(true);
+      // Só tela cheia de loading na 1ª carga — evita desmontar o popup no meio do preenchimento.
+      if (!patientRef.current) setLoading(true);
       if (!registrationDoneRef.current) setRecordReady(false);
       const { data: p } = await supabase
         .from("patients")
@@ -175,9 +193,12 @@ function RecordPage() {
       const patientRow = p as Patient | null;
       const incomplete = isPatientRegistrationIncomplete(patientRow);
       if (registrationDoneRef.current) {
-        // Já completou nesta visita: não sobrescreve com fetch antigo incompleto.
+        // Já completou nesta visita: nunca reabre o popup nem apaga o patient atualizado.
         setRegistrationOpen(false);
         setRecordReady(true);
+        if (patientRow && !incomplete) {
+          setPatient((prev) => (prev ? { ...prev, ...patientRow } : patientRow));
+        }
       } else {
         setPatient(patientRow);
         setRegistrationOpen(incomplete);
@@ -185,14 +206,19 @@ function RecordPage() {
       }
       const [finRes, historyCount, linkResult] = await Promise.all([
         supabase.rpc("patient_has_financial_pending", { p_patient_id: id }),
-        loadHistory(),
+        loadHistory().catch(() => null),
         ensureTodayConsultationLinked(id, profile.id, profile.tenant_id),
       ]);
       if (cancelled || loadId !== loadSeqRef.current) return;
+      // Se o usuário salvou a ficha durante o load, não reabre nem trava o prontuário.
+      if (registrationDoneRef.current) {
+        setRegistrationOpen(false);
+        setRecordReady(true);
+      }
       setFinancialPending(Boolean(finRes.data));
       setTodayAppointmentLinked(linkResult.linked);
       if (
-        historyCount > 0 &&
+        (historyCount ?? 0) > 0 &&
         typeof window !== "undefined" &&
         window.matchMedia("(max-width: 1023px)").matches
       ) {
@@ -340,7 +366,11 @@ function RecordPage() {
       }
 
       clearPendingMedia();
-      await loadHistory();
+      try {
+        await loadHistory();
+      } catch {
+        // Mantém histórico atual se o reload falhar.
+      }
       if (lastId) setHighlightKey(historyHighlightKey("media", lastId));
       toast.success(saved === 1 ? "Anexo salvo no histórico" : `${saved} anexos salvos no histórico`);
       setTimeout(() => setHighlightKey(null), 4000);
@@ -365,9 +395,11 @@ function RecordPage() {
         appointmentFromSearch,
       );
       let evId: string;
+      let evolutionText: string;
+      let medicalRecordId: string | null = null;
 
       if (options?.writeMode && options.freeText) {
-        let medicalRecordId: string | null = null;
+        evolutionText = options.freeText;
         if (appointmentId) {
           const { data: linked } = await supabase
             .from("medical_records")
@@ -391,8 +423,12 @@ function RecordPage() {
               })
               .select("id")
               .single();
-            if (mrErr || !mr) throw new Error(mrErr?.message ?? "Erro ao vincular prontuário");
-            medicalRecordId = mr.id;
+            if (mrErr || !mr) {
+              // Evolução no histórico não depende do vínculo do prontuário.
+              console.error("[prontuario] vínculo medical_records:", mrErr?.message);
+            } else {
+              medicalRecordId = mr.id;
+            }
           }
         }
 
@@ -404,15 +440,15 @@ function RecordPage() {
             professional_id: profile.id,
             medical_record_id: medicalRecordId,
             date: today,
-            evolution_text: options.freeText,
+            evolution_text: evolutionText,
           })
-          .select("id")
+          .select("id, created_at")
           .single();
         if (error || !data) throw new Error(error?.message ?? "Erro ao salvar evolução");
         evId = data.id;
         setTodayAppointmentLinked(Boolean(appointmentId && medicalRecordId));
       } else {
-        const evolutionText = buildEvolutionText(form) || form.consultReason.trim();
+        evolutionText = buildEvolutionText(form) || form.consultReason.trim();
         const clinicalHistory = buildClinicalHistory(form);
 
         const { data: mr, error: mrErr } = await supabase
@@ -435,7 +471,12 @@ function RecordPage() {
           .select("id")
           .single();
 
-        if (mrErr || !mr) throw new Error(mrErr?.message ?? "Erro ao salvar prontuário");
+        if (mrErr || !mr) {
+          console.error("[prontuario] medical_records:", mrErr?.message);
+          toast.warning("Ficha clínica não vinculada; salvando evolução no histórico mesmo assim.");
+        } else {
+          medicalRecordId = mr.id;
+        }
 
         const { data, error } = await supabase
           .from("patient_evolutions")
@@ -443,7 +484,7 @@ function RecordPage() {
             tenant_id: profile.tenant_id,
             patient_id: id,
             professional_id: profile.id,
-            medical_record_id: mr.id,
+            medical_record_id: medicalRecordId,
             date: today,
             evolution_text: evolutionText,
             bp_systolic: form.systolic ? parseInt(form.systolic, 10) : null,
@@ -455,7 +496,7 @@ function RecordPage() {
             spo2: form.spo2 ? parseInt(form.spo2, 10) : null,
             blood_glucose: form.glucose ? parseInt(form.glucose, 10) : null,
           })
-          .select("id")
+          .select("id, created_at")
           .single();
 
         if (error || !data) throw new Error(error?.message ?? "Erro ao salvar evolução");
@@ -463,9 +504,32 @@ function RecordPage() {
         setTodayAppointmentLinked(Boolean(appointmentId));
       }
 
-      await loadHistory();
+      // Mostra no histórico na hora (antes do reload), para o usuário não achar que “não salvou”.
+      const optimistic: EvolutionEntry = {
+        id: evId,
+        date: today,
+        created_at: new Date().toISOString(),
+        evolution_text: evolutionText,
+        professional_id: profile.id,
+        profiles: {
+          full_name: profile.display_name?.trim() || profile.full_name || "Você",
+          specialty: profile.specialty ?? null,
+        },
+        evolution_attachments: [],
+      };
+      setHistory((prev) => {
+        const rest = prev.filter((h) => !(h.kind === "evolution" && h.data.id === evId));
+        return [{ kind: "evolution", data: optimistic }, ...rest];
+      });
       setHighlightKey(historyHighlightKey("evolution", evId));
       setMobileTab("history");
+
+      try {
+        await loadHistory();
+      } catch {
+        // Mantém a linha otimista se o reload falhar.
+      }
+
       toast.success(
         appointmentId
           ? "Evolução salva e vinculada à consulta de hoje"
@@ -480,7 +544,7 @@ function RecordPage() {
     }
   };
 
-  if (loading) {
+  if (loading && !patient) {
     return (
       <DashboardShell title="Prontuário">
         <div className="text-muted-foreground">Carregando…</div>
@@ -502,16 +566,14 @@ function RecordPage() {
   return (
     <DashboardShell title={`Prontuário · ${displayName}`} fullWidth>
       <PatientCompleteRegistrationDialog
-        open={registrationOpen}
+        open={registrationOpen && !registrationDoneRef.current}
         patient={patient}
         onCompleted={(updated) => {
           registrationDoneRef.current = true;
           setRegistrationOpen(false);
           setPatient((prev) => (prev ? { ...prev, ...updated } : (updated as Patient)));
-          // Libera o prontuário após o fade-out do popup.
-          window.setTimeout(() => {
-            if (registrationDoneRef.current) setRecordReady(true);
-          }, 180);
+          // Libera o prontuário na hora (não depende de timeout/corrida do load).
+          setRecordReady(true);
         }}
       />
       <div

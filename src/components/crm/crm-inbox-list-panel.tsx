@@ -11,6 +11,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { CrmContactAvatarFromMap } from "@/components/crm/crm-contact-avatar";
+import { CrmConversationSwipeRow } from "@/components/crm/crm-conversation-swipe-row";
 import {
   crmFilterPill,
   crmListItemActive,
@@ -25,6 +26,7 @@ import {
   CHANNEL_BADGE_CLASS,
   CHANNEL_LABEL,
   conversationDisplayName,
+  formatPhoneBR,
   formatRelativeTime,
   type WaConversation,
   type WaPendingTransfer,
@@ -62,6 +64,14 @@ interface CrmInboxListPanelProps {
   convTagsMap: Record<string, string[]>;
   resolveTagColor: (tagIds: string[] | undefined) => string | undefined;
   onSelectConversation: (id: string) => void;
+  /** Arrastar conversa (mobile): marcar não lida */
+  onSwipeUnread?: (conversationId: string) => void;
+  /** Arrastar conversa (mobile): agendar consulta */
+  onSwipeSchedule?: (conversationId: string) => void;
+  /** Arrastar conversa (mobile): criar lembrete */
+  onSwipeReminder?: (conversationId: string) => void;
+  /** Ativa swipe actions (touch). Default: true em telas estreitas via caller. */
+  swipeActionsEnabled?: boolean;
   hasMoreConversations: boolean;
   listSentinelRef: RefObject<HTMLDivElement | null>;
   onLoadMore: () => void;
@@ -96,6 +106,10 @@ export function CrmInboxListPanel({
   convTagsMap,
   resolveTagColor,
   onSelectConversation,
+  onSwipeUnread,
+  onSwipeSchedule,
+  onSwipeReminder,
+  swipeActionsEnabled = false,
   hasMoreConversations,
   listSentinelRef,
   onLoadMore,
@@ -261,98 +275,112 @@ export function CrmInboxListPanel({
           <div className="min-w-0 max-w-full px-2">
             {visibleConversations.map((c) => {
               const name = conversationDisplayName(c);
+              const phoneLabel = formatPhoneBR(c.contact_phone);
               const pendingTransfer = pendingTransfers[c.id];
               const isPendingTransfer = !!pendingTransfer;
               return (
-                <button
+                <CrmConversationSwipeRow
                   key={c.id}
-                  type="button"
-                  onClick={() => onSelectConversation(c.id)}
-                  className={cn(
-                    crmListItemBase,
-                    selectedId === c.id && crmListItemActive,
-                    isPendingTransfer && "ring-1 ring-violet-400/60 bg-violet-50/80 dark:bg-violet-950/20",
-                    !isPendingTransfer && c.unread_count > 0 && selectedId !== c.id && "bg-emerald-500/5",
-                  )}
+                  enabled={swipeActionsEnabled}
+                  onUnread={() => onSwipeUnread?.(c.id)}
+                  onSchedule={() => onSwipeSchedule?.(c.id)}
+                  onReminder={() => onSwipeReminder?.(c.id)}
                 >
-                  <div className="flex items-start gap-2.5">
-                    <CrmContactAvatarFromMap
-                      name={name}
-                      conversationId={c.id}
-                      photos={contactPhotos}
-                      tagColor={resolveTagColor(convTagsMap[c.id])}
-                      size="sm"
-                      ringClassName={cn(isPendingTransfer && "ring-2 ring-violet-500 ring-offset-1")}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <p
-                          className={cn(
-                            "truncate",
-                            isPendingTransfer || c.unread_count > 0 ? "font-semibold" : "font-medium",
-                          )}
-                        >
-                          {name}
-                        </p>
-                        <span className="shrink-0 text-[10px] text-muted-foreground">
-                          {isPendingTransfer
-                            ? formatRelativeTime(pendingTransfer.created_at)
-                            : formatRelativeTime(c.last_message_at)}
-                        </span>
-                      </div>
-                      {isPendingTransfer ? (
-                        <p className="truncate text-xs font-medium text-violet-700 dark:text-violet-300">
-                          <ArrowRightLeft className="mr-1 inline size-3" />
-                          Transferida por {pendingTransfer.from_profile?.full_name ?? "equipe"}
-                          {pendingTransfer.note ? ` · ${pendingTransfer.note}` : ""}
-                        </p>
-                      ) : (
-                        <p
-                          className={cn(
-                            "truncate text-xs",
-                            c.unread_count > 0 ? "font-medium text-foreground" : "text-muted-foreground",
-                          )}
-                        >
-                          {c.last_message_preview ?? "Sem mensagens"}
-                        </p>
-                      )}
-                      <div className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden">
-                        {(c.channel ?? "whatsapp") !== "whatsapp" ? (
-                          <Badge
-                            variant="secondary"
+                  <button
+                    type="button"
+                    onClick={() => onSelectConversation(c.id)}
+                    className={cn(
+                      crmListItemBase,
+                      "bg-[#ffffff] dark:bg-[#111b21]",
+                      selectedId === c.id && crmListItemActive,
+                      isPendingTransfer && "ring-1 ring-violet-400/60 bg-violet-50/80 dark:bg-violet-950/20",
+                      !isPendingTransfer && c.unread_count > 0 && selectedId !== c.id && "bg-emerald-500/5",
+                    )}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <CrmContactAvatarFromMap
+                        name={name}
+                        conversationId={c.id}
+                        photos={contactPhotos}
+                        tagColor={resolveTagColor(convTagsMap[c.id])}
+                        size="sm"
+                        ringClassName={cn(isPendingTransfer && "ring-2 ring-violet-500 ring-offset-1")}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p
+                              className={cn(
+                                "truncate",
+                                isPendingTransfer || c.unread_count > 0 ? "font-semibold" : "font-medium",
+                              )}
+                            >
+                              {name}
+                            </p>
+                            {phoneLabel ? (
+                              <p className="truncate text-[11px] text-muted-foreground">{phoneLabel}</p>
+                            ) : null}
+                          </div>
+                          <span className="shrink-0 text-[10px] text-muted-foreground">
+                            {isPendingTransfer
+                              ? formatRelativeTime(pendingTransfer.created_at)
+                              : formatRelativeTime(c.last_message_at)}
+                          </span>
+                        </div>
+                        {isPendingTransfer ? (
+                          <p className="truncate text-xs font-medium text-violet-700 dark:text-violet-300">
+                            <ArrowRightLeft className="mr-1 inline size-3" />
+                            Transferida por {pendingTransfer.from_profile?.full_name ?? "equipe"}
+                            {pendingTransfer.note ? ` · ${pendingTransfer.note}` : ""}
+                          </p>
+                        ) : (
+                          <p
                             className={cn(
-                              "h-4 shrink-0 px-1.5 text-[9px]",
-                              CHANNEL_BADGE_CLASS[c.channel ?? "whatsapp"],
+                              "truncate text-xs",
+                              c.unread_count > 0 ? "font-medium text-foreground" : "text-muted-foreground",
                             )}
                           >
-                            {CHANNEL_LABEL[c.channel ?? "whatsapp"] ?? c.channel}
-                          </Badge>
-                        ) : null}
-                        {isPendingTransfer ? (
-                          <Badge className="h-4 shrink-0 bg-violet-600 px-1.5 text-[10px] hover:bg-violet-600">
-                            Nova transferência
-                          </Badge>
-                        ) : null}
-                        <p className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground flex items-center gap-0.5">
-                          {c.patients?.full_name && c.contact_name && c.contact_name !== c.patients.full_name
-                            ? `${c.contact_name} · `
-                            : ""}
-                          {c.assigned_profile?.full_name ? (
-                            <>
-                              <UserRound className="size-2.5 shrink-0" aria-hidden />
-                              {c.assigned_profile.full_name}
-                            </>
-                          ) : (
-                            <span className="text-amber-600 dark:text-amber-400">Sem responsável</span>
-                          )}
-                        </p>
-                        {c.unread_count > 0 ? (
-                          <Badge className="h-4 shrink-0 px-1.5 text-[10px]">{c.unread_count}</Badge>
-                        ) : null}
+                            {c.last_message_preview ?? "Sem mensagens"}
+                          </p>
+                        )}
+                        <div className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden">
+                          {(c.channel ?? "whatsapp") !== "whatsapp" ? (
+                            <Badge
+                              variant="secondary"
+                              className={cn(
+                                "h-4 shrink-0 px-1.5 text-[9px]",
+                                CHANNEL_BADGE_CLASS[c.channel ?? "whatsapp"],
+                              )}
+                            >
+                              {CHANNEL_LABEL[c.channel ?? "whatsapp"] ?? c.channel}
+                            </Badge>
+                          ) : null}
+                          {isPendingTransfer ? (
+                            <Badge className="h-4 shrink-0 bg-violet-600 px-1.5 text-[10px] hover:bg-violet-600">
+                              Nova transferência
+                            </Badge>
+                          ) : null}
+                          <p className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground flex items-center gap-0.5">
+                            {c.patients?.full_name && c.contact_name && c.contact_name !== c.patients.full_name
+                              ? `${c.contact_name} · `
+                              : ""}
+                            {c.assigned_profile?.full_name ? (
+                              <>
+                                <UserRound className="size-2.5 shrink-0" aria-hidden />
+                                {c.assigned_profile.full_name}
+                              </>
+                            ) : (
+                              <span className="text-amber-600 dark:text-amber-400">Sem responsável</span>
+                            )}
+                          </p>
+                          {c.unread_count > 0 ? (
+                            <Badge className="h-4 shrink-0 px-1.5 text-[10px]">{c.unread_count}</Badge>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </button>
+                  </button>
+                </CrmConversationSwipeRow>
               );
             })}
             {hasMoreConversations ? (
