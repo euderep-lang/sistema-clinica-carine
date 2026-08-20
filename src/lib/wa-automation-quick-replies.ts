@@ -113,7 +113,7 @@ export function buildAutomationQuickReplyRows(
     for (const step of steps) {
       rows.push({
         shortcut: automationShortcut(step.key),
-        name: `${seqLabel} · ${formatFollowUpStepDelay(step.delayMinutes)}`,
+        name: `${seqLabel} · ${formatFollowUpStepDelay(step.delayMinutes, step.key)}`,
         content: normalizeMessageLineBreaks(primaryTemplate(step)),
         category,
         sort_order: sortOrder++,

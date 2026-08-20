@@ -1,3 +1,4 @@
+import { SAME_DAY_MORNING_REMINDER_DELAY_MINUTES } from "@/lib/wa-appointment-reminders";
 import { normalizeGenderInTemplate } from "@/lib/wa-template-gender";
 
 export type FollowUpMode = "auto" | "manual";
@@ -35,7 +36,7 @@ export const FOLLOW_UP_SEQUENCE_META: Record<string, { label: string; descriptio
   appointment_booked: {
     label: "Consulta agendada",
     description:
-      "Imediato na hora do agendamento; D-1 só se a consulta não for amanhã; no dia: 3h antes (a partir das 10h) ou 20min antes (7h–9h59). Envios só entre 7h e 20h. Envia mesmo se o paciente interagir no WhatsApp.",
+      "Imediato na hora do agendamento; D-1 só se a consulta não for amanhã. No dia: consulta 7h–10h não envia; após as 10h, lembrete às 8h e outro 3h antes (se esse horário for depois das 8h). Envios só entre 7h e 20h. Envia mesmo se o paciente interagir no WhatsApp.",
   },
   post_consultation: {
     label: "Pós-consulta",
@@ -232,8 +233,21 @@ export const FOLLOW_UP_SEQUENCE_DEFAULTS: Record<string, FollowUpStepDef[]> = {
       ),
     },
     {
+      key: "appointment_reminder_morning",
+      label: "Lembrete no dia — 8h da manhã",
+      delayMinutes: SAME_DAY_MORNING_REMINDER_DELAY_MINUTES,
+      mode: "auto",
+      templates: five(
+        "Bom dia, {{primeiro_nome}}! Sua consulta é hoje às {{hora_consulta}}. Se precisar remarcar, nos avise por aqui.",
+        "Oi, {{primeiro_nome}}! Passando cedo para lembrar: hoje às {{hora_consulta}} te esperamos. Qualquer imprevisto, fale comigo.",
+        "{{primeiro_nome}}, bom dia! Consulta hoje às {{hora_consulta}}. Estamos te esperando — qualquer mudança, me chama.",
+        "Bom dia, {{primeiro_nome}}. Lembrete: sua consulta é hoje, {{hora_consulta}}. Até lá!",
+        "{{primeiro_nome}}, sua consulta é hoje às {{hora_consulta}}. Bom dia e até mais tarde!",
+      ),
+    },
+    {
       key: "appointment_reminder_3h",
-      label: "Lembrete no dia (3h antes · ou 20min se consulta cedo)",
+      label: "Lembrete no dia — 3h antes",
       delayMinutes: -180,
       mode: "auto",
       templates: five(
@@ -504,7 +518,10 @@ export function mergedTemplatesForEditing(
   return out;
 }
 
-export function formatFollowUpStepDelay(minutes: number): string {
+export function formatFollowUpStepDelay(minutes: number, stepKey?: string): string {
+  if (stepKey === "appointment_reminder_morning" || minutes === SAME_DAY_MORNING_REMINDER_DELAY_MINUTES) {
+    return "8h no dia da consulta";
+  }
   if (minutes === 0) return "Imediato";
   if (minutes < 0) {
     const hours = Math.abs(minutes) / 60;

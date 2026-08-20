@@ -28,6 +28,8 @@ import {
   isWithinMessagingWindow,
   nextMessagingWindowStart,
   resolveAppointmentRelativeSchedule,
+  shouldScheduleSameDay3hReminder,
+  shouldScheduleSameDayMorningReminder,
 } from "@/lib/wa-appointment-reminders";
 import {
   appointmentOccursAfter,
@@ -790,6 +792,22 @@ async function shouldSendFollowUpStep(input: {
       }
       if (status === "completed" || status === "no_show") {
         return { ok: false, reason: "consulta_ja_ocorreu", cancelRun: true };
+      }
+      const apptRow = appt as { date?: string | null; start_time?: string | null };
+      if (apptRow.date && apptRow.start_time) {
+        const startsAt = zonedDateFromWallClock(String(apptRow.date), String(apptRow.start_time));
+        if (
+          input.stepKey === "appointment_reminder_morning" &&
+          !shouldScheduleSameDayMorningReminder(startsAt)
+        ) {
+          return { ok: false, reason: "consulta_antes_das_10h", cancelRun: false };
+        }
+        if (
+          input.stepKey === "appointment_reminder_3h" &&
+          !shouldScheduleSameDay3hReminder(startsAt)
+        ) {
+          return { ok: false, reason: "lembrete_3h_nao_aplicavel", cancelRun: false };
+        }
       }
       break;
     }

@@ -52,34 +52,82 @@ describe("wa-appointment-reminders", () => {
       bookedMorning,
       now,
     );
+    const morning = resolveAppointmentRelativeSchedule(
+      "appointment_reminder_morning",
+      -1,
+      aptTomorrow20,
+      bookedMorning,
+      now,
+    );
     expect(d1).toBeNull();
     expect(h3?.toISOString()).toBe(zonedDateFromWallClock("2026-07-11", "17:00").toISOString());
+    expect(morning?.toISOString()).toBe(zonedDateFromWallClock("2026-07-11", "08:00").toISOString());
   });
 
-  it("consulta às 8h: lembrete no dia 20min antes (não 3h)", () => {
+  it("consulta às 8h: não envia lembrete no dia", () => {
     const apt8 = zonedDateFromWallClock("2026-07-12", "08:00");
-    expect(sameDayReminderOffsetMinutes(apt8)).toBe(20);
-    const rem = resolveAppointmentRelativeSchedule(
-      "appointment_reminder_3h",
-      -180,
-      apt8,
-      bookedMorning,
-      bookedMorning,
-    );
-    expect(rem?.toISOString()).toBe(zonedDateFromWallClock("2026-07-12", "07:40").toISOString());
+    expect(sameDayReminderOffsetMinutes(apt8)).toBeNull();
+    expect(
+      resolveAppointmentRelativeSchedule(
+        "appointment_reminder_3h",
+        -180,
+        apt8,
+        bookedMorning,
+        bookedMorning,
+      ),
+    ).toBeNull();
+    expect(
+      resolveAppointmentRelativeSchedule(
+        "appointment_reminder_morning",
+        -1,
+        apt8,
+        bookedMorning,
+        bookedMorning,
+      ),
+    ).toBeNull();
   });
 
-  it("consulta às 10h: lembrete 3h antes", () => {
+  it("consulta às 10h: lembrete às 8h, sem 3h antes (cairia às 7h)", () => {
     const apt10 = zonedDateFromWallClock("2026-07-12", "10:00");
-    expect(sameDayReminderOffsetMinutes(apt10)).toBe(180);
-    const rem = resolveAppointmentRelativeSchedule(
-      "appointment_reminder_3h",
-      -180,
+    expect(sameDayReminderOffsetMinutes(apt10)).toBeNull();
+    expect(
+      resolveAppointmentRelativeSchedule(
+        "appointment_reminder_3h",
+        -180,
+        apt10,
+        bookedMorning,
+        bookedMorning,
+      ),
+    ).toBeNull();
+    const morning = resolveAppointmentRelativeSchedule(
+      "appointment_reminder_morning",
+      -1,
       apt10,
       bookedMorning,
       bookedMorning,
     );
-    expect(rem?.toISOString()).toBe(zonedDateFromWallClock("2026-07-12", "07:00").toISOString());
+    expect(morning?.toISOString()).toBe(zonedDateFromWallClock("2026-07-12", "08:00").toISOString());
+  });
+
+  it("consulta às 14h: lembrete às 8h e 3h antes (11h)", () => {
+    const apt14 = zonedDateFromWallClock("2026-07-12", "14:00");
+    expect(sameDayReminderOffsetMinutes(apt14)).toBe(180);
+    const morning = resolveAppointmentRelativeSchedule(
+      "appointment_reminder_morning",
+      -1,
+      apt14,
+      bookedMorning,
+      bookedMorning,
+    );
+    const h3 = resolveAppointmentRelativeSchedule(
+      "appointment_reminder_3h",
+      -180,
+      apt14,
+      bookedMorning,
+      bookedMorning,
+    );
+    expect(morning?.toISOString()).toBe(zonedDateFromWallClock("2026-07-12", "08:00").toISOString());
+    expect(h3?.toISOString()).toBe(zonedDateFromWallClock("2026-07-12", "11:00").toISOString());
   });
 
   it("depois de amanhã: agenda D-1 na véspera", () => {

@@ -650,13 +650,13 @@ export function SectionAutomacaoWhatsApp() {
                             {step.key === "appointment_booked_now" && (
                               <p className="text-xs text-muted-foreground">
                                 Enviada apenas quando a consulta é marcada. Não é reenviada depois
-                                como confirmação — os lembretes D-1 e 3h usam as mensagens abaixo.
+                                como confirmação — os lembretes D-1, 8h e 3h usam as mensagens abaixo.
                               </p>
                             )}
                             <div className="flex flex-wrap items-center gap-2">
                               <Badge variant="outline" className="gap-1">
                                 <Clock className="size-3" />
-                                {formatFollowUpStepDelay(step.delayMinutes)}
+                                {formatFollowUpStepDelay(step.delayMinutes, step.key)}
                               </Badge>
                               <Badge variant="secondary">{followUpModeLabel(step.mode)}</Badge>
                               {isCustom && <Badge>Personalizado</Badge>}
