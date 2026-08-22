@@ -649,8 +649,8 @@ export function SectionAutomacaoWhatsApp() {
                             )}
                             {step.key === "appointment_booked_now" && (
                               <p className="text-xs text-muted-foreground">
-                                Enviada apenas quando a consulta é marcada. Não é reenviada depois
-                                como confirmação — os lembretes D-1, 8h e 3h usam as mensagens abaixo.
+                                Enviada ao agendar ou reagendar. O único lembrete depois é o de
+                                1 dia antes, na mensagem abaixo.
                               </p>
                             )}
                             <div className="flex flex-wrap items-center gap-2">

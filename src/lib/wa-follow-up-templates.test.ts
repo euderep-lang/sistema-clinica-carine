@@ -13,8 +13,8 @@ describe("wa-follow-up-templates", () => {
     const steps = FOLLOW_UP_SEQUENCE_DEFAULTS.appointment_booked;
     const keys = steps.map((s) => s.key);
     expect(keys).toContain("appointment_reminder_24h");
-    expect(keys).toContain("appointment_reminder_morning");
-    expect(keys).toContain("appointment_reminder_3h");
+    expect(keys).not.toContain("appointment_reminder_morning");
+    expect(keys).not.toContain("appointment_reminder_3h");
     expect(keys).toContain("appointment_booked_now");
   });
 
