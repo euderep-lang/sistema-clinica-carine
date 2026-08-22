@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Ban, Forward, Loader2, MoreVertical, Reply, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
@@ -60,6 +60,10 @@ const CrmMessageBubbleInner = memo(function CrmMessageBubbleInner({
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [loadingMedia, setLoadingMedia] = useState(false);
   const [mediaError, setMediaError] = useState(false);
+  const mediaRootRef = useRef<HTMLDivElement>(null);
+  const needsMediaFetch =
+    !!message.media_id && !message.deleted_at && !isDirectMediaUrl(message.media_id);
+  const [mediaInView, setMediaInView] = useState(!needsMediaFetch);
 
   const isDeleted = !!message.deleted_at;
   const isAudio = message.message_type === "audio";
@@ -103,8 +107,28 @@ const CrmMessageBubbleInner = memo(function CrmMessageBubbleInner({
   }, [message.media_id, message.media_mime, resolveMediaUrl]);
 
   useEffect(() => {
-    void loadMedia();
-  }, [loadMedia]);
+    if (!message.media_id || message.deleted_at) return;
+    if (isDirectMediaUrl(message.media_id)) {
+      setMediaUrl(message.media_id);
+      return;
+    }
+    const el = mediaRootRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        setMediaInView(true);
+        io.disconnect();
+      },
+      { rootMargin: "280px 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [message.media_id, message.deleted_at]);
+
+  useEffect(() => {
+    if (mediaInView && needsMediaFetch) void loadMedia();
+  }, [mediaInView, needsMediaFetch, loadMedia]);
 
   useEffect(() => {
     if (mediaUrl) onContentResize?.();
@@ -202,6 +226,7 @@ const CrmMessageBubbleInner = memo(function CrmMessageBubbleInner({
   const bubble = (
     <div
       id={`msg-${message.id}`}
+      ref={showSenderAbove ? undefined : mediaRootRef}
       className={cn(
         "group relative scroll-mt-20 rounded-[10px] text-[12px] leading-snug transition-shadow",
         bubbleMaxW,
@@ -334,7 +359,7 @@ const CrmMessageBubbleInner = memo(function CrmMessageBubbleInner({
 
   if (showSenderAbove) {
     return (
-      <div className={cn("ml-auto flex flex-col items-end", bubbleMaxW)}>
+      <div ref={mediaRootRef} className={cn("ml-auto flex flex-col items-end", bubbleMaxW)}>
         <p className="mb-0.5 px-1 text-[10px] font-medium text-emerald-800/80 dark:text-emerald-300/90">
           {senderName}
         </p>

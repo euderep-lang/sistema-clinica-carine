@@ -53,18 +53,28 @@ export function useCrmViewportLock(active: boolean) {
       }
     };
 
+    let raf = 0;
+    const onViewportChange = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(() => {
+        raf = 0;
+        applyViewport();
+      });
+    };
+
     applyViewport();
-    window.visualViewport?.addEventListener("resize", applyViewport);
-    window.visualViewport?.addEventListener("scroll", applyViewport);
-    window.addEventListener("resize", applyViewport);
-    window.addEventListener("orientationchange", applyViewport);
+    window.visualViewport?.addEventListener("resize", onViewportChange);
+    window.visualViewport?.addEventListener("scroll", onViewportChange);
+    window.addEventListener("resize", onViewportChange);
+    window.addEventListener("orientationchange", onViewportChange);
 
     return () => {
       body.classList.remove(BODY_CLASS);
-      window.visualViewport?.removeEventListener("resize", applyViewport);
-      window.visualViewport?.removeEventListener("scroll", applyViewport);
-      window.removeEventListener("resize", applyViewport);
-      window.removeEventListener("orientationchange", applyViewport);
+      if (raf) window.cancelAnimationFrame(raf);
+      window.visualViewport?.removeEventListener("resize", onViewportChange);
+      window.visualViewport?.removeEventListener("scroll", onViewportChange);
+      window.removeEventListener("resize", onViewportChange);
+      window.removeEventListener("orientationchange", onViewportChange);
       document.removeEventListener("gesturestart", preventGesture);
       document.removeEventListener("gesturechange", preventGesture);
       document.removeEventListener("gestureend", preventGesture);

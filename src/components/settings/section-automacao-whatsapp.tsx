@@ -358,10 +358,10 @@ export function SectionAutomacaoWhatsApp() {
             Avaliação pós-consulta (NPS)
           </CardTitle>
           <CardDescription>
-            Enviado sempre após concluir a consulta, no atraso configurado (janela 7h–20h), mesmo se
-            o paciente falar no WhatsApp. Se ainda não houver conversa, o sistema abre uma nova pelo
-            telefone do cadastro e envia o NPS. Mensagem 1 para quem nunca avaliou; mensagem 2 para
-            quem já respondeu o NPS alguma vez.
+            Enviado só na primeira consulta concluída do paciente, no atraso configurado (janela
+            7h–20h). Retornos não disparam NPS de novo. Se ainda não houver conversa, o sistema abre
+            uma nova pelo telefone do cadastro. Mensagem 1 para a primeira avaliação; mensagem 2
+            fica de reserva se a pessoa já tiver respondido o NPS alguma vez.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

@@ -69,7 +69,7 @@ export const crmDetailTabList =
 export const crmDetailContentWrap = "flex min-h-0 min-w-0 flex-1 flex-col";
 
 export const crmDetailHeader =
-  "shrink-0 border-b border-border/40 bg-background/90 px-3 py-2.5 backdrop-blur-sm";
+  "shrink-0 border-b border-border/40 bg-background px-3 py-2.5";
 
 export const crmDetailScroll = "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3";
 

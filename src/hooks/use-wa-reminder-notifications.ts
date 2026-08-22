@@ -14,6 +14,7 @@ export function useWaReminderNotifications() {
     if (!profile || !tenant || !isCrmStaff(profile.role)) return;
 
     const check = async () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       const now = new Date().toISOString();
       const { data } = await supabase
         .from("wa_reminders" as never)
@@ -41,8 +42,9 @@ export function useWaReminderNotifications() {
         playWaNotificationSound();
         vibrateWaNotification();
         toast.message(`Lembrete CRM · ${name}`, {
+          id: `wa-reminder-${row.id}`,
           description: row.note ?? "Hora de retornar ao paciente",
-          duration: 12000,
+          duration: 8000,
           closeButton: true,
         });
         await supabase
@@ -54,6 +56,13 @@ export function useWaReminderNotifications() {
 
     void check();
     const id = window.setInterval(() => void check(), 60_000);
-    return () => window.clearInterval(id);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void check();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [profile?.id, profile?.role, tenant?.id]);
 }

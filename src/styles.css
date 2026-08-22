@@ -318,6 +318,16 @@ body.crm-mobile-app [data-sonner-toaster] {
 body.crm-mobile-app [data-sonner-toast] {
   max-width: min(100%, calc(var(--crm-vv-width, 100vw) - 1.5rem - env(safe-area-inset-left) - env(safe-area-inset-right))) !important;
   word-break: break-word;
+  animation: none !important;
+  transition: none !important;
+  transform: none !important;
+}
+
+/* backdrop-filter no iOS PWA é caro e trava o CRM quando o toast/header redesenha */
+body.crm-mobile-app .backdrop-blur-sm,
+body.crm-mobile-app .backdrop-blur {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 
 /* Toast responsivo em telas pequenas (dashboard, agenda, etc.):

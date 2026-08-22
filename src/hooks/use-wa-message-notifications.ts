@@ -16,7 +16,6 @@ import {
   playWaNotificationSound,
   requestWaNotificationPermission,
   showWaBrowserNotification,
-  vibrateWaNotification,
   waInboxFocus,
 } from "@/lib/wa-notifications";
 import { listenWaSwNavigation, registerWaServiceWorker } from "@/lib/wa-pwa";
@@ -97,7 +96,6 @@ async function handleInboundMessage(row: InboundRow) {
   };
 
   playWaNotificationSound();
-  vibrateWaNotification();
 
   const showedBrowser = showWaBrowserNotification({
     title: `WhatsApp · ${title}`,
@@ -108,8 +106,9 @@ async function handleInboundMessage(row: InboundRow) {
 
   if (!showedBrowser && document.visibilityState === "visible") {
     toast.message(`WhatsApp · ${title}`, {
+      id: `wa-in-${row.conversation_id}`,
       description: body,
-      duration: 8000,
+      duration: 5000,
       action: {
         label: "Abrir",
         onClick: openConversation,
@@ -153,7 +152,6 @@ async function handleTransfer(row: TransferRow) {
   };
 
   playWaNotificationSound();
-  vibrateWaNotification();
 
   const showedBrowser = showWaBrowserNotification({
     title: `WhatsApp · ${name}`,
@@ -164,8 +162,9 @@ async function handleTransfer(row: TransferRow) {
 
   if (!showedBrowser && document.visibilityState === "visible") {
     toast.message(`WhatsApp · ${name}`, {
+      id: `wa-tr-${row.conversation_id}`,
       description: body,
-      duration: 8000,
+      duration: 5000,
       action: {
         label: "Abrir",
         onClick: openConversation,

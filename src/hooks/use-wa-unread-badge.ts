@@ -22,13 +22,18 @@ function teardownBadgeChannel() {
 export function useWaUnreadBadge() {
   const { profile, tenant } = useAuth();
   const refreshRef = useRef<() => void>(() => {});
+  const debounceRef = useRef<number | null>(null);
 
   refreshRef.current = () => {
-    if (!profile || !tenant || !isCrmStaff(profile.role)) {
-      syncCrmAppBadge(0);
-      return;
-    }
-    void fetchWaUnreadBadgeCount(tenant.id, profile.id, profile.role).then(syncCrmAppBadge);
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    debounceRef.current = window.setTimeout(() => {
+      debounceRef.current = null;
+      if (!profile || !tenant || !isCrmStaff(profile.role)) {
+        syncCrmAppBadge(0);
+        return;
+      }
+      void fetchWaUnreadBadgeCount(tenant.id, profile.id, profile.role).then(syncCrmAppBadge);
+    }, 400);
   };
 
   useEffect(() => {
@@ -67,6 +72,7 @@ export function useWaUnreadBadge() {
 
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
       teardownBadgeChannel();
     };
   }, [profile?.id, profile?.role, tenant?.id]);

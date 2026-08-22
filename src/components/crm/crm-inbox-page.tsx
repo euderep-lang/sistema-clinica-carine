@@ -297,6 +297,7 @@ export function CrmInboxPage() {
   const videoFileRef = useRef<HTMLInputElement>(null);
   const audioFileRef = useRef<HTMLInputElement>(null);
   const selectedIdRef = useRef(selectedId);
+  const conversationsRef = useRef<WaConversation[]>([]);
   const relatedConvIdsRef = useRef<string[]>([]);
   const loadConversationsRef = useRef<(opts?: { silent?: boolean }) => Promise<void>>(async () => {});
   const reloadListTimerRef = useRef<number | null>(null);
@@ -456,27 +457,44 @@ export function CrmInboxPage() {
     (conversationId: string, row: Pick<WaMessage, "body" | "message_type" | "media_filename" | "created_at" | "direction">) => {
       const preview = waMessagePreview(row);
       const at = row.created_at ?? new Date().toISOString();
-      setConversations((prev) =>
-        prev.map((c) => {
-          if (c.id !== conversationId) return c;
-          return {
-            ...c,
-            last_message_at: at,
-            last_message_preview: preview.slice(0, 120),
-            unread_count:
-              row.direction === "inbound" && selectedIdRef.current !== conversationId
-                ? (c.unread_count ?? 0) + 1
-                : selectedIdRef.current === conversationId
-                  ? 0
-                  : c.unread_count,
-          };
-        }),
-      );
+      setConversations((prev) => {
+        const idx = prev.findIndex((c) => c.id === conversationId);
+        if (idx === -1) return prev;
+        const current = prev[idx];
+        const updated: WaConversation = {
+          ...current,
+          last_message_at: at,
+          last_message_preview: preview.slice(0, 120),
+          unread_count:
+            row.direction === "inbound" && selectedIdRef.current !== conversationId
+              ? (current.unread_count ?? 0) + 1
+              : selectedIdRef.current === conversationId
+                ? 0
+                : current.unread_count,
+        };
+        if (idx === 0) {
+          if (
+            current.last_message_at === updated.last_message_at &&
+            current.last_message_preview === updated.last_message_preview &&
+            current.unread_count === updated.unread_count
+          ) {
+            return prev;
+          }
+          const next = [...prev];
+          next[0] = updated;
+          return next;
+        }
+        const next = prev.slice();
+        next.splice(idx, 1);
+        next.unshift(updated);
+        return next;
+      });
     },
     [],
   );
 
   selectedIdRef.current = selectedId;
+  conversationsRef.current = conversations;
   waInboxFocus.selectedConversationId = selectedId;
   loadConversationsRef.current = loadConversations;
 
@@ -949,7 +967,48 @@ export function CrmInboxPage() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "wa_conversations", filter: `tenant_id=eq.${tenantId}` },
-        () => scheduleReloadConversations(),
+        (payload) => {
+          const eventType = payload.eventType;
+          const row = payload.new as Partial<WaConversation> & { id?: string };
+          if (eventType === "INSERT" || eventType === "DELETE" || !row?.id) {
+            scheduleReloadConversations();
+            return;
+          }
+          const existing = conversationsRef.current.find((c) => c.id === row.id);
+          if (!existing) {
+            scheduleReloadConversations();
+            return;
+          }
+          setConversations((prev) => {
+            const idx = prev.findIndex((c) => c.id === row.id);
+            if (idx === -1) return prev;
+            const current = prev[idx];
+            const updated: WaConversation = {
+              ...current,
+              last_message_at: row.last_message_at ?? current.last_message_at,
+              last_message_preview: row.last_message_preview ?? current.last_message_preview,
+              unread_count: row.unread_count ?? current.unread_count,
+              status: row.status ?? current.status,
+              assigned_to: row.assigned_to !== undefined ? row.assigned_to : current.assigned_to,
+              contact_name: row.contact_name !== undefined ? row.contact_name : current.contact_name,
+            };
+            const bump = !!row.last_message_at && row.last_message_at !== current.last_message_at;
+            if (!bump) {
+              const next = [...prev];
+              next[idx] = updated;
+              return next;
+            }
+            if (idx === 0) {
+              const next = [...prev];
+              next[0] = updated;
+              return next;
+            }
+            const next = prev.slice();
+            next.splice(idx, 1);
+            next.unshift(updated);
+            return next;
+          });
+        },
       )
       .on(
         "postgres_changes",
@@ -957,6 +1016,7 @@ export function CrmInboxPage() {
         (payload) => {
           const row = payload.new as WaMessage;
           const inActiveChat = relatedConvIdsRef.current.includes(row.conversation_id);
+          const knownConversation = conversationsRef.current.some((c) => c.id === row.conversation_id);
           if (inActiveChat) {
             if (row.direction === "outbound") {
               pendingScrollToBottomRef.current = true;
@@ -970,10 +1030,13 @@ export function CrmInboxPage() {
               return [...prev, row];
             });
             patchConversationPreview(row.conversation_id, row);
+            return;
           }
-          if (!inActiveChat || row.direction === "inbound") {
-            scheduleReloadConversations();
+          if (knownConversation) {
+            patchConversationPreview(row.conversation_id, row);
+            return;
           }
+          scheduleReloadConversations();
         },
       )
       .on(
@@ -2248,7 +2311,7 @@ export function CrmInboxPage() {
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <div
                   className={cn(
-                    "shrink-0 items-center justify-between gap-2 border-b border-border/50 bg-[#f0f2f5]/95 px-3 py-2.5 backdrop-blur-sm dark:bg-[#202c33]/95",
+                    "shrink-0 items-center justify-between gap-2 border-b border-border/50 bg-[#f0f2f5] px-3 py-2.5 dark:bg-[#202c33]",
                     pwaMode && mobileView === "chat" ? "hidden lg:flex" : "flex",
                   )}
                 >

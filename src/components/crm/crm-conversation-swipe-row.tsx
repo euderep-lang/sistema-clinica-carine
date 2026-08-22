@@ -19,6 +19,7 @@ interface CrmConversationSwipeRowProps {
 
 /**
  * Arrastar para a esquerda revela: Não lida · Agendar · Lembrete.
+ * O deslocamento no drag vai direto no DOM (sem setState) para não travar o iPhone.
  */
 export function CrmConversationSwipeRow({
   children,
@@ -34,23 +35,21 @@ export function CrmConversationSwipeRow({
   const lockAxis = useRef<"x" | "y" | null>(null);
   const offsetRef = useRef(0);
   const slideRef = useRef<HTMLDivElement>(null);
-  const [offset, setOffset] = useState(0);
-  const [animating, setAnimating] = useState(false);
+  const [open, setOpen] = useState(false);
 
-  offsetRef.current = offset;
-
-  const close = () => {
-    setAnimating(true);
-    setOffset(0);
-    baseOffset.current = 0;
-    window.setTimeout(() => setAnimating(false), 180);
+  const applyOffset = (value: number, animate: boolean) => {
+    offsetRef.current = value;
+    const el = slideRef.current;
+    if (!el) return;
+    el.style.transition = animate ? "transform 180ms ease-out" : "none";
+    el.style.transform = `translate3d(${value}px,0,0)`;
+    el.style.willChange = value === 0 ? "auto" : "transform";
   };
 
-  const openFully = () => {
-    setAnimating(true);
-    setOffset(-MAX_OPEN);
-    baseOffset.current = -MAX_OPEN;
-    window.setTimeout(() => setAnimating(false), 180);
+  const close = () => {
+    applyOffset(0, true);
+    baseOffset.current = 0;
+    setOpen(false);
   };
 
   const runAction = (action: SwipeAction) => {
@@ -73,7 +72,7 @@ export function CrmConversationSwipeRow({
       baseOffset.current = offsetRef.current;
       dragging.current = true;
       lockAxis.current = null;
-      setAnimating(false);
+      applyOffset(offsetRef.current, false);
     };
 
     const onMove = (e: TouchEvent) => {
@@ -88,8 +87,7 @@ export function CrmConversationSwipeRow({
       }
       if (lockAxis.current !== "x") return;
       e.preventDefault();
-      const next = Math.min(0, Math.max(-MAX_OPEN, baseOffset.current + dx));
-      setOffset(next);
+      applyOffset(Math.min(0, Math.max(-MAX_OPEN, baseOffset.current + dx)), false);
     };
 
     const onEnd = () => {
@@ -99,17 +97,11 @@ export function CrmConversationSwipeRow({
         lockAxis.current = null;
         return;
       }
-      if (offsetRef.current < -THRESHOLD) {
-        setAnimating(true);
-        setOffset(-MAX_OPEN);
-        baseOffset.current = -MAX_OPEN;
-        window.setTimeout(() => setAnimating(false), 180);
-      } else {
-        setAnimating(true);
-        setOffset(0);
-        baseOffset.current = 0;
-        window.setTimeout(() => setAnimating(false), 180);
-      }
+      const opened = offsetRef.current < -THRESHOLD;
+      const next = opened ? -MAX_OPEN : 0;
+      applyOffset(next, true);
+      baseOffset.current = next;
+      setOpen(opened);
       lockAxis.current = null;
     };
 
@@ -169,13 +161,10 @@ export function CrmConversationSwipeRow({
 
       <div
         ref={slideRef}
-        className={cn(
-          "relative z-[1] bg-[#ffffff] dark:bg-[#111b21]",
-          animating && "transition-transform duration-200 ease-out",
-        )}
-        style={{ transform: `translateX(${offset}px)` }}
+        className={cn("relative z-[1] bg-[#ffffff] dark:bg-[#111b21]")}
+        style={{ transform: "translate3d(0,0,0)" }}
         onClickCapture={(e) => {
-          if (offset < -8) {
+          if (open || offsetRef.current < -8) {
             e.preventDefault();
             e.stopPropagation();
             close();

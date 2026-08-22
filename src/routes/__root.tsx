@@ -159,7 +159,7 @@ function RootComponent() {
         <ManifestLink />
         {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
         <Outlet />
-        <Toaster richColors position="bottom-right" />
+        <Toaster richColors position="bottom-right" visibleToasts={3} />
       </AuthProvider>
     </QueryClientProvider>
   );

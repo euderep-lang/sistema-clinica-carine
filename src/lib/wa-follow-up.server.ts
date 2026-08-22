@@ -1224,6 +1224,22 @@ export async function scheduleFollowUpRun(input: {
   return runId;
 }
 
+/** True se o paciente já teve outra consulta concluída além da atual. */
+async function patientHasPriorCompletedConsultation(
+  tenantId: string,
+  patientId: string,
+  currentAppointmentId: string,
+): Promise<boolean> {
+  const { count } = await supabaseAdmin
+    .from("appointments")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("patient_id", patientId)
+    .eq("status", "completed")
+    .neq("id", currentAppointmentId);
+  return (count ?? 0) > 0;
+}
+
 /** Agenda envio do pedido de avaliação (NPS do sistema ou link externo) após a consulta. */
 async function patientHasPriorNpsResponse(tenantId: string, patientId: string): Promise<boolean> {
   const { data } = await supabaseAdmin
@@ -1922,6 +1938,15 @@ export async function onAppointmentStatusChange(input: {
         appointmentAt: input.startsAt,
       },
     });
+
+    const alreadyCompletedBefore = await patientHasPriorCompletedConsultation(
+      input.tenantId,
+      input.patientId,
+      input.appointmentId,
+    );
+    if (alreadyCompletedBefore) {
+      return;
+    }
 
     let npsToken = (existingNps as { token?: string } | null)?.token;
     const npsSettings = await getNpsSettingsServer(input.tenantId);
