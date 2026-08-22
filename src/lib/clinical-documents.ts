@@ -158,6 +158,8 @@ export async function saveClinicalDocumentToHistory(opts: {
   payload: ClinicalDocPayload;
   summary?: string;
   pdfBlob: Blob;
+  signedAt?: string | null;
+  signatureCn?: string | null;
 }): Promise<{ mediaId: string; documentId: string }> {
   const mediaId = randomUUID();
   const documentId = randomUUID();
@@ -199,6 +201,8 @@ export async function saveClinicalDocumentToHistory(opts: {
     payload: opts.payload,
     media_id: mediaId,
     date: opts.date,
+    signed_at: opts.signedAt ?? null,
+    signature_cn: opts.signatureCn ?? null,
   } as never);
   if (docErr) throw new Error(docErr.message);
 

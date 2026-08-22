@@ -1,6 +1,8 @@
 import { jsPDF } from "jspdf";
+import QRCode from "qrcode";
 import type { LetterheadPdfAsset } from "@/lib/letterhead";
 import { paintLetterhead, pdfContentW, resolvePdfPadding } from "@/lib/letterhead-pdf";
+import { ITI_VALIDATOR_HOST, ITI_VALIDATOR_URL } from "@/lib/iti-validation";
 import { maskCPF, ageFromBirthDate } from "@/lib/patient-utils";
 
 export type ClinicalDocType = "atestado" | "declaracao" | "exames";
@@ -48,6 +50,53 @@ export interface ClinicalDocData {
     cpf?: string | null;
   };
   letterhead?: LetterheadPdfAsset | null;
+  /** Quando true, reserva espaço e inclui QR de validação ICP-Brasil (PAdES). */
+  digitalSignature?: boolean;
+}
+
+export const CLINICAL_PAGE_H_MM = 297;
+
+const VALIDATION_HINT_RESERVE_MM = 15;
+const VALIDATION_HINT_GAP_MM = 3;
+const SIGNATURE_BLOCK_HEIGHT_MM = 32;
+
+function validationHintY(pageY: number, pageH: number, padB: number) {
+  return pageY + pageH - padB - 2;
+}
+
+function drawPadesValidationHint(
+  doc: jsPDF,
+  leftX: number,
+  y: number,
+  maxWidth: number,
+  qrDataUrl: string,
+) {
+  const qrMm = 11;
+  doc.addImage(qrDataUrl, "PNG", leftX, y - qrMm + 1.5, qrMm, qrMm);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6);
+  doc.setTextColor(90);
+  const line = `Assinatura digital PAdES/ICP-Brasil. Valide em ${ITI_VALIDATOR_HOST}`;
+  const textX = leftX + qrMm + 2;
+  const textW = Math.max(40, maxWidth - qrMm - 4);
+  const lines = doc.splitTextToSize(line, textW);
+  doc.text(lines, textX, y);
+  doc.setTextColor(0);
+}
+
+/** Âncora fixa do bloco de assinatura (linha + nome + conselho) no pedido clínico. */
+export function computeClinicalSignatureAnchor(
+  pageH: number,
+  padB: number,
+  digitalSignature: boolean,
+) {
+  const reservedBelow =
+    padB +
+    (digitalSignature ? VALIDATION_HINT_RESERVE_MM + VALIDATION_HINT_GAP_MM : 0) +
+    SIGNATURE_BLOCK_HEIGHT_MM;
+  const signatureStartY = pageH - reservedBelow;
+  const signatureLineY = signatureStartY + 12;
+  return { signatureStartY, signatureLineY };
 }
 
 const GOLD: [number, number, number] = [197, 179, 88];
@@ -511,10 +560,15 @@ export function richHtmlHasContent(html?: string | null): boolean {
   return text.length > 0;
 }
 
-export function generateClinicalDocumentPDF(data: ClinicalDocData): Blob {
+export async function generateClinicalDocumentPDF(data: ClinicalDocData): Promise<Blob> {
+  const digitalSignature = Boolean(data.digitalSignature);
+  const qrDataUrl = digitalSignature
+    ? await QRCode.toDataURL(ITI_VALIDATOR_URL, { width: 120, margin: 0 })
+    : null;
+
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   const w = 210;
-  const h = 297;
+  const h = CLINICAL_PAGE_H_MM;
   const x = 0;
   const y = 0;
 
@@ -573,6 +627,8 @@ export function generateClinicalDocumentPDF(data: ClinicalDocData): Blob {
   cy += 12;
 
   const useRich = richHtmlHasContent(data.bodyHtml);
+  const sigAnchor = computeClinicalSignatureAnchor(h, padB, digitalSignature);
+  const bodyMaxY = sigAnchor.signatureStartY - 8;
 
   const newPage = (): number => {
     doc.addPage();
@@ -586,7 +642,7 @@ export function generateClinicalDocumentPDF(data: ClinicalDocData): Blob {
       x: contentX,
       y: cy,
       maxWidth: contentW,
-      maxY: h - padB - 6,
+      maxY: bodyMaxY,
       baseFont: "helvetica",
       baseSize: 11,
       newPage,
@@ -629,18 +685,19 @@ export function generateClinicalDocumentPDF(data: ClinicalDocData): Blob {
   }
 
   // Garante espaço para data + assinatura; se não couber, nova página.
-  if (cy + 44 > h - padB) {
+  if (cy + 14 > sigAnchor.signatureStartY) {
     cy = newPage();
   }
 
   // Local e data
-  cy += 6;
+  const dateY = Math.min(cy + 6, sigAnchor.signatureStartY);
   doc.setFontSize(10.5);
   const cityPart = data.clinic.city ? `${data.clinic.city}, ` : "";
-  doc.text(`${cityPart}${fmtDateLongBR(data.date)}.`, contentX + contentW, cy, { align: "right" });
+  doc.text(`${cityPart}${fmtDateLongBR(data.date)}.`, contentX + contentW, dateY, { align: "right" });
 
-  // Assinatura (âncora fixa próxima ao rodapé)
-  const signatureY = Math.max(cy + 24, h - padB - 34);
+  const signatureY = digitalSignature
+    ? sigAnchor.signatureLineY
+    : Math.max(dateY + 24, sigAnchor.signatureLineY);
   const lineW = contentW * 0.58;
   const lineX = contentX + (contentW - lineW) / 2;
   doc.setDrawColor(0);
@@ -657,6 +714,16 @@ export function generateClinicalDocumentPDF(data: ClinicalDocData): Blob {
   if (sig) {
     doc.text(sig, contentX + contentW / 2, sy, { align: "center" });
     sy += 4.5;
+  }
+
+  if (digitalSignature && qrDataUrl) {
+    drawPadesValidationHint(
+      doc,
+      contentX,
+      validationHintY(y, h, padB),
+      contentW,
+      qrDataUrl,
+    );
   }
 
   if (!lh) {

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { FileDown, Loader2, Pencil, RefreshCw, Save, Star, Trash2, X } from "lucide-react";
+import { FileDown, Loader2, Pencil, PenLine, RefreshCw, Save, Star, Trash2, X } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,12 +47,22 @@ import { loadCID10List, searchCID10, type CID10 } from "@/lib/cid10";
 import {
   buildClinicalDocBody,
   CLINICAL_DOC_TITLE,
+  CLINICAL_PAGE_H_MM,
+  computeClinicalSignatureAnchor,
   generateClinicalDocumentPDF,
   richHtmlHasContent,
   type ClinicalDocData,
   type ClinicalDocType,
 } from "@/lib/clinical-document-pdf";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
+import { SafeIdSignatureAuthDialog } from "@/components/professional/safe-id-signature-auth-dialog";
+import {
+  getDigitalCertificateStatus,
+  getSafeIdSignatureAuthStatus,
+  signPrescriptionPdf,
+  type DigitalCertificateStatus,
+} from "@/lib/digital-certificate.functions";
+import { base64ToBlob, blobToBase64 } from "@/lib/blob-utils";
 import {
   deleteClinicalTemplate,
   loadClinicalTemplates,
@@ -124,7 +135,19 @@ export function ClinicalDocumentDialog({
   const [selectedBrowseTplId, setSelectedBrowseTplId] = useState<string | null>(null);
   const [editingTplId, setEditingTplId] = useState<string | null>(null);
 
+  const [certStatus, setCertStatus] = useState<DigitalCertificateStatus | null>(null);
+  const [safeIdDialogOpen, setSafeIdDialogOpen] = useState(false);
+  const [safeIdRenewal, setSafeIdRenewal] = useState(false);
+  const fetchCertStatus = useServerFn(getDigitalCertificateStatus);
+  const fetchSafeIdAuthStatus = useServerFn(getSafeIdSignatureAuthStatus);
+  const signPdf = useServerFn(signPrescriptionPdf);
+
   const title = CLINICAL_DOC_TITLE[docType];
+  const isPedido = docType === "exames";
+  const canSignWithCert =
+    isPedido &&
+    Boolean(certStatus?.configured) &&
+    (certStatus?.signingMode === "safeid_cloud" || !certStatus?.isExpired);
   const useCategories = docType === "exames";
 
   const resetFields = () => {
@@ -227,14 +250,18 @@ export function ClinicalDocumentDialog({
     setSelectedBrowseTplId(null);
     (async () => {
       try {
-        const [{ data: pt }, tpls] = await Promise.all([
+        const [{ data: pt }, tpls, cert] = await Promise.all([
           supabase
             .from("patients")
             .select("id, full_name, cpf, birth_date")
             .eq("id", patientId)
             .maybeSingle(),
           loadClinicalTemplates(profile.id, docType),
+          docType === "exames"
+            ? fetchCertStatus().catch(() => null)
+            : Promise.resolve(null),
         ]);
+        setCertStatus(cert);
         const ptLite = (pt as PatientLite) ?? null;
         setPatient(ptLite);
         setTemplates(tpls);
@@ -447,7 +474,7 @@ export function ClinicalDocumentDialog({
     try {
       const data = await buildDocData();
       if (!data) return;
-      const blob = generateClinicalDocumentPDF(data);
+      const blob = await generateClinicalDocumentPDF(data);
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank");
     } catch (e) {
@@ -457,13 +484,61 @@ export function ClinicalDocumentDialog({
     }
   };
 
-  const handleSave = async () => {
+  const signPedidoPdf = async (data: ClinicalDocData, unsigned: Blob) => {
+    const bottomMarginMm = data.letterhead?.margins.bottom ?? 16;
+    const signatureLineMmFromTop = computeClinicalSignatureAnchor(
+      CLINICAL_PAGE_H_MM,
+      bottomMarginMm,
+      true,
+    ).signatureLineY;
+    const signedResult = await signPdf({
+      data: {
+        pdfBase64: await blobToBase64(unsigned),
+        reason: "Solicitação de exames / pedido clínico",
+        location: data.clinic.name,
+        bottomMarginMm,
+        signatureLineMmFromTop,
+        referencePageHeightMm: CLINICAL_PAGE_H_MM,
+      },
+    });
+    return {
+      blob: base64ToBlob(signedResult.pdfBase64),
+      signedAt: signedResult.signedAt as string,
+      signatureCn: signedResult.signatureCn as string | null,
+    };
+  };
+
+  const handleSave = async (options?: { sign?: boolean }) => {
     if (!validate() || !profile || !tenant) return;
+
+    const shouldSign = isPedido && (options?.sign !== undefined ? options.sign : true);
+    if (shouldSign && !canSignWithCert) {
+      if (certStatus?.configured && certStatus.signingMode === "a1_file" && certStatus.isExpired) {
+        toast.error("Certificado digital expirado. Atualize em Minhas configurações → Certificado digital.");
+      } else {
+        toast.error("Configure o certificado digital em Minhas configurações para assinar o pedido.");
+      }
+      return;
+    }
+
     setGenerating(true);
     try {
       const data = await buildDocData();
       if (!data) return;
-      const blob = generateClinicalDocumentPDF(data);
+      let blob = await generateClinicalDocumentPDF({
+        ...data,
+        digitalSignature: shouldSign,
+      });
+      let signedAt: string | null = null;
+      let signatureCn: string | null = null;
+
+      if (shouldSign) {
+        const signed = await signPedidoPdf(data, blob);
+        blob = signed.blob;
+        signedAt = signed.signedAt;
+        signatureCn = signed.signatureCn;
+      }
+
       await saveClinicalDocumentToHistory({
         tenantId: tenant.id,
         patientId,
@@ -473,10 +548,16 @@ export function ClinicalDocumentDialog({
         payload: buildPayload(),
         summary: summaryText(),
         pdfBlob: blob,
+        signedAt,
+        signatureCn,
       });
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank");
-      toast.success(`${title} salvo no prontuário.`);
+      toast.success(
+        signedAt
+          ? `${title} assinado digitalmente e salvo no prontuário.`
+          : `${title} salvo no prontuário.`,
+      );
       onSaved?.();
       onOpenChange(false);
     } catch (e) {
@@ -484,6 +565,32 @@ export function ClinicalDocumentDialog({
     } finally {
       setGenerating(false);
     }
+  };
+
+  const onSaveClick = () => {
+    if (!validate()) return;
+    if (!isPedido) {
+      void handleSave({ sign: false });
+      return;
+    }
+    if (certStatus?.configured && certStatus.signingMode === "safeid_cloud") {
+      void (async () => {
+        try {
+          const status = await fetchSafeIdAuthStatus({ data: { origin: window.location.origin } });
+          if (status.ready) {
+            void handleSave({ sign: true });
+            return;
+          }
+          setSafeIdRenewal(Boolean(status.sessionExpired));
+          setSafeIdDialogOpen(true);
+        } catch {
+          setSafeIdRenewal(false);
+          setSafeIdDialogOpen(true);
+        }
+      })();
+      return;
+    }
+    void handleSave({ sign: true });
   };
 
   const handleSaveTemplate = async () => {
@@ -541,6 +648,7 @@ export function ClinicalDocumentDialog({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
@@ -867,18 +975,40 @@ export function ClinicalDocumentDialog({
           </div>
         )}
 
+        {isPedido && !canSignWithCert && !loading ? (
+          <p className="text-xs text-amber-700">
+            Para gerar o PDF assinado, configure o certificado em Minhas configurações → Certificado digital.
+          </p>
+        ) : null}
+
         <DialogFooter className="gap-2">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
           <Button variant="outline" onClick={() => void handleGeneratePdf()} disabled={generating || loading}>
             <FileDown className="mr-1 size-4" />
             Apenas visualizar
           </Button>
-          <Button onClick={() => void handleSave()} disabled={generating || loading}>
-            {generating ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Save className="mr-1 size-4" />}
-            Gerar e salvar
+          <Button onClick={onSaveClick} disabled={generating || loading}>
+            {generating ? (
+              <Loader2 className="mr-1 size-4 animate-spin" />
+            ) : isPedido ? (
+              <PenLine className="mr-1 size-4" />
+            ) : (
+              <Save className="mr-1 size-4" />
+            )}
+            {isPedido ? "Assinar e salvar" : "Gerar e salvar"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    {isPedido ? (
+      <SafeIdSignatureAuthDialog
+        open={safeIdDialogOpen}
+        onOpenChange={setSafeIdDialogOpen}
+        renewal={safeIdRenewal}
+        saving={generating}
+        onAuthorized={() => void handleSave({ sign: true })}
+      />
+    ) : null}
+    </>
   );
 }
