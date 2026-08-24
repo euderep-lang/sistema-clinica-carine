@@ -108,7 +108,23 @@ function RecordPage() {
   const patientRef = useRef<Patient | null>(null);
   const photoFileRef = useRef<HTMLInputElement>(null);
   const photoKindRef = useRef<"exams" | "before_after" | null>(null);
+  const mobilePagerRef = useRef<HTMLDivElement>(null);
+  const mobilePagerLockRef = useRef(false);
   patientRef.current = patient;
+
+  useEffect(() => {
+    if (!isMobile || !recordReady) return;
+    const el = mobilePagerRef.current;
+    if (!el) return;
+    const left = mobileTab === "history" ? el.clientWidth : 0;
+    if (Math.abs(el.scrollLeft - left) < 12) return;
+    mobilePagerLockRef.current = true;
+    el.scrollTo({ left, behavior: "smooth" });
+    const t = window.setTimeout(() => {
+      mobilePagerLockRef.current = false;
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [mobileTab, isMobile, recordReady]);
 
   const openPhotoPicker = (kind: "exams" | "before_after") => {
     photoKindRef.current = kind;
@@ -662,8 +678,20 @@ function RecordPage() {
                 Histórico ({history.length})
               </button>
             </div>
-            <div className="min-h-0 flex-1">
-              {mobileTab === "editor" ? (
+            <p className="shrink-0 text-center text-[11px] text-muted-foreground">
+              Deslize para o lado para alternar entre evolução e histórico
+            </p>
+            <div
+              ref={mobilePagerRef}
+              className="flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain [-webkit-overflow-scrolling:touch]"
+              onScroll={() => {
+                const el = mobilePagerRef.current;
+                if (!el || mobilePagerLockRef.current) return;
+                const next = el.scrollLeft >= el.clientWidth / 2 ? "history" : "editor";
+                setMobileTab((prev) => (prev === next ? prev : next));
+              }}
+            >
+              <div className="h-full min-h-0 w-full shrink-0 basis-full snap-start snap-always">
                 <EvolutionEditor
                   saving={saving}
                   patientId={id}
@@ -672,7 +700,8 @@ function RecordPage() {
                   tenantId={profile?.tenant_id}
                   onSave={handleSave}
                 />
-              ) : (
+              </div>
+              <div className="h-full min-h-0 w-full shrink-0 basis-full snap-start snap-always">
                 <EvolutionHistory
                   entries={history}
                   loading={loading}
@@ -685,7 +714,7 @@ function RecordPage() {
                     )
                   }
                 />
-              )}
+              </div>
             </div>
           </div>
         ) : (

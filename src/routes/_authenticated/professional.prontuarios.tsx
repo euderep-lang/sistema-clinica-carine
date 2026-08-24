@@ -84,6 +84,9 @@ function ProfessionalRecordsPage() {
 
         <Card>
           <CardContent className="p-0">
+            <p className="border-b px-4 py-2.5 text-xs text-muted-foreground lg:hidden">
+              Deslize a tabela para o lado para ler todas as colunas.
+            </p>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -113,10 +116,10 @@ function ProfessionalRecordsPage() {
                     <TableRow key={r.id}>
                       <TableCell>{fmtDate(r.date)}</TableCell>
                       <TableCell className="font-medium">{r.patients?.full_name ?? "—"}</TableCell>
-                      <TableCell className="max-w-[200px] truncate text-sm text-muted-foreground">
+                      <TableCell className="max-w-[18rem] text-sm text-muted-foreground lg:max-w-[200px] lg:truncate">
                         {r.chief_complaint ?? "—"}
                       </TableCell>
-                      <TableCell className="max-w-[200px] truncate text-sm">
+                      <TableCell className="max-w-[18rem] text-sm lg:max-w-[200px] lg:truncate">
                         {r.diagnosis ?? "—"}
                       </TableCell>
                       <TableCell>

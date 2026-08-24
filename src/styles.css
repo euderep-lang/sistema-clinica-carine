@@ -261,8 +261,22 @@
 
 /* Tabelas — scroll horizontal nativo no mobile (sem precisar dar zoom) */
 .table-scroll {
+  max-width: 100%;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-x pan-y;
+  scrollbar-width: thin;
+}
+
+@media (max-width: 1023px) {
+  .table-scroll > table {
+    width: max-content;
+    min-width: 44rem;
+  }
+
+  .table-scroll th,
+  .table-scroll td {
+    white-space: nowrap;
+  }
 }
 
 /* Área segura — iPhone (Dynamic Island) e PWA/APK instalado */

@@ -146,7 +146,7 @@ export function DashboardShell({
         <main
           id="main-content"
           className={cn(
-            "app-canvas w-full min-w-0 flex-1 overflow-x-hidden",
+            "app-canvas w-full min-w-0 flex-1 overflow-x-clip",
             fullWidth ? "px-3 py-3 lg:px-4 lg:py-4" : "px-4 py-6 lg:px-8 lg:py-8",
           )}
         >

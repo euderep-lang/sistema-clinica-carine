@@ -154,7 +154,7 @@ function EvolutionHistoryItem({ entry, highlight }: { entry: EvolutionEntry; hig
           </div>
           {highlight && <Badge variant="secondary">Novo</Badge>}
         </div>
-        <p className="whitespace-pre-wrap text-sm leading-relaxed">{shown}</p>
+        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{shown}</p>
         {long && (
           <Button variant="link" size="sm" className="h-auto p-0" onClick={() => setExpanded((v) => !v)}>
             {expanded ? "Ver menos" : "Ver mais"}
@@ -267,7 +267,7 @@ export function EvolutionHistory({
           </>
         )}
       </div>
-      <ScrollArea className="min-h-0 flex-1">
+      <ScrollArea className="min-h-0 flex-1 overflow-x-auto">
         <div className="p-3">
           {loading ? (
             <p className="py-8 text-center text-sm text-muted-foreground">Carregando…</p>
