@@ -142,6 +142,14 @@ function omitEmptyStringsDeep(value: unknown): unknown {
   return value;
 }
 
+function tribMunFromConfig(cfg: NfsePrestadorConfig): string {
+  const raw = onlyDigits(
+    cfg.codigo_tributacao_municipal_iss || cfg.codigo_tributario_municipio || "",
+  );
+  // cTribMun = 3 dígitos. Nunca enviar cTribNac (6 dígitos, ex. 040101) neste campo.
+  return raw.length === 3 ? raw : "";
+}
+
 function codigoTribNac(cfg: NfsePrestadorConfig): string {
   const raw = onlyDigits(cfg.codigo_tributacao_nacional_iss || "");
   if (raw.length >= 6) return raw.slice(0, 6);
@@ -528,11 +536,7 @@ export const emitNfse = createServerFn({ method: "POST" })
     const dpsSerie = (cfg.dps_serie || "900").trim();
     const tribNac = codigoTribNac(cfg);
     const nbs = codigoNbsDigits(cfg);
-    const tribMunRaw = onlyDigits(
-      cfg.codigo_tributacao_municipal_iss || cfg.codigo_tributario_municipio || "",
-    );
-    // cTribMun exige exatamente 3 dígitos — omitir se vazio ou inválido (não confundir com cTribNac de 6).
-    const tribMun = tribMunRaw.length === 3 ? tribMunRaw : "";
+    const tribMun = tribMunFromConfig(cfg);
 
     const cep = onlyDigits(b.patients?.address_zip);
     let logradouro = (b.patients?.address_street || "").trim();
@@ -588,7 +592,7 @@ export const emitNfse = createServerFn({ method: "POST" })
       ...tomador,
       codigo_municipio_prestacao: codigoMunicipioPrestador,
       codigo_tributacao_nacional_iss: tribNac,
-      codigo_tributacao_municipal_iss: tribMun,
+      ...(tribMun ? { codigo_tributacao_municipal_iss: tribMun } : {}),
       codigo_nbs: nbs,
       descricao_servico: discriminacao,
       valor_servico: valorServicos,

@@ -69,9 +69,15 @@ export function SectionNfseConfig({ trigger }: { trigger: React.ReactNode }) {
         "nfse",
       );
       if (saved) {
+        const tribMunSaved = String(
+          saved.codigo_tributacao_municipal_iss ?? "",
+        ).replace(/\D/g, "");
+        const tribMunNormalized =
+          tribMunSaved.length === 3 ? tribMunSaved : "";
         setCfg({
           ...EMPTY,
           ...saved,
+          codigo_tributacao_municipal_iss: tribMunNormalized,
           aliquota: saved.aliquota != null ? String(saved.aliquota) : EMPTY.aliquota,
           iss_retido: Boolean(saved.iss_retido),
           opcao_simples_nacional: String(
@@ -111,8 +117,11 @@ export function SectionNfseConfig({ trigger }: { trigger: React.ReactNode }) {
     }
     setSaving(true);
     try {
+      const tribMunDigits = cfg.codigo_tributacao_municipal_iss.replace(/\D/g, "");
       await setTenantSetting(tenant.id, "nfse", {
         ...cfg,
+        codigo_tributacao_municipal_iss:
+          tribMunDigits.length === 3 ? tribMunDigits : "",
         aliquota: Number(cfg.aliquota) || 0,
       });
       toast.success("Configuração de NFS-e salva.");
