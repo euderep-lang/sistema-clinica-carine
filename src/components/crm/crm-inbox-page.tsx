@@ -25,7 +25,10 @@ import { CrmInboxComposer } from "@/components/crm/crm-inbox-composer";
 import { CrmInboxDetailPanel } from "@/components/crm/crm-inbox-detail-panel";
 import { CrmInboxListPanel } from "@/components/crm/crm-inbox-list-panel";
 import { CrmContactAvatar, CrmContactAvatarFromMap, useWaContactPhotos } from "@/components/crm/crm-contact-avatar";
-import { CrmMessageBubble } from "@/components/crm/crm-message-bubble";
+import {
+  CrmVirtualMessageList,
+  type CrmVirtualMessageListHandle,
+} from "@/components/crm/crm-virtual-message-list";
 import { CrmConnectionBadge } from "@/components/crm/crm-connection-badge";
 import { CrmMetricsStrip } from "@/components/crm/crm-metrics-strip";
 import { CrmGlobalSearch } from "@/components/crm/crm-global-search";
@@ -35,6 +38,7 @@ import { NewAppointmentDialog } from "@/components/agenda/new-appointment-dialog
 import { PatientFormDialog } from "@/components/patient-form-dialog";
 import {
   crmChatBg,
+  crmChatBgMobile,
   crmChatMessagesScroll,
   crmPanelShell,
 } from "@/components/crm/crm-inbox-theme";
@@ -179,7 +183,12 @@ function notifyCrmQueryError(error: { message: string }, context: string) {
 const CRM_COMPOSER_MAX_LINES = 4;
 
 /** Página de mensagens do chat: sempre as N mais recentes; antigas carregam sob demanda. */
-const CHAT_PAGE_SIZE = 100;
+const CHAT_PAGE_SIZE_DESKTOP = 100;
+const CHAT_PAGE_SIZE_MOBILE = 50;
+const CONV_LIST_LIMIT_DESKTOP = 500;
+const CONV_LIST_LIMIT_MOBILE = 120;
+const LIST_PAGE_SIZE_DESKTOP = 30;
+const LIST_PAGE_SIZE_MOBILE = 20;
 const CHAT_MESSAGE_COLUMNS =
   "id, conversation_id, direction, message_type, body, media_id, media_mime, media_filename, status, sent_by, created_at, wa_message_id, reply_to_message_id, raw_payload, deleted_at, deleted_scope, sender_profile:sent_by(full_name)";
 
@@ -188,6 +197,10 @@ export function CrmInboxPage() {
     crmInboxRoute.useSearch();
   const { profile, tenant } = useAuth();
   const pwaMode = useCrmPwaMode();
+  const chatPageSize = pwaMode ? CHAT_PAGE_SIZE_MOBILE : CHAT_PAGE_SIZE_DESKTOP;
+  const convListLimit = pwaMode ? CONV_LIST_LIMIT_MOBILE : CONV_LIST_LIMIT_DESKTOP;
+  const listPageSize = pwaMode ? LIST_PAGE_SIZE_MOBILE : LIST_PAGE_SIZE_DESKTOP;
+  const chatBgClass = pwaMode ? crmChatBgMobile : crmChatBg;
 
   useEffect(() => {
     if (sourceFromUrl === "pwa") markCrmPwaSession();
@@ -264,8 +277,9 @@ export function CrmInboxPage() {
   const [notifyPermission, setNotifyPermission] = useState<WaNotificationPermission>(() =>
     getWaNotificationPermission(),
   );
-  const bottomRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const virtualListRef = useRef<CrmVirtualMessageListHandle>(null);
+  const scrollResizeRafRef = useRef(0);
   const pendingScrollToBottomRef = useRef(false);
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -381,7 +395,7 @@ export function CrmInboxPage() {
           "id, tenant_id, patient_id, contact_phone, contact_name, channel, external_user_id, assigned_to, status, last_message_at, last_message_preview, unread_count, contact_photo_url, contact_photo_fetched_at, deal_id, patients(full_name, gender), assigned_profile:assigned_to(full_name)",
         )
         .order("last_message_at", { ascending: false, nullsFirst: false })
-        .limit(500),
+        .limit(convListLimit),
       supabase
         .from("wa_transfers" as never)
         .select(
@@ -439,7 +453,7 @@ export function CrmInboxPage() {
     setPendingTransfers(pending);
     initialListLoadedRef.current = true;
     setLoadingList(false);
-  }, [profile]);
+  }, [profile, convListLimit]);
 
   const scheduleReloadConversations = useCallback((delayMs = 900) => {
     if (reloadListTimerRef.current) window.clearTimeout(reloadListTimerRef.current);
@@ -652,39 +666,54 @@ export function CrmInboxPage() {
         const normalized = normalizeBrazilPhone(phone) || normalizeWaPhone(phone);
         const national = nationalPhoneKey(phone);
 
+        const phoneQueries: Promise<void>[] = [];
+
         if (tail) {
-          const { data } = await supabase
-            .from("wa_conversations" as never)
-            .select("id, contact_phone")
-            .eq("tenant_id", tenant.id)
-            .eq("phone_tail", tail);
-          for (const c of (data ?? []) as { id: string; contact_phone: string }[]) {
-            relatedMap.set(c.id, c.contact_phone);
-          }
+          phoneQueries.push(
+            supabase
+              .from("wa_conversations" as never)
+              .select("id, contact_phone")
+              .eq("tenant_id", tenant.id)
+              .eq("phone_tail", tail)
+              .then(({ data }) => {
+                for (const c of (data ?? []) as { id: string; contact_phone: string }[]) {
+                  relatedMap.set(c.id, c.contact_phone);
+                }
+              }),
+          );
         }
 
         if (normalized) {
-          const { data } = await supabase
-            .from("wa_conversations" as never)
-            .select("id, contact_phone")
-            .eq("tenant_id", tenant.id)
-            .eq("contact_phone", normalized);
-          for (const c of (data ?? []) as { id: string; contact_phone: string }[]) {
-            relatedMap.set(c.id, c.contact_phone);
-          }
+          phoneQueries.push(
+            supabase
+              .from("wa_conversations" as never)
+              .select("id, contact_phone")
+              .eq("tenant_id", tenant.id)
+              .eq("contact_phone", normalized)
+              .then(({ data }) => {
+                for (const c of (data ?? []) as { id: string; contact_phone: string }[]) {
+                  relatedMap.set(c.id, c.contact_phone);
+                }
+              }),
+          );
         }
 
-        // Mesmo número local com DDI diferente (ex.: 55… vs 1…)
         if (national.length >= 8) {
-          const { data } = await supabase
-            .from("wa_conversations" as never)
-            .select("id, contact_phone")
-            .eq("tenant_id", tenant.id)
-            .ilike("contact_phone", `%${national}`);
-          for (const c of (data ?? []) as { id: string; contact_phone: string }[]) {
-            if (phonesMatch(c.contact_phone, phone)) relatedMap.set(c.id, c.contact_phone);
-          }
+          phoneQueries.push(
+            supabase
+              .from("wa_conversations" as never)
+              .select("id, contact_phone")
+              .eq("tenant_id", tenant.id)
+              .ilike("contact_phone", `%${national}`)
+              .then(({ data }) => {
+                for (const c of (data ?? []) as { id: string; contact_phone: string }[]) {
+                  if (phonesMatch(c.contact_phone, phone)) relatedMap.set(c.id, c.contact_phone);
+                }
+              }),
+          );
         }
+
+        if (phoneQueries.length) await Promise.all(phoneQueries);
       }
 
       if (patientId) {
@@ -713,7 +742,7 @@ export function CrmInboxPage() {
         .select(CHAT_MESSAGE_COLUMNS)
         .in("conversation_id", relatedIds)
         .order("created_at", { ascending: false })
-        .limit(CHAT_PAGE_SIZE),
+        .limit(chatPageSize),
       supabase.from("wa_conversation_tags" as never).select("tag_id").in("conversation_id", relatedIds),
       supabase
         .from("wa_notes" as never)
@@ -747,7 +776,7 @@ export function CrmInboxPage() {
     });
 
     setMessages(dedupedMessages);
-    setHasOlderMessages(fetched.length >= CHAT_PAGE_SIZE);
+    setHasOlderMessages(fetched.length >= chatPageSize);
     setConversationTagIds([
       ...new Set(((tagRes.data ?? []) as { tag_id: string }[]).map((t) => t.tag_id)),
     ]);
@@ -765,7 +794,7 @@ export function CrmInboxPage() {
       delete next[conversationId];
       return next;
     });
-  }, [readFn, tenant]);
+  }, [readFn, tenant, chatPageSize]);
 
   /** Recarrega mensagens sem limpar o chat (evita salto de scroll) e vai ao fim. */
   const reloadChatWithScroll = useCallback(
@@ -792,11 +821,11 @@ export function CrmInboxPage() {
         .in("conversation_id", relatedIds)
         .lt("created_at", oldest)
         .order("created_at", { ascending: false })
-        .limit(CHAT_PAGE_SIZE);
+        .limit(chatPageSize);
       if (error) throw new Error(error.message);
 
       const older = ((data ?? []) as WaMessage[]).slice().reverse();
-      setHasOlderMessages((data ?? []).length >= CHAT_PAGE_SIZE);
+      setHasOlderMessages((data ?? []).length >= chatPageSize);
       if (older.length === 0) return;
 
       // Guarda a altura para manter a posição visual após prepender o histórico.
@@ -821,7 +850,7 @@ export function CrmInboxPage() {
       loadingOlderRef.current = false;
       setLoadingOlder(false);
     }
-  }, [hasOlderMessages, messages]);
+  }, [hasOlderMessages, messages, chatPageSize]);
 
   /** Mantém a posição do scroll após prepender mensagens antigas. */
   useLayoutEffect(() => {
@@ -831,6 +860,7 @@ export function CrmInboxPage() {
     const el = chatScrollRef.current;
     if (!el) return;
     el.scrollTop += el.scrollHeight - prevHeight;
+    virtualListRef.current?.remeasure();
   }, [messages]);
 
 
@@ -862,6 +892,7 @@ export function CrmInboxPage() {
 
   const scrollChatToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const run = () => {
+      virtualListRef.current?.scrollToBottom(behavior);
       const el = chatScrollRef.current;
       if (!el) return;
       const top = el.scrollHeight;
@@ -876,9 +907,7 @@ export function CrmInboxPage() {
   }, []);
 
   const isChatNearBottom = useCallback(() => {
-    const el = chatScrollRef.current;
-    if (!el) return true;
-    return el.scrollHeight - el.scrollTop - el.clientHeight < 140;
+    return virtualListRef.current?.isNearBottom() ?? true;
   }, []);
 
   /** Ao trocar de conversa, prepara scroll instantâneo para a mensagem mais recente. */
@@ -909,21 +938,27 @@ export function CrmInboxPage() {
   }, [messages, loadingChat, selectedId, scrollChatToBottom, isChatNearBottom]);
 
   const handleChatContentResize = useCallback(() => {
-    if (pendingScrollToBottomRef.current || isChatNearBottom()) {
+    if (!pendingScrollToBottomRef.current && !isChatNearBottom()) return;
+    cancelAnimationFrame(scrollResizeRafRef.current);
+    scrollResizeRafRef.current = requestAnimationFrame(() => {
+      virtualListRef.current?.remeasure();
       scrollChatToBottom("auto");
-    }
+    });
   }, [scrollChatToBottom, isChatNearBottom]);
+
+  const handleLoadOlderNearTop = useCallback(() => {
+    if (loadingOlderRef.current || !hasOlderMessages) return;
+    void loadOlderMessages();
+  }, [hasOlderMessages, loadOlderMessages]);
 
   /** Mídia/imagens podem aumentar a altura após o primeiro paint — garante fim da conversa visível. */
   useEffect(() => {
     if (!selectedId || loadingChat || messages.length === 0) return;
 
+    const observeMs = pwaMode ? 600 : 1200;
     const t1 = window.setTimeout(() => {
       if (pendingScrollToBottomRef.current || isChatNearBottom()) scrollChatToBottom("auto");
-    }, 120);
-    const t2 = window.setTimeout(() => {
-      if (pendingScrollToBottomRef.current || isChatNearBottom()) scrollChatToBottom("auto");
-    }, 400);
+    }, pwaMode ? 180 : 120);
 
     const el = chatScrollRef.current;
     const list = el?.firstElementChild;
@@ -931,7 +966,7 @@ export function CrmInboxPage() {
     let observe = true;
     const stopObserve = window.setTimeout(() => {
       observe = false;
-    }, 1200);
+    }, observeMs);
 
     const ro =
       list &&
@@ -945,12 +980,11 @@ export function CrmInboxPage() {
 
     return () => {
       window.clearTimeout(t1);
-      window.clearTimeout(t2);
       window.clearTimeout(stopObserve);
       cancelAnimationFrame(raf);
       ro?.disconnect();
     };
-  }, [selectedId, loadingChat, messages.length, scrollChatToBottom, isChatNearBottom]);
+  }, [selectedId, loadingChat, messages.length, scrollChatToBottom, isChatNearBottom, pwaMode]);
 
   useEffect(() => {
     const tenantId = tenant?.id;
@@ -1048,14 +1082,14 @@ export function CrmInboxPage() {
 
     const poll = window.setInterval(() => {
       if (document.visibilityState === "visible") scheduleReloadConversations(0);
-    }, 120_000);
+    }, pwaMode ? 300_000 : 120_000);
 
     return () => {
       window.clearInterval(poll);
       if (reloadListTimerRef.current) window.clearTimeout(reloadListTimerRef.current);
       void supabase.removeChannel(channel);
     };
-  }, [tenant?.id, scheduleReloadConversations, patchConversationPreview]);
+  }, [tenant?.id, scheduleReloadConversations, patchConversationPreview, pwaMode]);
 
   // Indicador "digitando…" entre a equipe (Realtime broadcast por conversa).
   useEffect(() => {
@@ -1185,8 +1219,8 @@ export function CrmInboxPage() {
 
   // Renderização incremental: evita montar centenas de itens de uma vez.
   useEffect(() => {
-    setVisibleCount(30);
-  }, [deferredSearch, filter, channelFilter, tagFilter]);
+    setVisibleCount(listPageSize);
+  }, [deferredSearch, filter, channelFilter, tagFilter, listPageSize]);
 
   const visibleConversations = useMemo(
     () => filteredConversations.slice(0, visibleCount),
@@ -1194,12 +1228,19 @@ export function CrmInboxPage() {
   );
 
   const photoConversations = useMemo(() => {
+    if (pwaMode && mobileView !== "list") {
+      return selected ? [selected] : [];
+    }
     const ids = new Set(visibleConversations.map((c) => c.id));
     if (selected && !ids.has(selected.id)) return [...visibleConversations, selected];
     return visibleConversations;
-  }, [visibleConversations, selected]);
+  }, [pwaMode, mobileView, visibleConversations, selected]);
 
-  const contactPhotos = useWaContactPhotos(photoConversations, selectedId ? [selectedId] : []);
+  const contactPhotos = useWaContactPhotos(
+    photoConversations,
+    selectedId ? [selectedId] : [],
+    pwaMode ? 12 : 30,
+  );
 
   const msgSearchHighlightIds = useMemo(
     () => new Set(msgSearchHits.map((h) => h.id)),
@@ -1214,14 +1255,14 @@ export function CrmInboxPage() {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting) {
-          setVisibleCount((c) => c + 30);
+          setVisibleCount((c) => c + listPageSize);
         }
       },
       { rootMargin: "200px" },
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMoreConversations, visibleConversations.length]);
+  }, [hasMoreConversations, visibleConversations.length, listPageSize]);
 
   const humanizeComposer = async () => {
     const body = normalizeMessageLineBreaks(text);
@@ -1337,14 +1378,9 @@ export function CrmInboxPage() {
   const scrollToMessage = (messageId: string) => {
     setMobileView("chat");
     requestAnimationFrame(() => {
-      const container = chatScrollRef.current;
+      virtualListRef.current?.scrollToMessageId(messageId, "smooth");
       const el = document.getElementById(`msg-${messageId}`);
-      if (!container || !el) return;
-      const containerRect = container.getBoundingClientRect();
-      const elRect = el.getBoundingClientRect();
-      const offset = elRect.top - containerRect.top + container.scrollTop;
-      const target = offset - container.clientHeight / 2 + el.clientHeight / 2;
-      container.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
+      if (!el) return;
       el.classList.add("ring-2", "ring-amber-400/90", "ring-offset-1");
       window.setTimeout(() => {
         el.classList.remove("ring-2", "ring-amber-400/90", "ring-offset-1");
@@ -2250,8 +2286,9 @@ export function CrmInboxPage() {
           )}
           style={pwaMode ? undefined : { gridTemplateColumns: "20% 55% 25%" }}
         >
+          {(!pwaMode || mobileView === "list") ? (
           <CrmInboxListPanel
-            hiddenOnMobile={mobileView !== "list"}
+            hiddenOnMobile={!pwaMode && mobileView !== "list"}
             search={search}
             onSearchChange={setSearch}
             listFiltersOpen={listFiltersOpen}
@@ -2275,20 +2312,22 @@ export function CrmInboxPage() {
             convTagsMap={convTagsMap}
             resolveTagColor={resolveTagColor}
             onSelectConversation={selectConversation}
-            swipeActionsEnabled
+            swipeActionsEnabled={pwaMode}
             onSwipeUnread={(id) => void markUnread(id)}
             onSwipeSchedule={openSwipeSchedule}
             onSwipeReminder={openSwipeReminder}
             hasMoreConversations={hasMoreConversations}
             listSentinelRef={listSentinelRef}
-            onLoadMore={() => setVisibleCount((c) => c + 30)}
+            onLoadMore={() => setVisibleCount((c) => c + listPageSize)}
             onManualConvOpen={() => setManualConvOpen(true)}
             provider={provider}
             onSyncConfirmOpen={() => setSyncConfirmOpen(true)}
             syncing={syncing}
           />
+          ) : null}
 
           {/* Coluna 2 — Chat */}
+          {(!pwaMode || mobileView === "chat") ? (
           <main
             className={cn(
               "flex min-h-0 min-w-0 flex-col overflow-hidden",
@@ -2300,7 +2339,7 @@ export function CrmInboxPage() {
             )}
           >
             {!selected && !composeTarget ? (
-              <div className={cn("flex flex-1 flex-col items-center justify-center", crmChatBg)}>
+              <div className={cn("flex flex-1 flex-col items-center justify-center", chatBgClass)}>
                 <div className="rounded-2xl bg-background/80 px-8 py-10 text-center shadow-sm backdrop-blur-sm">
                   <MessageSquare className="mx-auto mb-3 size-10 text-emerald-600/40" />
                   <p className="font-medium text-foreground">Selecione uma conversa</p>
@@ -2433,7 +2472,7 @@ export function CrmInboxPage() {
                     ) : null}
                   </CrmInlineAlert>
                 ) : null}
-                <div ref={chatScrollRef} className={cn(crmChatMessagesScroll, crmChatBg)}>
+                <div ref={chatScrollRef} className={cn(crmChatMessagesScroll, chatBgClass)}>
                   {composeTarget ? (
                     <div className="flex min-h-[min(50vh,320px)] flex-col items-center justify-center py-12">
                       <div className="max-w-sm rounded-2xl bg-background/85 px-5 py-4 text-center text-sm text-muted-foreground shadow-sm backdrop-blur-sm">
@@ -2492,20 +2531,20 @@ export function CrmInboxPage() {
                           </button>
                         </div>
                       ) : null}
-                      {messages.map((m) => (
-                        <CrmMessageBubble
-                          key={m.id}
-                          message={m}
-                          resolveMediaUrl={resolveMediaUrl}
-                          replyTo={m.reply_to_message_id ? messagesById.get(m.reply_to_message_id) : null}
-                          onReply={setReplyTo}
-                          onForward={handleForwardMessage}
-                          onDelete={handleDeleteMessage}
-                          highlighted={msgSearchHighlightIds.has(m.id)}
-                          onContentResize={handleChatContentResize}
-                        />
-                      ))}
-                      <div ref={bottomRef} />
+                      <CrmVirtualMessageList
+                        ref={virtualListRef}
+                        scrollRef={chatScrollRef}
+                        messages={messages}
+                        messagesById={messagesById}
+                        resolveMediaUrl={resolveMediaUrl}
+                        onReply={setReplyTo}
+                        onForward={handleForwardMessage}
+                        onDelete={handleDeleteMessage}
+                        highlightedIds={msgSearchHighlightIds}
+                        onContentResize={handleChatContentResize}
+                        onNearTop={hasOlderMessages ? handleLoadOlderNearTop : undefined}
+                        compact={pwaMode}
+                      />
                     </div>
                   )}
                 </div>
@@ -2544,7 +2583,9 @@ export function CrmInboxPage() {
               </div>
             )}
           </main>
+          ) : null}
 
+          {(!pwaMode || mobileView === "details") ? (
           <CrmInboxDetailPanel
             hiddenOnMobile={mobileView !== "details"}
             detailTab={detailTab}
@@ -2597,6 +2638,7 @@ export function CrmInboxPage() {
             onCompleteReminder={(id) => void completeReminder(id)}
             onDoTransfer={() => void doTransfer()}
           />
+          ) : null}
 
         </div>
       </div>

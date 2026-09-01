@@ -424,7 +424,11 @@ export const emitNfse = createServerFn({ method: "POST" })
     const dpsSerie = (cfg.dps_serie || "900").trim();
     const tribNac = codigoTribNac(cfg);
     const nbs = codigoNbsDigits(cfg);
-    const tribMun = (cfg.codigo_tributacao_municipal_iss || cfg.codigo_tributario_municipio || "").trim();
+    const tribMunRaw = onlyDigits(
+      cfg.codigo_tributacao_municipal_iss || cfg.codigo_tributario_municipio || "",
+    );
+    // cTribMun exige exatamente 3 dígitos — omitir se vazio ou inválido (não confundir com cTribNac de 6).
+    const tribMun = tribMunRaw.length === 3 ? tribMunRaw : "";
 
     const cep = onlyDigits(b.patients?.address_zip);
     let logradouro = (b.patients?.address_street || "").trim();

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useRouterState } from "@tanstack/react-router";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { syncCrmAppBadge } from "@/lib/crm-app-badge";
@@ -21,19 +22,25 @@ function teardownBadgeChannel() {
 /** Mantém o badge do ícone do PWA sincronizado com mensagens não lidas. */
 export function useWaUnreadBadge() {
   const { profile, tenant } = useAuth();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const refreshRef = useRef<() => void>(() => {});
   const debounceRef = useRef<number | null>(null);
+  const onInboxRef = useRef(false);
+  onInboxRef.current = pathname.startsWith("/crm/inbox");
 
   refreshRef.current = () => {
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    const delay = onInboxRef.current ? 1200 : 400;
     debounceRef.current = window.setTimeout(() => {
       debounceRef.current = null;
       if (!profile || !tenant || !isCrmStaff(profile.role)) {
         syncCrmAppBadge(0);
         return;
       }
+      // No inbox aberto a lista já reflete não lidas — evita query extra a cada mensagem.
+      if (onInboxRef.current && document.visibilityState === "visible") return;
       void fetchWaUnreadBadgeCount(tenant.id, profile.id, profile.role).then(syncCrmAppBadge);
-    }, 400);
+    }, delay);
   };
 
   useEffect(() => {

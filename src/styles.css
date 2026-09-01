@@ -369,3 +369,9 @@ body.crm-mobile-app .backdrop-blur {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
+
+/* Mensagens fora da viewport não são pintadas até entrarem no scroll (iOS/PWA). */
+body.crm-mobile-app .crm-msg-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 52px;
+}

@@ -102,6 +102,13 @@ export function SectionNfseConfig({ trigger }: { trigger: React.ReactNode }) {
       toast.error("Informe o código de tributação nacional ISS (cTribNac), ex.: 040101.");
       return;
     }
+    const tribMunDigits = cfg.codigo_tributacao_municipal_iss.replace(/\D/g, "");
+    if (tribMunDigits.length > 0 && tribMunDigits.length !== 3) {
+      toast.error(
+        "cTribMun deve ter exatamente 3 dígitos ou ficar vazio. Não use o cTribNac (040101) aqui.",
+      );
+      return;
+    }
     setSaving(true);
     try {
       await setTenantSetting(tenant.id, "nfse", {
@@ -177,10 +184,11 @@ export function SectionNfseConfig({ trigger }: { trigger: React.ReactNode }) {
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">cTribMun (municipal, se a prefeitura exigir)</Label>
+              <Label className="text-xs">cTribMun (3 dígitos — deixe vazio na maioria dos casos)</Label>
               <Input
                 value={cfg.codigo_tributacao_municipal_iss}
                 onChange={(e) => set({ codigo_tributacao_municipal_iss: e.target.value })}
+                placeholder="Vazio (não use 040101 — esse é o cTribNac)"
               />
             </div>
             <div className="space-y-1">

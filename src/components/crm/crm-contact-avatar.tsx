@@ -13,7 +13,11 @@ type PhotoSlice = {
 };
 
 /** Busca e cacheia fotos de perfil WhatsApp (Z-API) para a lista de conversas. */
-export function useWaContactPhotos(conversations: PhotoSlice[], priorityIds: string[] = []) {
+export function useWaContactPhotos(
+  conversations: PhotoSlice[],
+  priorityIds: string[] = [],
+  maxFetch = 30,
+) {
   const photoFn = useServerFn(fetchWaContactPhoto);
   const photoFnRef = useRef(photoFn);
   photoFnRef.current = photoFn;
@@ -43,7 +47,7 @@ export function useWaContactPhotos(conversations: PhotoSlice[], priorityIds: str
     const pending = [
       ...conversations.filter((c) => priority.has(c.id) && !fetchedRef.current.has(c.id)),
       ...conversations.filter((c) => !priority.has(c.id) && !fetchedRef.current.has(c.id)),
-    ].slice(0, 30);
+    ].slice(0, maxFetch);
 
     if (!pending.length) return;
 
@@ -68,7 +72,7 @@ export function useWaContactPhotos(conversations: PhotoSlice[], priorityIds: str
     return () => {
       cancelled = true;
     };
-  }, [conversations, priorityIds]);
+  }, [conversations, priorityIds, maxFetch]);
 
   return photos;
 }
