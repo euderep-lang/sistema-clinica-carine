@@ -171,7 +171,7 @@ export function NfseDetailDialog({ open, onOpenChange, bill, onChanged }: Props)
             <dt className="text-muted-foreground">Nº NFS-e</dt>
             <dd className="font-mono">{bill.nfse_number ?? "—"}</dd>
 
-            <dt className="text-muted-foreground">Ref. Focus</dt>
+            <dt className="text-muted-foreground">Ref. Focus / DPS</dt>
             <dd className="break-all font-mono text-xs">{bill.nfse_focus_ref ?? "—"}</dd>
 
             <dt className="text-muted-foreground">Discriminação</dt>

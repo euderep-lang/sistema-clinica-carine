@@ -13,7 +13,7 @@ const INTEGRATIONS = [
   { id: "mercadopago", name: "Mercado Pago", desc: "Receba pagamentos online e gere links de cobrança", icon: CreditCard, color: "#3b82f6", active: false },
   { id: "gcal", name: "Google Agenda", desc: "Sincronize a agenda com o Google Calendar", icon: Calendar, color: "#ef4444", active: false },
   { id: "gdrive", name: "Google Drive", desc: "Armazene documentos na nuvem automaticamente", icon: Cloud, color: "#eab308", active: false },
-  { id: "nfse", name: "Nota Fiscal (Focus NFe)", desc: "Emissão de NFS-e direto pelo financeiro", icon: Receipt, color: "#8b5cf6", active: true },
+  { id: "nfse", name: "Nota Fiscal (Emissor Nacional)", desc: "NFS-e pelo Ambiente Nacional, via Focus NFe", icon: Receipt, color: "#8b5cf6", active: true },
 ];
 
 const WEBHOOK_URL = `${getPublicAppUrl()}/api/whatsapp/webhook`;

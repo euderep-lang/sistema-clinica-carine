@@ -127,24 +127,38 @@ export type EmitNfseResult =
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Emite a NFS-e via Focus NFe e aguarda o processamento (polling). */
+/** Emite a NFS-e via Emissor Nacional (Focus /v2/nfsen) e aguarda o processamento. */
 export async function emitBillNfse(
   billId: string,
   overrides?: { amount?: number; description?: string },
 ): Promise<EmitNfseResult> {
-  const toastId = toast.loading("Enviando NFS-e para a prefeitura…");
+  const toastId = toast.loading("Enviando NFS-e ao Emissor Nacional…");
   const amount = overrides?.amount ?? null;
   const description = overrides?.description?.trim() || null;
   try {
-    await emitNfse({
+    const emitted = await emitNfse({
       data: {
         billId,
         amount: overrides?.amount,
         description: overrides?.description,
       },
     });
-    // Polling do status (autorização é assíncrona na prefeitura).
-    for (let i = 0; i < 8; i++) {
+    if (emitted.status === "issued") {
+      toast.success(
+        `NFS-e emitida${"numero" in emitted && emitted.numero ? ` (nº ${emitted.numero})` : ""}.`,
+        { id: toastId },
+      );
+      return {
+        ok: true,
+        status: "issued",
+        numero: "numero" in emitted ? (emitted.numero as string | null) : null,
+        url: "url" in emitted ? (emitted.url as string | null) : null,
+        pdfUrl: "pdfUrl" in emitted ? (emitted.pdfUrl as string | null) : null,
+        amount,
+        description,
+      };
+    }
+    for (let i = 0; i < 12; i++) {
       await sleep(2500);
       const res = await consultNfse({ data: { billId } });
       if (res.status === "issued") {
@@ -168,11 +182,11 @@ export async function emitBillNfse(
         return { ok: false };
       }
       if (res.status === "cancelled") {
-        toast.error("NFS-e cancelada pela prefeitura.", { id: toastId });
+        toast.error("NFS-e cancelada pelo Emissor Nacional.", { id: toastId });
         return { ok: false };
       }
     }
-    toast.info("NFS-e em processamento na prefeitura. Você já pode enviar no WhatsApp ou visualizar depois.", {
+    toast.info("NFS-e em processamento no Emissor Nacional. Atualize o status em instantes.", {
       id: toastId,
     });
     return {
@@ -208,7 +222,7 @@ export async function refreshBillNfse(billId: string): Promise<boolean> {
       toast.error("NFS-e cancelada.", { id: toastId });
       return false;
     }
-    toast.info("Ainda em processamento na prefeitura.", { id: toastId });
+    toast.info("Ainda em processamento no Emissor Nacional.", { id: toastId });
     return true;
   } catch (e) {
     toast.error((e as Error).message, { id: toastId });

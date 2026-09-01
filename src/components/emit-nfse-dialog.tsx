@@ -165,7 +165,7 @@ export function EmitNfseDialog({
       } else if (res.status === "cancelled") {
         toast.error("NFS-e cancelada.");
       } else {
-        toast.info("Ainda em processamento na prefeitura.");
+        toast.info("Ainda em processamento no Emissor Nacional.");
       }
     } catch (e) {
       toast.error((e as Error).message);
@@ -218,7 +218,7 @@ export function EmitNfseDialog({
                 ? `${issued.patientName}${issued.numero ? ` · Nota ${issued.numero}` : ""}`
                 : issued.numero
                   ? `Nota ${issued.numero}`
-                  : "Aguarde a autorização da prefeitura ou use as ações abaixo."}
+                  : "Aguarde a autorização do Emissor Nacional ou use as ações abaixo."}
             </DialogDescription>
           </DialogHeader>
 

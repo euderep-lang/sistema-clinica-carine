@@ -179,7 +179,7 @@ function NfsePage() {
       <div className="space-y-5">
         <PageHeader
           title="NFS-e"
-          description="Controle das notas fiscais de serviço emitidas pela clínica."
+          description="Notas fiscais de serviço emitidas pelo Emissor Nacional (um clique no financeiro)."
           actions={
             <Button variant="outline" onClick={() => void load()} disabled={loading}>
               {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <RefreshCw className="mr-2 size-4" />}
