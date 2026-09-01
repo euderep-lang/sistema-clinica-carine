@@ -158,9 +158,9 @@ export async function emitBillNfse(
         description,
       };
     }
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 4; i++) {
       await sleep(2500);
-      const res = await consultNfse({ data: { billId } });
+      const res = await consultNfse({ data: { billId, wait: i === 0 } });
       if (res.status === "issued") {
         toast.success(`NFS-e emitida${"numero" in res && res.numero ? ` (nº ${res.numero})` : ""}.`, {
           id: toastId,
@@ -207,7 +207,7 @@ export async function emitBillNfse(
 export async function refreshBillNfse(billId: string): Promise<boolean> {
   const toastId = toast.loading("Consultando status na Focus…");
   try {
-    const res = await consultNfse({ data: { billId } });
+    const res = await consultNfse({ data: { billId, wait: true } });
     if (res.status === "issued") {
       toast.success(`NFS-e autorizada${"numero" in res && res.numero ? ` (nº ${res.numero})` : ""}.`, {
         id: toastId,
@@ -222,7 +222,11 @@ export async function refreshBillNfse(billId: string): Promise<boolean> {
       toast.error("NFS-e cancelada.", { id: toastId });
       return false;
     }
-    toast.info("Ainda em processamento no Emissor Nacional.", { id: toastId });
+    const detail =
+      "message" in res && res.message
+        ? res.message
+        : "Ainda em processamento no Emissor Nacional.";
+    toast.info(detail, { id: toastId });
     return true;
   } catch (e) {
     toast.error((e as Error).message, { id: toastId });

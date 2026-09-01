@@ -276,7 +276,40 @@ type ConsultOutcome =
   | { status: "issued"; numero: string | null; url: string | null; pdfUrl: string | null }
   | { status: "failed"; message: string }
   | { status: "cancelled"; message: string }
-  | { status: "processing" };
+  | { status: "processing"; focusStatus?: string; message?: string };
+
+const FOCUS_PROCESSING_STATUSES = new Set([
+  "",
+  "processando_autorizacao",
+  "processando",
+  "enviado",
+  "em_processamento",
+]);
+
+function focusStatusLabel(st: string): string {
+  if (!st) return "aguardando retorno";
+  return st.replace(/_/g, " ");
+}
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function marcarProcessandoBill(
+  billId: string,
+  focusStatus: string,
+  modo: ModoNfse,
+): Promise<void> {
+  const msg = `Emissor Nacional: ${focusStatusLabel(focusStatus)}. Aguarde ou clique em Atualizar status.`;
+  await supabaseAdmin
+    .from("bills_receivable")
+    .update({
+      nfse_status: "processing",
+      nfse_message: msg,
+      nfse_modo: modo,
+    } as never)
+    .eq("id", billId);
+}
 
 async function consultarEAtualizarBill(opts: {
   billId: string;
@@ -295,7 +328,9 @@ async function consultarEAtualizarBill(opts: {
     (typeof body.mensagem === "string" && /n[aã]o encontrad/i.test(body.mensagem))
   ) {
     const msg =
-      "Emissão não encontrada no Emissor Nacional. Corrija o cadastro e emita novamente.";
+      "Emissão não encontrada na Focus (ref. " +
+      opts.ref +
+      "). Verifique o painel Focus ou emita novamente.";
     await supabaseAdmin
       .from("bills_receivable")
       .update({ nfse_status: "failed", nfse_message: msg } as never)
@@ -303,14 +338,27 @@ async function consultarEAtualizarBill(opts: {
     return { status: "failed", message: msg };
   }
 
+  if (!res.ok && !status) {
+    const msg =
+      extractFocusErrors(body) ||
+      `Falha ao consultar NFS-e na Focus (HTTP ${res.status}). Confira FOCUS_NFE_TOKEN e FOCUS_NFE_ENV.`;
+    await supabaseAdmin
+      .from("bills_receivable")
+      .update({ nfse_status: "processing", nfse_message: msg } as never)
+      .eq("id", opts.billId);
+    return { status: "processing", focusStatus: status, message: msg };
+  }
+
+  const numeroFromBody =
+    body.numero != null
+      ? String(body.numero)
+      : body.chave_nfse != null
+        ? String(body.chave_nfse)
+        : null;
+
   if (status === "autorizado") {
     const { portalUrl, pdfUrl } = extractNfseLinks(body);
-    const numero =
-      body.numero != null
-        ? String(body.numero)
-        : body.chave_nfse != null
-          ? String(body.chave_nfse)
-          : null;
+    const numero = numeroFromBody;
     await supabaseAdmin
       .from("bills_receivable")
       .update({
@@ -344,7 +392,35 @@ async function consultarEAtualizarBill(opts: {
     return { status: "cancelled", message: msg };
   }
 
-  return { status: "processing" };
+  const focusStatus = status || "processando_autorizacao";
+  await marcarProcessandoBill(opts.billId, focusStatus, opts.modo);
+  return {
+    status: "processing",
+    focusStatus,
+    message: `Emissor Nacional: ${focusStatusLabel(focusStatus)}.`,
+  };
+}
+
+async function aguardarAutorizacaoBill(opts: {
+  billId: string;
+  ref: string;
+  modo: ModoNfse;
+  tentativas?: number;
+  intervaloMs?: number;
+}): Promise<ConsultOutcome> {
+  const tentativas = opts.tentativas ?? 20;
+  const intervaloMs = opts.intervaloMs ?? 3000;
+  let last: ConsultOutcome = { status: "processing", focusStatus: "processando_autorizacao" };
+
+  for (let i = 0; i < tentativas; i++) {
+    if (i > 0) await sleepMs(intervaloMs);
+    last = await consultarEAtualizarBill(opts);
+    if (last.status === "issued" || last.status === "failed" || last.status === "cancelled") {
+      return last;
+    }
+  }
+
+  return last;
 }
 
 async function requireFinanceProfile(userId: string) {
@@ -379,13 +455,41 @@ export const emitNfse = createServerFn({ method: "POST" })
       amount: number;
       description: string | null;
       nfse_status: string | null;
+      nfse_focus_ref: string | null;
+      nfse_modo: string | null;
       patients: PatientSlice | null;
     };
 
     if (b.nfse_status === "issued") throw new Error("NFS-e já emitida para esta fatura.");
 
     const cfg = await getNfseConfig(profile.tenant_id);
-    const ref = `bill-${b.id}`;
+    const ref = b.nfse_focus_ref?.trim() || `bill-${b.id}`;
+
+    if (b.nfse_status === "processing" && b.nfse_focus_ref) {
+      const modoWait: ModoNfse = b.nfse_modo === "municipal" ? "municipal" : "nacional";
+      const consulted = await aguardarAutorizacaoBill({
+        billId: b.id,
+        ref: b.nfse_focus_ref,
+        modo: modoWait,
+        tentativas: 20,
+        intervaloMs: 3000,
+      });
+      if (consulted.status === "issued") {
+        return {
+          ref: b.nfse_focus_ref,
+          status: "issued" as const,
+          numero: consulted.numero,
+          url: consulted.url,
+          pdfUrl: consulted.pdfUrl,
+        };
+      }
+      if (consulted.status === "failed") throw new Error(consulted.message);
+      if (consulted.status === "cancelled") throw new Error(consulted.message);
+      const hint =
+        consulted.message ||
+        "Ainda em processamento na Focus. Aguarde 1–2 minutos e use Atualizar status.";
+      throw new Error(hint);
+    }
     const valor =
       data.amount != null && Number.isFinite(Number(data.amount)) && Number(data.amount) > 0
         ? Number(data.amount)
@@ -598,35 +702,44 @@ export const emitNfse = createServerFn({ method: "POST" })
       .update({
         nfse_status: "processing",
         nfse_focus_ref: ref,
-        nfse_message: null,
         nfse_modo: "nacional",
         nfse_amount: valorServicos,
         nfse_description: discriminacao,
       } as never)
       .eq("id", b.id);
 
-    for (let i = 0; i < 6; i++) {
-      await new Promise((r) => setTimeout(r, 2000));
-      const consulted = await consultarEAtualizarBill({ billId: b.id, ref, modo: "nacional" });
-      if (consulted.status === "issued") {
-        return {
-          ref,
-          status: "issued" as const,
-          numero: consulted.numero,
-          url: consulted.url,
-          pdfUrl: consulted.pdfUrl,
-        };
-      }
-      if (consulted.status === "failed") throw new Error(consulted.message);
-      if (consulted.status === "cancelled") throw new Error(consulted.message);
-    }
+    await marcarProcessandoBill(b.id, st || "processando_autorizacao", "nacional");
 
-    return { ref, status: "processing" as const };
+    const consulted = await aguardarAutorizacaoBill({
+      billId: b.id,
+      ref,
+      modo: "nacional",
+      tentativas: 20,
+      intervaloMs: 3000,
+    });
+    if (consulted.status === "issued") {
+      return {
+        ref,
+        status: "issued" as const,
+        numero: consulted.numero,
+        url: consulted.url,
+        pdfUrl: consulted.pdfUrl,
+      };
+    }
+    if (consulted.status === "failed") throw new Error(consulted.message);
+    if (consulted.status === "cancelled") throw new Error(consulted.message);
+
+    return {
+      ref,
+      status: "processing" as const,
+      message: consulted.message,
+      focusStatus: consulted.focusStatus,
+    };
   });
 
 export const consultNfse = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((d: { billId: string }) => d)
+  .validator((d: { billId: string; wait?: boolean }) => d)
   .handler(async ({ data, context }) => {
     const profile = await requireFinanceProfile(context.userId);
 
@@ -640,7 +753,11 @@ export const consultNfse = createServerFn({ method: "POST" })
     const ref = row?.nfse_focus_ref;
     if (!ref) throw new Error("Esta fatura ainda não foi enviada para emissão.");
     const modo: ModoNfse = row?.nfse_modo === "municipal" ? "municipal" : "nacional";
-    return consultarEAtualizarBill({ billId: data.billId, ref, modo });
+    const opts = { billId: data.billId, ref, modo };
+    if (data.wait) {
+      return aguardarAutorizacaoBill({ ...opts, tentativas: 15, intervaloMs: 3000 });
+    }
+    return consultarEAtualizarBill(opts);
   });
 
 export const downloadNfsePdf = createServerFn({ method: "POST" })

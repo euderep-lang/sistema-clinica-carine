@@ -181,7 +181,13 @@ export function NfseDetailDialog({ open, onOpenChange, bill, onChanged }: Props)
           </dl>
 
           {bill.nfse_message ? (
-            <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive">
+            <div
+              className={
+                status === "failed" || status === "cancelled"
+                  ? "rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive"
+                  : "rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sky-900 text-sm"
+              }
+            >
               {bill.nfse_message}
             </div>
           ) : null}
