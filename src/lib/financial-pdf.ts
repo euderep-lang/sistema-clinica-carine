@@ -158,34 +158,29 @@ export function generateBudgetPDF(b: BudgetPDFData): Blob {
   doc.setFontSize(9);
   doc.text("Item", x + 2, y);
   doc.text("Descrição", x + 12, y);
-  doc.text("Qtd", x + contentW * 0.57, y, { align: "right" });
-  doc.text("Preço Unit.", x + contentW * 0.71, y, { align: "right" });
-  doc.text("Total", x + contentW - 2, y, { align: "right" });
+  doc.text("Qtd", x + contentW - 2, y, { align: "right" });
   y += 6;
   doc.setFont("helvetica", "normal");
 
   b.items.forEach((it, i) => {
-    const descW = contentW * 0.45;
+    const descW = contentW * 0.78;
     const lines = doc.splitTextToSize(it.description, descW);
     const rowH = Math.max(5, lines.length * 4.5);
     if (y + rowH > bottomLimit - 30) return;
     doc.text(String(i + 1), x + 2, y);
     doc.text(lines, x + 12, y);
-    doc.text(String(it.quantity), x + contentW * 0.57, y, { align: "right" });
-    doc.text(fmt(it.unit_price), x + contentW * 0.71, y, { align: "right" });
-    doc.text(fmt(it.total_price), x + contentW - 2, y, { align: "right" });
+    doc.text(String(it.quantity), x + contentW - 2, y, { align: "right" });
     y += rowH;
   });
 
   y += 4;
   doc.line(x + contentW * 0.52, y, x + contentW, y);
   y += 5;
-  doc.text("Subtotal:", x + contentW * 0.62, y);
-  doc.text(fmt(b.subtotal), x + contentW - 2, y, { align: "right" });
-  y += 5;
-  doc.text("Desconto:", x + contentW * 0.62, y);
-  doc.text(`- ${fmt(b.discountValue)}`, x + contentW - 2, y, { align: "right" });
-  y += 5;
+  if (b.discountValue > 0) {
+    doc.text("Desconto:", x + contentW * 0.62, y);
+    doc.text(`- ${fmt(b.discountValue)}`, x + contentW - 2, y, { align: "right" });
+    y += 5;
+  }
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
   doc.text("Total Final:", x + contentW * 0.62, y);
