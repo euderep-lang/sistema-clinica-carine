@@ -7,8 +7,8 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
-  // Vercel: Nitro compila para Vercel Functions. Local/dev: Lovable wrapper pula Nitro fora do sandbox.
-  nitro: process.env.VERCEL ? { preset: "vercel" } : undefined,
+  // Vercel uses serverless functions; Coolify runs the Nitro Node server directly.
+  nitro: process.env.VERCEL ? { preset: "vercel" } : { preset: "node-server" },
   vite: {
     server: {
       port: 8080,
