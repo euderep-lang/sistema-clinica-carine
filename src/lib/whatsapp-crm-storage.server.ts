@@ -432,16 +432,34 @@ export async function upsertConversation(
     phone = normalizeWaPhone(existing.contact_phone) || existing.contact_phone;
   }
 
-  if (!phone || phone.length < 10) {
+  const contactWaId = (rawWaId?.trim() || fromPhone || "").trim();
+  // WhatsApp privacy (@lid): contato novo pode chegar sem MSISDN. Identidade = contact_wa_id.
+  const lidOnlyIdentity =
+    (!phone || phone.length < 10) &&
+    Boolean(
+      contactWaId &&
+        (isLikelyWaLidKey(contactWaId) ||
+          isLikelyWaLidKey(fromPhone) ||
+          isLikelyWaLidKey(options?.rawPhone ?? "")),
+    );
+
+  if ((!phone || phone.length < 10) && !lidOnlyIdentity) {
     throw new Error(`Telefone inválido para conversa WhatsApp: ${fromPhone || "(vazio)"}`);
   }
 
-  const contactWaId = rawWaId?.trim() || fromPhone;
-  const autoPatient = await findPatientByPhone(tenantId, phone);
-  if (!existing) {
+  // Trigger do banco zera @lid; usamos string vazia e amarramos no contact_wa_id.
+  if (!phone || phone.length < 10) {
+    phone = "";
+  }
+
+  const autoPatient = phone ? await findPatientByPhone(tenantId, phone) : null;
+  if (!existing && phone) {
     existing = await findConversationByPhoneTail(tenantId, phone);
   }
   const receptionistId = await getDefaultReceptionAssignee(tenantId);
+  const fallbackName =
+    contactName?.trim() ||
+    (contactWaId ? `Contato WhatsApp (${digitsOnly(contactWaId).slice(-6) || "novo"})` : "Contato WhatsApp");
 
   if (existing) {
     const row = existing;
@@ -449,7 +467,7 @@ export async function upsertConversation(
     const wasClosed = row.status === "closed";
     const resolvedPatientId = row.patient_id ?? autoPatient?.id ?? null;
 
-    let displayName = row.contact_name ?? contactName ?? phone;
+    let displayName = row.contact_name ?? fallbackName;
     if (resolvedPatientId) {
       const { data: linked } = await supabaseAdmin
         .from("patients")
@@ -466,8 +484,9 @@ export async function upsertConversation(
       .update({
         patient_id: resolvedPatientId,
         contact_name: displayName,
-        contact_phone: phone,
-        contact_wa_id: contactWaId,
+        // Não apagar telefone real se esta entrega veio só com @lid.
+        contact_phone: phone || row.contact_phone || "",
+        contact_wa_id: contactWaId || undefined,
         last_message_at: timestamp.toISOString(),
         last_message_preview: preview,
         unread_count: incrementUnread ? row.unread_count + 1 : row.unread_count,
@@ -481,10 +500,18 @@ export async function upsertConversation(
       } as never)
       .eq("id", row.id);
 
-    await mergeDuplicateConversations(tenantId, row.id, phone);
+    if (phone) await mergeDuplicateConversations(tenantId, row.id, phone);
     if (rawWaId) await mergeConversationsByChatLid(tenantId, row.id, rawWaId);
     if (!row.assigned_to) await ensureConversationAssignedToReception(tenantId, row.id);
     return { id: row.id, lastAfterHoursReplyAt: row.last_after_hours_reply_at };
+  }
+
+  if (lidOnlyIdentity) {
+    console.info(
+      "[CRM] criando conversa sem MSISDN (identidade @lid):",
+      contactWaId,
+      contactName ?? "",
+    );
   }
 
   const { data: created, error } = await supabaseAdmin
@@ -493,8 +520,8 @@ export async function upsertConversation(
       tenant_id: tenantId,
       patient_id: autoPatient?.id ?? null,
       contact_phone: phone,
-      contact_name: autoPatient?.full_name ?? contactName ?? phone,
-      contact_wa_id: contactWaId,
+      contact_name: autoPatient?.full_name ?? fallbackName,
+      contact_wa_id: contactWaId || null,
       assigned_to: receptionistId,
       last_message_at: timestamp.toISOString(),
       last_message_preview: preview,
@@ -507,15 +534,17 @@ export async function upsertConversation(
 
   if (error) {
     if (error.code === "23505") {
-      const retry = await findConversationByPhoneTail(tenantId, phone);
+      const retry =
+        (phone ? await findConversationByPhoneTail(tenantId, phone) : null) ||
+        (contactWaId ? await findConversationByWaId(tenantId, contactWaId) : null);
       if (retry) {
         await supabaseAdmin
           .from("wa_conversations" as never)
           .update({
             patient_id: retry.patient_id ?? autoPatient?.id ?? null,
-            contact_name: retry.contact_name ?? autoPatient?.full_name ?? contactName ?? phone,
-            contact_phone: phone,
-            contact_wa_id: contactWaId,
+            contact_name: retry.contact_name ?? autoPatient?.full_name ?? fallbackName,
+            contact_phone: phone || retry.contact_phone || "",
+            contact_wa_id: contactWaId || undefined,
             last_message_at: timestamp.toISOString(),
             last_message_preview: preview,
             unread_count: (options?.incrementUnread ?? true) ? retry.unread_count + 1 : retry.unread_count,
@@ -524,7 +553,7 @@ export async function upsertConversation(
             ...photoPatch,
           } as never)
           .eq("id", retry.id);
-        await mergeDuplicateConversations(tenantId, retry.id, phone);
+        if (phone) await mergeDuplicateConversations(tenantId, retry.id, phone);
         if (rawWaId) await mergeConversationsByChatLid(tenantId, retry.id, rawWaId);
         return { id: retry.id, lastAfterHoursReplyAt: retry.last_after_hours_reply_at };
       }
@@ -533,7 +562,7 @@ export async function upsertConversation(
   }
 
   const id = (created as { id: string }).id;
-  await mergeDuplicateConversations(tenantId, id, phone);
+  if (phone) await mergeDuplicateConversations(tenantId, id, phone);
   if (rawWaId) await mergeConversationsByChatLid(tenantId, id, rawWaId);
   return { id, lastAfterHoursReplyAt: null as string | null };
 }

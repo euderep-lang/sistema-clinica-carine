@@ -78,7 +78,9 @@ function resolveZApiContact(payload: ZApiReceivedPayload): {
     phone = payload.participantPhone.trim();
   }
 
-  return { phone, waId, contactName };
+  // Preferir MSISDN normalizado; se só veio @lid, devolve o raw (upsert trata via contact_wa_id).
+  const normalized = normalizeWaPhone(phone);
+  return { phone: normalized || phone, waId, contactName };
 }
 
 /** Foto de perfil do contato (não do número conectado). */
