@@ -392,7 +392,7 @@ export function CrmInboxPage() {
       supabase
         .from("wa_conversations" as never)
         .select(
-          "id, tenant_id, patient_id, contact_phone, contact_name, channel, external_user_id, assigned_to, status, last_message_at, last_message_preview, unread_count, contact_photo_url, contact_photo_fetched_at, deal_id, patients(full_name, gender), assigned_profile:assigned_to(full_name)",
+          "id, tenant_id, patient_id, contact_phone, contact_wa_id, contact_name, channel, external_user_id, assigned_to, status, last_message_at, last_message_preview, unread_count, contact_photo_url, contact_photo_fetched_at, deal_id, patients(full_name, gender), assigned_profile:assigned_to(full_name)",
         )
         .order("last_message_at", { ascending: false, nullsFirst: false })
         .limit(convListLimit),

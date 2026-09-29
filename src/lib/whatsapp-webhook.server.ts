@@ -30,14 +30,20 @@ export async function handleWhatsAppWebhook(request: Request): Promise<Response>
     return new Response("Bad Request", { status: 400 });
   }
 
-  if (isZApiWebhookPayload(payload)) {
-    return handleZApiWebhook(
-      new Request(request.url, {
-        method: "POST",
-        headers: request.headers,
-        body: rawBody,
-      }),
-    );
+  const zapiItems = (Array.isArray(payload) ? payload : [payload]).filter(isZApiWebhookPayload);
+  if (zapiItems.length > 0) {
+    let last: Response = new Response("OK", { status: 200 });
+    for (const item of zapiItems) {
+      last = await handleZApiWebhook(
+        new Request(request.url, {
+          method: "POST",
+          headers: request.headers,
+          body: JSON.stringify(item),
+        }),
+      );
+      if (!last.ok) return last;
+    }
+    return last;
   }
 
   // Meta: WhatsApp Cloud + Instagram + Messenger (funciona junto com Z-API no WhatsApp)

@@ -4,6 +4,7 @@ import { verifyZApiWebhookAuth } from "@/lib/zapi-webhook-auth.server";
 import {
   insertWaMessage,
   maybeSendAfterHoursAutoReply,
+  enrichWaMessageIfRicher,
   patchWaMessageMediaIfMissing,
   resolveTenantId,
   trackStaffFirstResponse,
@@ -18,7 +19,10 @@ interface ZApiReceivedPayload {
   type?: string;
   instanceId?: string;
   phone?: string;
+  chatId?: string;
   messageId?: string;
+  waitingMessage?: boolean;
+  isEdit?: boolean;
   fromMe?: boolean;
   momment?: number;
   senderName?: string;
@@ -36,7 +40,8 @@ interface ZApiReceivedPayload {
   broadcast?: boolean;
   notification?: string;
   status?: string;
-  text?: { message?: string };
+  text?: { message?: string } | string;
+  message?: string;
   image?: { imageUrl?: string; mimeType?: string; caption?: string };
   audio?: { audioUrl?: string; mimeType?: string };
   video?: { videoUrl?: string; mimeType?: string; caption?: string };
@@ -63,13 +68,14 @@ function resolveZApiContact(payload: ZApiReceivedPayload): {
     payload.chatLid?.trim() ||
     payload.senderLid?.trim() ||
     payload.participantLid?.trim() ||
-    (isWhatsAppLid(payload.phone ?? "") ? payload.phone!.trim() : null);
+    (isWhatsAppLid(payload.phone ?? "") ? payload.phone!.trim() : null) ||
+    (isWhatsAppLid(payload.chatId ?? "") ? payload.chatId!.trim() : null);
 
   const contactName = payload.fromMe
     ? payload.chatName ?? payload.senderName ?? null
     : payload.senderName ?? payload.chatName ?? null;
 
-  let phone = payload.phone?.trim() ?? "";
+  let phone = payload.phone?.trim() || payload.chatId?.trim() || "";
 
   // Mensagem enviada pelo app: o destinatário vem em participantPhone
   if (payload.fromMe && payload.participantPhone?.trim()) {
@@ -137,8 +143,32 @@ function buttonOrListText(payload: ZApiReceivedPayload): string | null {
   );
 }
 
+function textFromZApi(payload: ZApiReceivedPayload): string | null {
+  if (typeof payload.text === "string" && payload.text.trim()) return payload.text.trim();
+  if (typeof payload.text === "object" && payload.text?.message?.trim()) return payload.text.message.trim();
+  if (typeof payload.message === "string" && payload.message.trim()) return payload.message.trim();
+  return null;
+}
+
+function hasUserContent(payload: ZApiReceivedPayload): boolean {
+  return Boolean(
+    textFromZApi(payload) ||
+      payload.image ||
+      payload.audio ||
+      payload.video ||
+      payload.document ||
+      payload.sticker ||
+      reactionValue(payload) ||
+      payload.location ||
+      hasContact(payload) ||
+      pollName(payload) ||
+      buttonOrListText(payload),
+  );
+}
+
 function previewFromZApi(payload: ZApiReceivedPayload): string {
-  if (payload.text?.message) return payload.text.message.slice(0, 120);
+  const text = textFromZApi(payload);
+  if (text) return text.slice(0, 120);
   if (payload.image) return payload.image.caption ? `📷 ${payload.image.caption}` : "📷 Imagem";
   if (payload.audio) return "🎤 Áudio";
   if (payload.video) return payload.video.caption ? `🎬 ${payload.video.caption}` : "🎬 Vídeo";
@@ -165,8 +195,9 @@ function mediaFromZApi(payload: ZApiReceivedPayload): {
   mediaMime?: string;
   mediaFilename?: string;
 } {
-  if (payload.text?.message) {
-    return { messageType: "text", body: payload.text.message };
+  const text = textFromZApi(payload);
+  if (text) {
+    return { messageType: "text", body: text };
   }
   if (payload.image) {
     return {
@@ -248,25 +279,48 @@ function mediaFromZApi(payload: ZApiReceivedPayload): {
   return { messageType: "unknown", body: previewFromZApi(payload) };
 }
 
+/** Notificação de sistema (ligação, grupo, cifra ainda sem texto). Mensagem de chat com conteúdo passa. */
+function isSystemOnlyNotification(payload: ZApiReceivedPayload): boolean {
+  const note = payload.notification?.trim();
+  if (!note) return false;
+  if (hasUserContent(payload)) return false;
+  return true;
+}
+
 /** Ignora grupos, newsletters e postagens de status — mas permite resposta em cima de status. */
 function shouldIgnoreZApiMessage(payload: ZApiReceivedPayload): boolean {
   if (payload.isGroup) return true;
   if (payload.isNewsletter) return true;
   if (payload.broadcast) return true;
-  if (payload.notification) return true;
-  const phone = payload.phone ?? "";
+  if (isSystemOnlyNotification(payload)) return true;
+  const phone = payload.phone ?? payload.chatId ?? "";
   if (phone.includes("@broadcast")) return true;
   if (!payload.isStatusReply && phone.includes("status@")) return true;
   return false;
 }
 
+function hasConversationIdentity(payload: ZApiReceivedPayload): boolean {
+  return Boolean(
+    payload.phone?.trim() ||
+      payload.chatId?.trim() ||
+      payload.chatLid?.trim() ||
+      payload.senderLid?.trim() ||
+      payload.participantPhone?.trim() ||
+      payload.participantLid?.trim(),
+  );
+}
+
 async function processZApiReceived(tenantId: string, payload: ZApiReceivedPayload) {
-  if (!payload.phone || !payload.messageId) {
-    console.warn("[Z-API webhook] ignorado: sem phone ou messageId", payload.type);
+  if (!payload.messageId || !hasConversationIdentity(payload)) {
+    console.warn("[Z-API webhook] ignorado: sem messageId ou identidade do chat", payload.type);
     return;
   }
   if (shouldIgnoreZApiMessage(payload)) {
     console.info("[Z-API webhook] ignorado (grupo/status/notificação):", payload.notification ?? payload.phone);
+    return;
+  }
+  if (payload.waitingMessage && !hasUserContent(payload)) {
+    console.info("[Z-API webhook] aguardando conteúdo da mensagem", payload.messageId);
     return;
   }
 
@@ -293,7 +347,12 @@ async function processZApiReceived(tenantId: string, payload: ZApiReceivedPayloa
     contactName,
     preview,
     ts,
-    { incrementUnread: direction === "inbound", waId, rawPhone: payload.phone ?? phone, photoUrl },
+    {
+      incrementUnread: direction === "inbound",
+      waId,
+      rawPhone: payload.phone ?? payload.chatId ?? phone,
+      photoUrl,
+    },
   );
 
   const convId = conversationId.id;
@@ -313,13 +372,23 @@ async function processZApiReceived(tenantId: string, payload: ZApiReceivedPayloa
     rawPayload: payload,
   });
 
-  if (!inserted && media.mediaUrl) {
-    await patchWaMessageMediaIfMissing(
-      payload.messageId,
-      media.mediaUrl,
-      media.mediaMime ?? null,
-      media.mediaFilename ?? null,
-    );
+  if (!inserted) {
+    await enrichWaMessageIfRicher({
+      waMessageId: payload.messageId,
+      body: media.body,
+      messageType: media.messageType,
+      mediaId: media.mediaUrl ?? null,
+      mediaMime: media.mediaMime ?? null,
+      mediaFilename: media.mediaFilename ?? null,
+    });
+    if (media.mediaUrl) {
+      await patchWaMessageMediaIfMissing(
+        payload.messageId,
+        media.mediaUrl,
+        media.mediaMime ?? null,
+        media.mediaFilename ?? null,
+      );
+    }
   }
 
   // A mensagem já foi gravada acima. O pós-processamento (resposta automática,

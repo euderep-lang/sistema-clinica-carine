@@ -264,44 +264,6 @@ async function mergeConversationIntoKeeper(tenantId: string, keeperId: string, d
   await supabaseAdmin.from("wa_conversations" as never).delete().eq("id", dupeId);
 }
 
-async function findConversationByContactName(
-  tenantId: string,
-  name: string,
-): Promise<ConversationRow | null> {
-  const trimmed = name.trim();
-  if (trimmed.length < 2) return null;
-  const digits = trimmed.replace(/\D/g, "");
-  if (digits === trimmed.replace(/\s/g, "") || digits.length >= 10) return null;
-
-  const { data: byName } = await supabaseAdmin
-    .from("wa_conversations" as never)
-    .select(
-      "id, contact_phone, unread_count, contact_name, status, last_after_hours_reply_at, patient_id, last_message_at, created_at",
-    )
-    .eq("tenant_id", tenantId)
-    .eq("channel", "whatsapp")
-    .ilike("contact_name", trimmed)
-    .order("patient_id", { ascending: false, nullsFirst: false })
-    .order("last_message_at", { ascending: false, nullsFirst: true })
-    .limit(1);
-
-  if (byName?.[0]) return byName[0] as ConversationRow;
-
-  const { data: patients } = await supabaseAdmin
-    .from("patients")
-    .select("id, full_name, phone")
-    .eq("tenant_id", tenantId)
-    .eq("active", true)
-    .ilike("full_name", trimmed)
-    .limit(2);
-
-  if (patients?.length === 1 && patients[0]?.phone) {
-    return findConversationByPhoneTail(tenantId, patients[0].phone);
-  }
-
-  return null;
-}
-
 /** Move mensagens/notas de conversas duplicadas para a conversa principal. */
 export async function mergeDuplicateConversations(tenantId: string, keeperId: string, phone: string) {
   const tail = phoneTail11(phone);
@@ -403,27 +365,6 @@ export async function upsertConversation(
     existing = await findConversationByChatLidHistory(tenantId, options.rawPhone);
   }
 
-  if (!existing && contactName) {
-    existing = await findConversationByContactName(tenantId, contactName);
-  }
-
-  // Conversa vinculada a paciente sem telefone (ex.: criada pelo CRM com DDI internacional).
-  if (!existing && contactName) {
-    const { data: orphan } = await supabaseAdmin
-      .from("wa_conversations" as never)
-      .select(
-        "id, contact_phone, unread_count, contact_name, status, last_after_hours_reply_at, patient_id, last_message_at, created_at",
-      )
-      .eq("tenant_id", tenantId)
-      .eq("channel", "whatsapp")
-      .eq("contact_name", contactName)
-      .or("contact_phone.is.null,contact_phone.eq.")
-      .order("last_message_at", { ascending: false, nullsFirst: false })
-      .limit(1)
-      .maybeSingle();
-    if (orphan) existing = orphan as ConversationRow;
-  }
-
   if (existing && !phone) {
     phone = normalizeWaPhone(existing.contact_phone) || existing.contact_phone;
   }
@@ -433,15 +374,8 @@ export async function upsertConversation(
   }
 
   const contactWaId = (rawWaId?.trim() || fromPhone || "").trim();
-  // WhatsApp privacy (@lid): contato novo pode chegar sem MSISDN. Identidade = contact_wa_id.
-  const lidOnlyIdentity =
-    (!phone || phone.length < 10) &&
-    Boolean(
-      contactWaId &&
-        (isLikelyWaLidKey(contactWaId) ||
-          isLikelyWaLidKey(fromPhone) ||
-          isLikelyWaLidKey(options?.rawPhone ?? "")),
-    );
+  // Sem MSISDN (privacidade @lid ou id interno): cria a conversa mesmo assim.
+  const lidOnlyIdentity = (!phone || phone.length < 10) && contactWaId.length > 0;
 
   if ((!phone || phone.length < 10) && !lidOnlyIdentity) {
     throw new Error(`Telefone inválido para conversa WhatsApp: ${fromPhone || "(vazio)"}`);
@@ -763,6 +697,51 @@ export async function insertWaMessage(input: {
   }
 
   return true;
+}
+
+const WEAK_MESSAGE_BODIES = new Set(["", "💬 Mensagem", "Mensagem"]);
+
+/** Segunda entrega da Z-API (texto depois do placeholder / edição) atualiza a mensagem já gravada. */
+export async function enrichWaMessageIfRicher(input: {
+  waMessageId: string;
+  body: string;
+  messageType: string;
+  mediaId?: string | null;
+  mediaMime?: string | null;
+  mediaFilename?: string | null;
+}): Promise<boolean> {
+  const { data } = await supabaseAdmin
+    .from("wa_messages" as never)
+    .select("id, body, message_type, media_id")
+    .eq("wa_message_id", input.waMessageId)
+    .maybeSingle();
+  const row = data as { id: string; body: string | null; message_type: string | null; media_id: string | null } | null;
+  if (!row?.id) return false;
+
+  const current = (row.body ?? "").trim();
+  const next = input.body.trim();
+  const currentWeak = WEAK_MESSAGE_BODIES.has(current) || row.message_type === "unknown";
+  const nextStrong = next.length > 0 && !WEAK_MESSAGE_BODIES.has(next);
+  const patch: Record<string, string | null> = {};
+
+  if (currentWeak && nextStrong && next !== current) {
+    patch.body = input.body;
+    patch.message_type = input.messageType;
+  }
+  if (!row.media_id && input.mediaId) {
+    patch.media_id = input.mediaId;
+    if (input.mediaMime) patch.media_mime = input.mediaMime;
+    if (input.mediaFilename) patch.media_filename = input.mediaFilename;
+    if (!patch.message_type && input.messageType !== "unknown") patch.message_type = input.messageType;
+  }
+  if (!Object.keys(patch).length) return false;
+
+  const { error } = await supabaseAdmin
+    .from("wa_messages" as never)
+    .update(patch as never)
+    .eq("id", row.id);
+  if (error) console.error("[CRM] falha ao completar mensagem:", error.message);
+  return !error;
 }
 
 /** Preenche media_id em mensagens já gravadas sem mídia (ex.: áudio enviado pelo CRM antes do webhook). */

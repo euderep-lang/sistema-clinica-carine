@@ -155,6 +155,7 @@ export function phonesMatch(a: string, b: string): boolean {
 export type WaConversationPhoneRow = {
   id: string;
   contact_phone: string;
+  contact_wa_id?: string | null;
   contact_name?: string | null;
   patient_id?: string | null;
   unread_count?: number;
@@ -190,11 +191,14 @@ export function findConversationByPhone<T extends WaConversationPhoneRow>(
 
 /** Chave de agrupamento para deduplicar conversas na lista. */
 export function conversationGroupKey(row: WaConversationPhoneRow & { channel?: string | null }): string {
-  const tail = phoneTail11(normalizeBrazilPhone(row.contact_phone));
-  if (tail) return tail;
-  const name = (row.contact_name ?? "sem-nome").trim().toLowerCase();
-  const channel = row.channel ?? "whatsapp";
-  return `no-phone:${channel}:${name}`;
+  const phone = normalizeWaPhone(row.contact_phone);
+  if (phone) {
+    const tail = phoneTail11(phone);
+    if (tail) return `phone:${tail}`;
+  }
+  const waId = row.contact_wa_id?.trim().toLowerCase();
+  if (waId) return `wa:${waId}`;
+  return `id:${row.id}`;
 }
 
 function pickBestConversation<T extends WaConversationPhoneRow>(rows: T[]): T {
