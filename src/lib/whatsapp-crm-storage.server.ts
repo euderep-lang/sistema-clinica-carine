@@ -23,6 +23,7 @@ import {
 import { getAfterHoursMessageServer, getBusinessHoursServer } from "@/lib/wa-tenant-settings.server";
 import { applyWaTagRules, isFirstInboundMessage } from "@/lib/wa-tag-automation.server";
 import { handleAppointmentConfirmationReply } from "@/lib/wa-appointment-confirmation.server";
+import { onInboundMessageForFollowUp } from "@/lib/wa-follow-up.server";
 import { isValidContactPhotoUrl } from "@/lib/wa-contact-photo";
 import { providerSendText, isWhatsAppConfigured } from "@/lib/whatsapp-provider.server";
 import { normalizeManualOutboundMessage } from "@/lib/wa-quick-reply-ai.server";

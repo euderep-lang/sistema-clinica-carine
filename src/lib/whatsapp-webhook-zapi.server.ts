@@ -58,6 +58,13 @@ interface ZApiReceivedPayload {
   listReply?: { title?: string; message?: string };
 }
 
+function sameWaNumber(a: string, b: string): boolean {
+  const da = a.replace(/\D/g, "");
+  const db = b.replace(/\D/g, "");
+  if (da.length < 8 || db.length < 8) return false;
+  return da === db || da.endsWith(db) || db.endsWith(da);
+}
+
 /** Resolve o contato real — Z-API pode enviar @lid no phone, principalmente em fromMe. */
 function resolveZApiContact(payload: ZApiReceivedPayload): {
   phone: string;
@@ -76,9 +83,13 @@ function resolveZApiContact(payload: ZApiReceivedPayload): {
     : payload.senderName ?? payload.chatName ?? null;
 
   let phone = payload.phone?.trim() || payload.chatId?.trim() || "";
+  const connected = payload.connectedPhone?.trim() ?? "";
 
-  // Mensagem enviada pelo app: o destinatário vem em participantPhone
-  if (payload.fromMe && payload.participantPhone?.trim()) {
+  // Mensagem digitada no celular da clínica: o phone às vezes é o próprio 6076.
+  // O destinatário vem em participantPhone / chatLid.
+  if (payload.fromMe && connected && sameWaNumber(phone, connected)) {
+    phone = payload.participantPhone?.trim() || "";
+  } else if (payload.fromMe && payload.participantPhone?.trim()) {
     phone = payload.participantPhone.trim();
   } else if (!normalizeWaPhone(phone) && payload.participantPhone?.trim()) {
     phone = payload.participantPhone.trim();
