@@ -35,7 +35,7 @@ export const FOLLOW_UP_SEQUENCE_META: Record<string, { label: string; descriptio
   appointment_booked: {
     label: "Consulta agendada",
     description:
-      "Ao agendar ou reagendar: confirmação na hora. Lembrete só 1 dia antes (se a consulta não for amanhã). Sem mensagem no dia. Envios só entre 7h e 20h. Envia mesmo se o paciente interagir no WhatsApp.",
+      "Ao agendar ou reagendar: confirmação na hora. Lembrete 1 dia antes, se a consulta for depois de amanhã. O texto usa hoje ou amanhã conforme o dia real do envio. Envios só entre 7h e 20h. Envia mesmo se o paciente interagir no WhatsApp.",
   },
   post_consultation: {
     label: "Pós-consulta",
@@ -224,11 +224,11 @@ export const FOLLOW_UP_SEQUENCE_DEFAULTS: Record<string, FollowUpStepDef[]> = {
       delayMinutes: -1440,
       mode: "auto",
       templates: five(
-        "Confirmando sua consulta amanhã às {{hora_consulta}}, {{primeiro_nome}}. Responda \"eu vou\" para manter seu horário reservado.",
-        "Oi, {{primeiro_nome}}! Lembrete: amanhã às {{hora_consulta}}. Confirma com \"eu vou\" para garantir a vaga?",
-        "{{primeiro_nome}}, sua consulta é amanhã às {{hora_consulta}}. Pode responder \"eu vou\" para confirmarmos?",
-        "Passando para confirmar: amanhã, {{hora_consulta}}, {{primeiro_nome}}. Responda \"eu vou\" se estiver tudo certo.",
-        "{{primeiro_nome}}, amanhã te esperamos às {{hora_consulta}}. Confirme com \"eu vou\", por favor.",
+        "Confirmando sua consulta {{quando_consulta}} às {{hora_consulta}}, {{primeiro_nome}}. Responda \"eu vou\" para manter seu horário reservado.",
+        "Oi, {{primeiro_nome}}! Lembrete: {{quando_consulta}} às {{hora_consulta}}. Confirma com \"eu vou\" para garantir a vaga?",
+        "{{primeiro_nome}}, sua consulta é {{quando_consulta}} às {{hora_consulta}}. Pode responder \"eu vou\" para confirmarmos?",
+        "Passando para confirmar: {{quando_consulta}}, {{hora_consulta}}, {{primeiro_nome}}. Responda \"eu vou\" se estiver tudo certo.",
+        "{{primeiro_nome}}, {{quando_consulta}} te esperamos às {{hora_consulta}}. Confirme com \"eu vou\", por favor.",
       ),
     },
   ],

@@ -29,8 +29,8 @@ function wallClockMinutes(d: Date): number {
 }
 
 /**
- * Lembrete D-1 só quando a consulta NÃO é amanhã (relativo ao dia do agendamento).
- * Ex.: marcou segunda → terça: só imediato. Marcou segunda → quarta: D-1 na terça.
+ * Lembrete D-1 só quando a consulta é depois de amanhã (relativo ao dia do agendamento).
+ * Hoje ou amanhã: só a confirmação imediata. Marcou segunda → quarta: D-1 na terça.
  * Domingo → segunda: D-1 no domingo (permitido).
  */
 export function shouldScheduleAppointmentReminder24h(
@@ -39,7 +39,35 @@ export function shouldScheduleAppointmentReminder24h(
 ): boolean {
   const aptDay = dateISOInTimezone(appointmentAt);
   const tomorrowFromBooking = shiftDateISO(dateISOInTimezone(bookedAt), 1);
-  return aptDay !== tomorrowFromBooking;
+  return aptDay > tomorrowFromBooking;
+}
+
+/**
+ * Dia da consulta em relação ao momento do envio: "hoje", "amanhã" ou "dia DD/MM".
+ * Calculado na hora de mandar, não gravado no texto.
+ */
+export function appointmentWhenPhrase(appointmentAt: Date, now: Date = new Date()): string {
+  const aptDay = dateISOInTimezone(appointmentAt);
+  const today = dateISOInTimezone(now);
+  if (aptDay === today) return "hoje";
+  if (aptDay === shiftDateISO(today, 1)) return "amanhã";
+  if (aptDay === shiftDateISO(today, -1)) return "ontem";
+  const [, month, day] = aptDay.split("-");
+  return `dia ${day}/${month}`;
+}
+
+/** Troca a palavra fixa "amanhã" pelo dia real da consulta. */
+export function applyAppointmentWhenPhrase(
+  text: string,
+  appointmentAt: Date,
+  now: Date = new Date(),
+): string {
+  const phrase = appointmentWhenPhrase(appointmentAt, now);
+  return text.replace(/(^|[^\p{L}])(amanh[aã])(?=$|[^\p{L}])/giu, (_all, prefix: string, word: string) => {
+    const capitalized = word[0] === word[0].toUpperCase();
+    const next = capitalized ? phrase.charAt(0).toUpperCase() + phrase.slice(1) : phrase;
+    return `${prefix}${next}`;
+  });
 }
 
 /** Lembrete no dia desativado. */

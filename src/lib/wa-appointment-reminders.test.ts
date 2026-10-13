@@ -3,6 +3,8 @@ import { zonedDateFromWallClock } from "@/lib/locale";
 import {
   clampToMessagingWindow,
   ensureScheduledInMessagingWindow,
+  applyAppointmentWhenPhrase,
+  appointmentWhenPhrase,
   isWithinMessagingWindow,
   resolveAppointmentRelativeSchedule,
   sameDayReminderOffsetMinutes,
@@ -16,6 +18,46 @@ describe("wa-appointment-reminders", () => {
 
   it("pula D-1 quando consulta é amanhã (já recebeu confirmação hoje)", () => {
     expect(shouldScheduleAppointmentReminder24h(aptTomorrow20, bookedMorning)).toBe(false);
+  });
+
+  it("pula D-1 quando a consulta é no mesmo dia do agendamento", () => {
+    const aptSameDay = zonedDateFromWallClock("2026-07-10", "15:00");
+    expect(shouldScheduleAppointmentReminder24h(aptSameDay, bookedMorning)).toBe(false);
+    expect(
+      resolveAppointmentRelativeSchedule(
+        "appointment_reminder_24h",
+        -1440,
+        aptSameDay,
+        bookedMorning,
+        bookedMorning,
+      ),
+    ).toBeNull();
+  });
+
+  it("se a janela empurra o envio para o dia da consulta, o texto vira hoje", () => {
+    const aptLate = zonedDateFromWallClock("2026-07-12", "21:30");
+    const scheduled = resolveAppointmentRelativeSchedule(
+      "appointment_reminder_24h",
+      -1440,
+      aptLate,
+      bookedMorning,
+      bookedMorning,
+    );
+    expect(scheduled?.toISOString()).toBe(zonedDateFromWallClock("2026-07-12", "07:00").toISOString());
+    expect(appointmentWhenPhrase(aptLate, scheduled!)).toBe("hoje");
+  });
+
+  it("diz hoje ou amanhã conforme o dia do envio, inclusive em texto antigo com a palavra fixa", () => {
+    const apt = zonedDateFromWallClock("2026-10-13", "15:00");
+    const morningOf = zonedDateFromWallClock("2026-10-13", "07:01");
+    const eve = zonedDateFromWallClock("2026-10-12", "15:00");
+    expect(appointmentWhenPhrase(apt, morningOf)).toBe("hoje");
+    expect(appointmentWhenPhrase(apt, eve)).toBe("amanhã");
+    const legacy = "Passando pra te lembrar que sua consulta está confirmada para amanhã às 15 horas";
+    expect(applyAppointmentWhenPhrase(legacy, apt, morningOf)).toBe(
+      "Passando pra te lembrar que sua consulta está confirmada para hoje às 15 horas",
+    );
+    expect(applyAppointmentWhenPhrase(legacy, apt, eve)).toBe(legacy);
   });
 
   it("mantém D-1 quando consulta é depois de amanhã", () => {

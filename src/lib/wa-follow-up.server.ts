@@ -24,6 +24,8 @@ import { normalizeOutboundMessageBody } from "@/lib/wa-automation-quick-replies.
 import { normalizeManualOutboundMessage } from "@/lib/wa-quick-reply-ai.server";
 import { getPublicAppUrl } from "@/lib/app-url";
 import {
+  applyAppointmentWhenPhrase,
+  appointmentWhenPhrase,
   ensureScheduledInMessagingWindow,
   isWithinMessagingWindow,
   nextMessagingWindowStart,
@@ -136,6 +138,7 @@ export function buildFollowUpVars(ctx: TemplateContext): Record<string, string> 
     nome_clinica: ctx.tenantName?.trim() || "nossa clínica",
     data_consulta: appt ? fmtDateFromDate(appt) : "{{data_consulta}}",
     hora_consulta: appt ? fmtTimeFromDate(appt) : "{{hora_consulta}}",
+    quando_consulta: appt ? appointmentWhenPhrase(appt) : "{{quando_consulta}}",
   };
 }
 
@@ -1619,10 +1622,14 @@ export async function processDueFollowUps(
         conversationId,
         appointmentId: row.appointment_id,
       });
-      const textToSend =
+      const renderedNow =
         row.step_key === NPS_STEP_KEY
           ? (row.rendered_message ?? row.message_template)
           : renderFollowUpMessage(row.message_template, sendCtx);
+      const textToSend =
+        row.step_key === "appointment_reminder_24h" && sendCtx.appointmentAt
+          ? applyAppointmentWhenPhrase(renderedNow, sendCtx.appointmentAt)
+          : renderedNow;
 
       const result = await sendAutomatedMessage(
         row.tenant_id,
